@@ -1,20 +1,46 @@
-// Search rate limit against the real Redis (keys under test:<uuid>:, no FLUSHDB).
-import { createRedis, type Redis } from '@detaly/config';
-import { deleteKeysByPrefix, testKeyPrefix, testRedisUrl } from '@detaly/config/testing';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { clientBucket, hitSearchRateLimit } from '@/server/rate-limit';
+// Rate limits against the real Redis (keys under test:<uuid>:, no FLUSHDB): the phase 0
+// search limit, the 1A checkout, cancel and cart limits, and src/proxy.ts end to end with its
+// Redis connection replaced by one that prefixes every key.
+import { createRedis, parseEnv, type Redis } from '@detaly/config';
+import {
+  deleteKeysByPrefix,
+  minimalEnvSource,
+  testKeyPrefix,
+  testRedisUrl,
+} from '@detaly/config/testing';
+import { NextRequest } from 'next/server';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { rateLimitSubject } from '@/server/client-ip';
+import {
+  clientBucket,
+  hitRateLimit,
+  hitSearchRateLimit,
+  RATE_LIMITS,
+  type RateLimitKind,
+} from '@/server/rate-limit';
 
 const SECRET = 'rate-limit-test-secret-0123456789abcdef';
 const prefix = testKeyPrefix();
 let redis: Redis;
 
+const proxyState = vi.hoisted(() => ({ redis: null as unknown, env: null as unknown }));
+vi.mock('@/server/redis', () => ({ getRedis: () => proxyState.redis }));
+vi.mock('@/server/env', () => ({ serverEnv: () => proxyState.env }));
+vi.mock('@/server/logger', () => ({ getLogger: () => ({ warn: () => undefined }) }));
+
 beforeAll(() => {
   redis = createRedis(testRedisUrl());
+  // ioredis prefixes the KEYS of EVALSHA too, so the proxy's keys land under `prefix`.
+  proxyState.redis = createRedis(testRedisUrl(), { keyPrefix: prefix });
+  proxyState.env = parseEnv(
+    minimalEnvSource({ SESSION_SECRET: SECRET, TRUSTED_IP_HEADER: 'x-real-ip' }),
+  );
 });
 
 afterAll(async () => {
   await deleteKeysByPrefix(redis, prefix);
   await redis.quit();
+  await (proxyState.redis as Redis).quit();
 });
 
 describe('hitSearchRateLimit', () => {
@@ -63,5 +89,158 @@ describe('hitSearchRateLimit', () => {
     expect(keys.some((key) => key.includes(clientBucket(SECRET, ip)))).toBe(true);
     expect(keys.some((key) => key.includes(ip))).toBe(false);
     expect(clientBucket(SECRET, ip)).not.toBe(clientBucket(`${SECRET}x`, ip));
+  });
+});
+
+describe('hitRateLimit: checkout, cancel, cart', () => {
+  const HOUR_MS = 3_600_000;
+  const cases: { kind: RateLimitKind; limit: number; ip: string }[] = [
+    { kind: 'checkout', limit: 10, ip: '198.51.100.31' },
+    { kind: 'cancel', limit: 5, ip: '198.51.100.32' },
+    { kind: 'cart', limit: 120, ip: '198.51.100.33' },
+  ];
+
+  it('declares the hourly limits of section 8', () => {
+    for (const { kind, limit } of cases) {
+      expect(RATE_LIMITS[kind], kind).toEqual([
+        { window: 'hour', keySegment: 'hour', limit, windowMs: HOUR_MS },
+      ]);
+    }
+  });
+
+  for (const { kind, limit, ip } of cases) {
+    it(`rejects request ${limit + 1} of ${kind} within an hour, then lets one through`, async () => {
+      const start = Date.UTC(2026, 9, 4, 6, 0, 0);
+      const options = { kind, secret: SECRET, ip, keyPrefix: prefix };
+      for (let i = 0; i < limit; i += 1) {
+        const decision = await hitRateLimit(redis, { ...options, now: start + i * 1_000 });
+        expect(decision.allowed, `${kind} ${i + 1}`).toBe(true);
+      }
+      const blocked = await hitRateLimit(redis, { ...options, now: start + 30 * 60_000 });
+      expect(blocked).toEqual({ allowed: false, retryAfterSec: 1800, window: 'hour' });
+
+      const key = `${prefix}rl:${kind}:hour:${clientBucket(SECRET, ip)}`;
+      expect(await redis.exists(key)).toBe(1);
+      expect(await redis.zcard(key)).toBe(limit);
+
+      // An hour after the first hit it has left the window.
+      const later = await hitRateLimit(redis, { ...options, now: start + HOUR_MS + 1 });
+      expect(later.allowed).toBe(true);
+    });
+  }
+
+  it('keeps the kinds apart: an exhausted checkout leaves cart, cancel and search open', async () => {
+    const now = Date.UTC(2026, 9, 4, 9, 0, 0);
+    const options = { secret: SECRET, ip: '198.51.100.40', keyPrefix: prefix, now };
+    for (let i = 0; i < 10; i += 1) await hitRateLimit(redis, { ...options, kind: 'checkout' });
+    expect((await hitRateLimit(redis, { ...options, kind: 'checkout' })).allowed).toBe(false);
+    expect((await hitRateLimit(redis, { ...options, kind: 'cart' })).allowed).toBe(true);
+    expect((await hitRateLimit(redis, { ...options, kind: 'cancel' })).allowed).toBe(true);
+    expect((await hitSearchRateLimit(redis, options)).allowed).toBe(true);
+  });
+
+  it('buckets IPv6 by /64: another address of the same /64 is blocked too', async () => {
+    const now = Date.UTC(2026, 9, 4, 10, 0, 0);
+    const base = { kind: 'cancel' as const, secret: SECRET, keyPrefix: prefix, now };
+    for (let i = 0; i < 5; i += 1) {
+      const ip = `2001:db8:77:1::${(i + 1).toString(16)}`;
+      expect((await hitRateLimit(redis, { ...base, ip })).allowed, ip).toBe(true);
+    }
+    const sameNet = await hitRateLimit(redis, { ...base, ip: '2001:db8:77:1:ffff:1:2:3' });
+    expect(sameNet).toMatchObject({ allowed: false, window: 'hour' });
+    const otherNet = await hitRateLimit(redis, { ...base, ip: '2001:db8:77:2::1' });
+    expect(otherNet.allowed).toBe(true);
+
+    const subject = rateLimitSubject('2001:db8:77:1::1');
+    expect(subject).toBe('2001:0db8:0077:0001::/64');
+    const keys = await redis.keys(`${prefix}rl:cancel:*`);
+    expect(keys).toContain(`${prefix}rl:cancel:hour:${clientBucket(SECRET, subject)}`);
+    // rl:<kind>:<window>:<32 hex>: no address or prefix text in the key.
+    for (const key of keys) {
+      expect(key.slice(prefix.length)).toMatch(/^rl:cancel:hour:[0-9a-f]{32}$/);
+    }
+  });
+});
+
+describe('proxy with the real limiter', () => {
+  async function send(
+    method: string,
+    path: string,
+    ip: string,
+    headers: Record<string, string> = {},
+  ): Promise<Response> {
+    const { proxy } = await import('@/proxy');
+    return proxy(
+      new NextRequest(new URL(path, 'http://localhost:3000'), {
+        method,
+        headers: { 'x-real-ip': ip, ...headers },
+      }),
+    );
+  }
+
+  it('answers the 11th checkout of an hour with a JSON 429', async () => {
+    const ip = '192.0.2.111';
+    for (let i = 0; i < 10; i += 1) {
+      const response = await send('POST', '/api/checkout', ip, { accept: 'application/json' });
+      expect(response.headers.get('x-middleware-next'), `checkout ${i + 1}`).toBe('1');
+    }
+    // Reads do not count.
+    expect((await send('GET', '/api/checkout', ip)).headers.get('x-middleware-next')).toBe('1');
+    const blocked = await send('POST', '/api/checkout', ip, { accept: 'application/json' });
+    expect(blocked.status).toBe(429);
+    const retryAfter = Number(blocked.headers.get('retry-after'));
+    expect(retryAfter).toBeGreaterThan(3500);
+    expect(retryAfter).toBeLessThanOrEqual(3600);
+    expect(blocked.headers.get('cache-control')).toBe('no-store');
+    expect(blocked.headers.get('content-type')).toContain('application/json');
+    expect(await blocked.json()).toMatchObject({
+      error: 'rate_limited',
+      retryAfterSec: retryAfter,
+    });
+
+    // The key is under the test prefix and holds an HMAC, not the ip.
+    const keys = await redis.keys(`${prefix}rl:checkout:hour:*`);
+    expect(keys).toContain(`${prefix}rl:checkout:hour:${clientBucket(SECRET, ip)}`);
+    expect(keys.some((key) => key.includes(ip))).toBe(false);
+    // Another client is unaffected.
+    const other = await send('POST', '/api/checkout', '192.0.2.112');
+    expect(other.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('answers the 6th cancel of an hour with a 429 and keeps the order API private', async () => {
+    for (let i = 0; i < 5; i += 1) {
+      // Any address of the same /64 shares the bucket.
+      const response = await send('POST', '/api/orders/TokenA/cancel', `2001:db8:99:5::${i + 1}`);
+      expect(response.headers.get('x-middleware-next'), `cancel ${i + 1}`).toBe('1');
+      expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+    }
+    const blocked = await send('POST', '/api/orders/TokenB/cancel', '2001:db8:99:5::10');
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get('retry-after')).not.toBeNull();
+    expect(blocked.headers.get('content-type')).toContain('application/json');
+    expect(blocked.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(blocked.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    const otherNet = await send('POST', '/api/orders/TokenB/cancel', '2001:db8:99:6::1');
+    expect(otherNet.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('answers the 121st cart write of an hour with an HTML page to a form', async () => {
+    const ip = '192.0.2.121';
+    const form = { accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8' };
+    const methods = ['POST', 'PATCH', 'DELETE'];
+    for (let i = 0; i < 120; i += 1) {
+      const method = methods[i % methods.length] ?? 'POST';
+      const response = await send(method, `/api/cart/items/${i}`, ip, form);
+      expect(response.headers.get('x-middleware-next'), `cart ${i + 1}`).toBe('1');
+    }
+    expect((await send('GET', '/api/cart', ip)).headers.get('x-middleware-next')).toBe('1');
+    const page = await send('POST', '/api/cart/items', ip, form);
+    expect(page.status).toBe(429);
+    expect(page.headers.get('retry-after')).not.toBeNull();
+    expect(page.headers.get('content-type')).toBe('text/html; charset=utf-8');
+    expect(await page.text()).toContain('Вернуться в корзину');
+    const json = await send('POST', '/api/cart/items', ip);
+    expect(json.status).toBe(429);
+    expect(json.headers.get('content-type')).toContain('application/json');
   });
 });

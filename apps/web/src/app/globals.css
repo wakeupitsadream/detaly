@@ -1,45 +1,120 @@
 @import 'tailwindcss';
 
 /*
- * Design tokens (Tailwind v4: no tailwind.config, everything lives in @theme).
- * System fonts only: next/font/google would fetch fonts from the network during the build.
+ * «Техкарта»: the storefront looks like a repair shop's engineering document (docs/design.md).
+ * Tailwind v4 has no tailwind.config: every token lives in @theme below and becomes both a CSS
+ * variable on :root and a utility (bg-graphite-900, text-accent-ink, font-display, ...).
+ *
+ * Fonts are self-hosted from @fontsource-variable/* (imported in app/layout.tsx): the build
+ * needs no network and the CSP allows only font-src 'self'.
  */
 @theme {
-  --font-sans:
-    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
-  --font-mono:
-    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --font-display: 'Unbounded Variable', 'Onest Variable', 'Arial Black', sans-serif;
+  --font-sans: 'Onest Variable', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  --color-ink: #1c1917;
-  --color-muted: #57534e;
-  --color-faint: #a8a29e;
-  --color-line: #e7e5e4;
-  --color-paper: #fafaf9;
-  --color-card: #ffffff;
+  /* Workshop metal: header, footer, hero and the pickup point section. */
+  --color-graphite-950: #111315;
+  --color-graphite-900: #181b1e;
+  --color-graphite-800: #22262a;
+  --color-graphite-700: #343a40;
+  --color-steel-400: #8d949b;
+  --color-steel-200: #c9cdd1;
 
-  --color-accent: #c2410c;
-  --color-accent-strong: #9a3412;
-  --color-accent-soft: #fff7ed;
+  /* Paper of the repair card. */
+  --color-paper: #f0ede6;
+  --color-paper-2: #e6e1d6;
+  --color-card: #faf8f4;
+  --color-ink: #14161a;
+  --color-muted: #585e66;
+  --color-faint: #8b9097;
+  --color-line: #d5cfc2;
+  --color-line-strong: #a9a294;
 
-  --color-local: #15803d;
-  --color-local-soft: #f0fdf4;
-  --color-order: #1d4ed8;
-  --color-order-soft: #eff6ff;
-  --color-warn: #a16207;
-  --color-warn-soft: #fefce8;
+  /*
+   * Signal orange is a FILL under ink text only (6.6:1); white on it fails AA. Orange text on
+   * light backgrounds uses accent-ink. Signal yellow marks the hazard tape and "demo" only.
+   */
+  --color-accent: #ff5b1f;
+  --color-accent-hover: #e84a12;
+  --color-accent-ink: #b23a0a;
+  --color-accent-soft: #ffe6da;
+  --color-signal: #ffc21a;
 
-  --radius-card: 0.875rem;
+  /* State colours, separate from the brand: orange and yellow never mean a state. */
+  --color-ok: #1e7046;
+  --color-ok-soft: #e1f0e6;
+  --color-info: #2a5a86;
+  --color-info-soft: #e0eaf4;
+  --color-wait: #8f5200;
+  --color-wait-soft: #f8ecd6;
+  --color-danger: #b42318;
+  --color-danger-soft: #fbe3e0;
+
+  /* Old names stay as aliases: the admin and not yet restyled pages keep working. */
+  --color-accent-strong: var(--color-accent-hover);
+  --color-local: var(--color-ok);
+  --color-local-soft: var(--color-ok-soft);
+  --color-order: var(--color-info);
+  --color-order-soft: var(--color-info-soft);
+  --color-warn: var(--color-wait);
+  --color-warn-soft: var(--color-wait-soft);
+
+  /*
+   * Almost square corners, no pills. xl/2xl are pulled down too, so pages that still use the
+   * old rounded-xl get the new shape before they are restyled.
+   */
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius: 4px;
+  --radius-md: 4px;
+  --radius-lg: 10px;
+  --radius-xl: 4px;
+  --radius-2xl: 4px;
+  --radius-card: 4px;
+
+  --container-site: 72rem;
+
+  --ease-out-quint: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
+
+/* ------------------------------------------------------------------------------------------ */
+/* Base                                                                                       */
+/* ------------------------------------------------------------------------------------------ */
 
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
     overflow-wrap: break-word;
+    /* The sticky header (md+) must not cover an anchor or a focused field. */
+    scroll-padding-top: 5rem;
   }
 
   body {
     background: var(--color-paper);
     color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+
+  @media (width >= 48rem) {
+    body {
+      font-size: 1.0625rem;
+    }
+  }
+
+  h1,
+  h2 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+    hyphens: manual;
+    text-wrap: balance;
+  }
+
+  h3,
+  h4 {
+    hyphens: manual;
   }
 
   a {
@@ -50,6 +125,16 @@
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
+
+  ::selection {
+    background: var(--color-accent);
+    color: var(--color-ink);
+  }
+
+  /* A modal sheet is open: the page under it does not scroll. */
+  html:has(dialog[open]) {
+    overflow: hidden;
+  }
 }
 
 /* Long article numbers and requisites must wrap instead of widening the page. */
@@ -57,32 +142,337 @@
   overflow-wrap: anywhere;
 }
 
-/* Legal documents rendered from document_versions (lib/markdown.tsx). */
+/* ------------------------------------------------------------------------------------------ */
+/* Type scale (docs/design.md, "Шрифты")                                                      */
+/* ------------------------------------------------------------------------------------------ */
+
+@utility text-display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(2.125rem, 1.1rem + 4.2vw, 4.25rem);
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  hyphens: manual;
+}
+
+@utility text-h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.75rem, 1.3rem + 1.8vw, 2.625rem);
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  hyphens: manual;
+}
+
+@utility text-h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(1.375rem, 1.1rem + 1.1vw, 1.875rem);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  hyphens: manual;
+}
+
+@utility text-h3 {
+  font-family: var(--font-sans);
+  font-weight: 650;
+  font-size: 1.125rem;
+  line-height: 1.3;
+}
+
+/* Mono uppercase label: eyebrows, column captions, the brand above an article. */
+@utility text-label {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Part number "engraved" on the plate. */
+@utility text-article {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 1.125rem;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+
+/* Size through --price-size so a variant never fights the utility order. */
+@utility text-price {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--price-size, 1.75rem);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* Section rhythm: 56 / 88 / 120 px. */
+@utility section-y {
+  padding-block: 3.5rem;
+  @media (width >= 48rem) {
+    padding-block: 5.5rem;
+  }
+  @media (width >= 64rem) {
+    padding-block: 7.5rem;
+  }
+}
+
+/* ------------------------------------------------------------------------------------------ */
+/* Texture                                                                                    */
+/* ------------------------------------------------------------------------------------------ */
+
+/*
+ * Grain over the whole page. The noise is lifted towards white (feComponentTransfer) so that
+ * multiply barely darkens the paper on average and the token contrasts stay as computed.
+ */
+@layer base {
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    pointer-events: none;
+    opacity: 0.16;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='linear' slope='1.6' intercept='.12'/%3E%3CfeFuncG type='linear' slope='1.6' intercept='.12'/%3E%3CfeFuncB type='linear' slope='1.6' intercept='.12'/%3E%3CfeFuncA type='linear' slope='0' intercept='1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+}
+
+@layer components {
+  /* Dark sections: their own soft-light grain (multiply is invisible on graphite). */
+  .grain-dark {
+    position: relative;
+    isolation: isolate;
+  }
+  .grain-dark::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.07;
+    mix-blend-mode: soft-light;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* Drafting grid: hero, pickup point, footer. */
+  .bg-blueprint {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Cpath d='M48 0H0v48' fill='none' stroke='%23fff' stroke-opacity='.07'/%3E%3Cpath d='M12 0v48M24 0v48M36 0v48M0 12h48M0 24h48M0 36h48' stroke='%23fff' stroke-opacity='.025'/%3E%3C/svg%3E");
+    background-position: -1px -1px;
+  }
+
+  /* Tyre tread chevrons for part tiles (there are no supplier photos). */
+  .bg-tread {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='16'%3E%3Cpath d='M0 12 L6 4 L12 12 L18 4 L24 12' fill='none' stroke='%23fff' stroke-opacity='.06' stroke-width='3'/%3E%3C/svg%3E");
+  }
+
+  /* Hazard tape. Appears twice: under the hero and around the "demo" mark. */
+  .hazard {
+    background: repeating-linear-gradient(
+      -45deg,
+      var(--color-signal) 0 10px,
+      var(--color-graphite-950) 10px 20px
+    );
+  }
+
+  /* Drawing corner marks: four L-shaped 10x10 corners just outside the box. */
+  .corner-marks {
+    position: relative;
+    --corner-color: var(--color-ink);
+  }
+  .corner-marks::before,
+  .corner-marks::after {
+    content: '';
+    position: absolute;
+    left: -5px;
+    right: -5px;
+    height: 10px;
+    pointer-events: none;
+    background:
+      linear-gradient(var(--corner-color), var(--corner-color)) left top / 10px 2px no-repeat,
+      linear-gradient(var(--corner-color), var(--corner-color)) right top / 10px 2px no-repeat,
+      linear-gradient(var(--corner-color), var(--corner-color)) left top / 2px 10px no-repeat,
+      linear-gradient(var(--corner-color), var(--corner-color)) right top / 2px 10px no-repeat;
+  }
+  .corner-marks::before {
+    top: -5px;
+  }
+  .corner-marks::after {
+    bottom: -5px;
+    transform: scaleY(-1);
+  }
+
+  /* Horizontally scrolling chip row on phones, fading out at the right edge. */
+  .chip-row {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+    mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+  }
+  .chip-row::-webkit-scrollbar {
+    display: none;
+  }
+  @media (width >= 48rem) {
+    .chip-row {
+      flex-wrap: wrap;
+      overflow: visible;
+      mask-image: none;
+    }
+  }
+
+  /*
+   * <main> of the storefront: a centred 72rem column by default. A page whose root element has
+   * [data-bleed] (components/ui/Section.tsx → FullBleed) gets the full width and lays out its
+   * own Sections (the home page).
+   */
+  .site-main {
+    width: 100%;
+    min-width: 0;
+    max-width: var(--container-site);
+    margin-inline: auto;
+    padding: 1.5rem 1rem 3.5rem;
+  }
+  @media (width >= 48rem) {
+    .site-main {
+      padding: 2.5rem 1.5rem 5.5rem;
+    }
+  }
+  @media (width >= 64rem) {
+    .site-main {
+      padding-inline: 2rem;
+    }
+  }
+  .site-main:has([data-bleed]) {
+    max-width: none;
+    padding: 0;
+  }
+
+  /* Bottom sheet on phones, centred modal from md (components/ui/Sheet.tsx). */
+  .sheet {
+    margin: auto 0 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: 85dvh;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    background: var(--color-card);
+    color: var(--color-ink);
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .sheet::backdrop {
+    background: rgb(17 19 21 / 0.62);
+  }
+  @media (width >= 48rem) {
+    .sheet {
+      margin: auto;
+      width: calc(100% - 3rem);
+      max-width: 36rem;
+      border-radius: var(--radius);
+    }
+  }
+}
+
+/* ------------------------------------------------------------------------------------------ */
+/* Motion: one orchestrated hero load and micro hovers, nothing else                          */
+/* ------------------------------------------------------------------------------------------ */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@layer components {
+  /* Staggered rise: style={{ '--i': 2 }} sets the step (70 ms each). */
+  .rise {
+    animation: rise 520ms var(--ease-out-quint) both;
+    animation-delay: calc(var(--i, 0) * 70ms);
+  }
+  /* A path with pathLength="1" drawn in 700 ms (the install chain line). */
+  .draw-line {
+    stroke-dasharray: 1;
+    animation: draw 700ms var(--ease-out-quint) both;
+    animation-delay: calc(var(--i, 0) * 70ms);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .draw-line {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ------------------------------------------------------------------------------------------ */
+/* Legal documents rendered from document_versions (lib/markdown.tsx)                         */
+/* ------------------------------------------------------------------------------------------ */
+
 @layer components {
   .legal {
-    line-height: 1.65;
+    max-width: 68ch;
+    font-size: 1rem;
+    line-height: 1.7;
     color: var(--color-ink);
   }
+  @media (width >= 48rem) {
+    .legal {
+      font-size: 1.0625rem;
+    }
+  }
   .legal h1 {
-    font-size: 1.5rem;
-    line-height: 1.25;
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 1.2rem + 1.4vw, 2.25rem);
+    line-height: 1.12;
     font-weight: 700;
-    margin: 0 0 1rem;
+    letter-spacing: -0.015em;
+    margin: 0 0 1.5rem;
   }
   .legal h2 {
+    font-family: var(--font-display);
     font-size: 1.2rem;
     line-height: 1.3;
-    font-weight: 650;
-    margin: 2rem 0 0.75rem;
+    font-weight: 600;
+    margin: 2.5rem 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--color-line);
   }
   .legal h3,
   .legal h4 {
     font-size: 1.05rem;
-    font-weight: 600;
-    margin: 1.5rem 0 0.5rem;
+    font-weight: 650;
+    margin: 1.75rem 0 0.5rem;
   }
   .legal p {
-    margin: 0 0 0.85rem;
+    margin: 0 0 0.9rem;
   }
   .legal ul,
   .legal ol {
@@ -90,7 +480,7 @@
     padding-left: 1.25rem;
   }
   .legal ul {
-    list-style: disc;
+    list-style: square;
   }
   .legal ol {
     list-style: decimal;
@@ -98,26 +488,39 @@
   .legal li {
     margin: 0.3rem 0;
   }
-  .legal blockquote {
-    margin: 0 0 1.25rem;
-    padding: 0.75rem 1rem;
-    border-left: 4px solid var(--color-warn);
-    background: var(--color-warn-soft);
-    border-radius: 0.5rem;
+  .legal li::marker {
+    color: var(--color-muted);
+  }
+  /* A blockquote in the documents is the "черновик" note: wait tone with hazard tape. */
+  .legal blockquote,
+  .draft-note {
+    margin: 0 0 1.5rem;
+    padding: 0.85rem 1rem 0.85rem 1.5rem;
+    background:
+      repeating-linear-gradient(
+          -45deg,
+          var(--color-signal) 0 6px,
+          var(--color-graphite-950) 6px 12px
+        )
+        left top / 6px 100% no-repeat,
+      var(--color-wait-soft);
+    color: var(--color-ink);
+    border-radius: var(--radius-sm);
   }
   .legal blockquote p:last-child {
     margin-bottom: 0;
   }
   .legal a {
-    color: var(--color-accent-strong);
+    color: var(--color-accent-ink);
     text-decoration: underline;
+    text-underline-offset: 3px;
   }
   .legal code {
     font-family: var(--font-mono);
     font-size: 0.9em;
   }
   .legal hr {
-    margin: 1.5rem 0;
+    margin: 2rem 0;
     border-color: var(--color-line);
   }
   .legal .table-scroll {
@@ -129,6 +532,7 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 0.925rem;
+    background: var(--color-card);
   }
   .legal th,
   .legal td {
@@ -142,8 +546,12 @@
     hyphens: auto;
   }
   .legal th {
-    background: var(--color-paper);
+    background: var(--color-paper-2);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
     font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
   }
   /* Phones: a table with 3 columns does not fit 375 px; each row becomes a card and every
      cell is prefixed with its column header (data-label from lib/markdown.tsx). */
@@ -165,7 +573,7 @@
     }
     .legal tr {
       border: 1px solid var(--color-line);
-      border-radius: 0.5rem;
+      border-radius: var(--radius);
       margin-bottom: 0.75rem;
       padding: 0.25rem 0;
     }
@@ -176,9 +584,40 @@
     .legal td::before {
       content: attr(data-label);
       display: block;
-      font-size: 0.8rem;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
       font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
       color: var(--color-muted);
     }
+  }
+}
+
+/* ------------------------------------------------------------------------------------------ */
+/* Print: a document or an order on plain paper, no chrome and no texture                     */
+/* ------------------------------------------------------------------------------------------ */
+
+@media print {
+  body {
+    background: #fff;
+  }
+  body::after,
+  .grain-dark::before {
+    display: none;
+  }
+  [data-print-hide],
+  .site-header,
+  .site-footer,
+  .mobile-cart-bar {
+    display: none !important;
+  }
+  .site-main {
+    max-width: none;
+    padding: 0;
+  }
+  .legal {
+    max-width: none;
+    font-size: 11pt;
   }
 }

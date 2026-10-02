@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Footer } from '@/components/Footer';
+import { MobileCartBar } from '@/components/MobileCartBar';
 import { SiteHeader } from '@/components/SiteHeader';
 import { getBrand } from '@/server/brand';
 import { requestCartCount } from '@/server/cart/count';
@@ -32,9 +33,20 @@ export default async function SiteLayout({ children }: { children: ReactNode }) 
   const cartCount = await requestCartCount();
   return (
     <div className="flex min-h-screen min-w-0 flex-col">
+      <a
+        href="#main"
+        className="sr-only z-50 bg-accent px-4 py-2 font-semibold text-ink focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+      >
+        К содержимому
+      </a>
       <SiteHeader brandName={brand.name} cartCount={cartCount} />
-      <main className="mx-auto w-full max-w-5xl min-w-0 flex-1 px-4 py-6 md:py-10">{children}</main>
+      {/* A centred column by default; a page rooted in <FullBleed> lays out full-width
+          Sections itself (.site-main in globals.css). */}
+      <main id="main" className="site-main flex-1">
+        {children}
+      </main>
       <Footer brand={brand} year={new Date().getFullYear()} />
+      <MobileCartBar cartCount={cartCount} />
     </div>
   );
 }

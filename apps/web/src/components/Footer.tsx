@@ -1,5 +1,8 @@
 import Link from 'next/link';
 import type { Brand } from '@/server/brand';
+import { IconExternal } from './icons';
+import { BrandMark } from './ui/BrandMark';
+import { Container } from './ui/Container';
 
 const LINKS = [
   { href: '/docs/offer', label: 'Публичная оферта' },
@@ -9,42 +12,95 @@ const LINKS = [
   { href: '/about', label: 'О сервисе и реквизиты' },
 ];
 
-/** Seller requisites on every page (law on consumer protection, art. 9). */
+/** A rivet in a corner of the requisites plate. */
+function Rivet({ className }: { className: string }) {
+  return (
+    <span
+      aria-hidden
+      className={`absolute size-1.5 rounded-full bg-graphite-700 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.08)] ${className}`}
+    />
+  );
+}
+
+/**
+ * Seller requisites on every page (law on consumer protection, art. 9), set as a data plate
+ * with rivets. Brand and requisites come only from env.
+ */
 export function Footer({ brand, year }: { brand: Brand; year: number }) {
   const { seller } = brand;
+  const contacts = [seller.phone, seller.email].filter((part) => part !== null);
   return (
-    <footer className="mt-16 border-t border-line bg-card" data-testid="site-footer">
-      <div className="mx-auto grid max-w-5xl min-w-0 grid-cols-1 gap-8 px-4 py-8 text-sm md:grid-cols-2">
-        <div className="min-w-0 space-y-1">
-          <div className="text-base font-semibold">{brand.name}</div>
-          <p className="wrap-anywhere">
-            {seller.name ? `ИП ${seller.name}` : 'Индивидуальный предприниматель'}
-          </p>
-          <p className="wrap-anywhere" data-testid="footer-inn">
-            ИНН {seller.inn ?? 'уточняется'}
-            {seller.ogrnip ? `, ОГРНИП ${seller.ogrnip}` : ''}
-          </p>
-          {seller.address ? <p className="wrap-anywhere">{seller.address}</p> : null}
-          {seller.phone || seller.email ? (
-            <p className="wrap-anywhere">
-              {[seller.phone, seller.email].filter((part) => part !== null).join(' · ')}
-            </p>
-          ) : null}
-          <p className="pt-2 text-muted">
-            © {year} {brand.name}
+    <footer
+      className="site-footer grain-dark bg-graphite-950 bg-blueprint text-steel-200"
+      data-testid="site-footer"
+    >
+      <Container className="grid gap-10 py-12 md:grid-cols-2 md:py-16 lg:grid-cols-[1fr_1.35fr_1fr] lg:gap-12">
+        <div className="min-w-0 space-y-4">
+          <div className="flex min-w-0 items-center gap-2.5 text-paper">
+            <BrandMark size={32} />
+            <span className="truncate font-display text-xl font-bold tracking-tight">
+              {brand.name}
+            </span>
+          </div>
+          <p className="max-w-xs text-sm text-steel-400">
+            Запчасти от людей, которые их же и поставят.
           </p>
         </div>
+
+        <div className="relative min-w-0 rounded border border-graphite-700 bg-graphite-900/70 px-5 py-4 md:row-span-2 lg:row-span-1">
+          <Rivet className="top-2 left-2" />
+          <Rivet className="top-2 right-2" />
+          <Rivet className="bottom-2 left-2" />
+          <Rivet className="right-2 bottom-2" />
+          <p className="text-label text-steel-400">Продавец</p>
+          <div className="mt-2 space-y-1 font-mono text-[0.8125rem] leading-relaxed text-steel-200">
+            <p className="wrap-anywhere text-paper">
+              {seller.name ? `ИП ${seller.name}` : 'Индивидуальный предприниматель'}
+            </p>
+            <p className="wrap-anywhere" data-testid="footer-inn">
+              ИНН {seller.inn ?? 'уточняется'}
+              {seller.ogrnip ? `, ОГРНИП ${seller.ogrnip}` : ''}
+            </p>
+            {seller.address ? <p className="wrap-anywhere">{seller.address}</p> : null}
+            {contacts.length > 0 ? <p className="wrap-anywhere">{contacts.join(' · ')}</p> : null}
+          </div>
+        </div>
+
         <nav aria-label="Документы" className="min-w-0">
-          <ul className="space-y-1.5">
+          <p className="text-label text-steel-400">Документы</p>
+          <ul className="mt-3 space-y-2 text-sm">
             {LINKS.map((link) => (
               <li key={link.href}>
-                <Link href={link.href} className="text-muted underline-offset-2 hover:underline">
+                <Link
+                  href={link.href}
+                  className="text-steel-200 underline-offset-4 transition-colors hover:text-paper hover:underline"
+                >
                   {link.label}
                 </Link>
               </li>
             ))}
           </ul>
         </nav>
+      </Container>
+
+      <div className="border-t border-graphite-800">
+        <Container className="flex flex-col gap-2 py-5 text-xs text-steel-400 sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            © {year} {brand.name}
+          </p>
+          <p>
+            Дизайн и разработка —{' '}
+            <a
+              href="https://maxim-batutin.ru"
+              target="_blank"
+              rel="noopener"
+              className="inline-flex items-center gap-1 text-steel-200 underline-offset-4 hover:text-paper hover:underline"
+            >
+              maxim-batutin.ru
+              <IconExternal size={12} />
+            </a>
+          </p>
+        </Container>
       </div>
     </footer>
   );

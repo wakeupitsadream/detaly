@@ -10,6 +10,8 @@
 import type { Env } from '@detaly/config';
 import { LEGAL_VERSION_ENV, type Executor } from '@detaly/db';
 import type { DocumentKind } from '@detaly/domain';
+import { getDb } from './db';
+import { serverEnv } from './env';
 
 export interface LegalDocument {
   /** document_versions.id: consents.document_version_id, orders.offer_version_id. */
@@ -79,4 +81,12 @@ export async function getPublishedDocument(
     orderBy: (t, { desc }) => [desc(t.version), desc(t.createdAt)],
   });
   return toDocument(draft);
+}
+
+/**
+ * The published document of a kind for a page (/docs/*, /returns). One entry point so that the
+ * demo mode (no database) can swap the source in one place; for now it is the database.
+ */
+export async function loadPublishedDocument(kind: DocumentKind): Promise<LegalDocument | null> {
+  return getPublishedDocument(kind, { db: getDb(), env: serverEnv() });
 }

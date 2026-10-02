@@ -9,6 +9,17 @@ import { TimeoutError, withTimeout } from './timeout';
 
 export const HEALTH_TIMEOUT_MS = 2_000;
 
+/**
+ * /api/health in DEMO_MODE: there is no Postgres, Redis or worker to check, the process
+ * answering is the whole readiness (docs/design.md, section 5).
+ */
+export const DEMO_HEALTH = {
+  status: 'ok',
+  mode: 'demo',
+  db: 'skipped',
+  redis: 'skipped',
+} as const;
+
 export type CheckError = 'timeout' | 'error' | 'missing' | 'stale';
 
 export interface CheckResult {

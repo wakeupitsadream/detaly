@@ -34,6 +34,10 @@
  *    proxy response headers are applied after the next.config ones (Next's resolve-routes
  *    copies them onto the response later), and next.config keeps its global Referrer-Policy
  *    off /o/ anyway.
+ * 4. DEMO_MODE (docs/design.md, section 5): the rate limits are counted in memory
+ *    (server/demo/rate-limit.ts, Redis is never touched); /admin, /api/admin/*,
+ *    /api/webhooks/* and /api/orders/* answer 404, and so does every order page but the sample
+ *    /o/demo (its handlers check the same again).
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import {
@@ -43,8 +47,11 @@ import {
   isAdminPath,
 } from './server/admin-auth';
 import { getClientIp } from './server/client-ip';
+import { createMemoryRateLimiter } from './server/demo/rate-limit';
 import { serverEnv, type Env } from './server/env';
+import { singleton } from './server/globals';
 import { getLogger } from './server/logger';
+import { rawDemoFlag } from './server/mode';
 import {
   hitRateLimit,
   peekRateLimit,
@@ -68,6 +75,14 @@ async function decide(
   kind: RateLimitKind,
   mode: 'hit' | 'peek' = 'hit',
 ): Promise<RateLimitDecision | null> {
+  if (env.DEMO_MODE) {
+    // Only searches, cart writes and the checkout refusal are counted in the demo (no admin).
+    return singleton('demo-rate-limit', () => createMemoryRateLimiter()).hit({
+      kind,
+      secret: env.SESSION_SECRET,
+      ip: getClientIp(request.headers, env.TRUSTED_IP_HEADER),
+    });
+  }
   try {
     const limiter = mode === 'hit' ? hitRateLimit : peekRateLimit;
     return await withTimeout(
@@ -204,9 +219,36 @@ function applyPathHeaders(response: NextResponse, path: string, env: Env): NextR
   } else if (isWebhookPath(path)) {
     response.headers.set('Cache-Control', 'no-store');
     response.headers.set('X-Robots-Tag', NOINDEX);
-  } else if (env.NOINDEX_ALL || isNoindexPath(path)) {
+  } else if (env.NOINDEX_ALL || env.DEMO_MODE || isNoindexPath(path)) {
+    // A demo is never indexed: its prices are fixtures and nothing on it can be ordered.
     response.headers.set('X-Robots-Tag', NOINDEX);
   }
+  return response;
+}
+
+/** The sample order of the demo (app/(site)/o/demo/page.tsx). */
+export const DEMO_ORDER_PATH = '/o/demo';
+
+/**
+ * DEMO_MODE: paths that do not exist without a database (the admin, payment webhooks, the
+ * order API and real order pages). null = serve as usual.
+ */
+export function demoBlockedPath(path: string): 'api' | 'page' | null {
+  if (under(path, '/api/admin') || isWebhookPath(path) || under(path, '/api/orders')) return 'api';
+  if (under(path, '/admin')) return 'page';
+  if (under(path, '/o') && path !== DEMO_ORDER_PATH) return 'page';
+  return null;
+}
+
+/** 404 of a demo-blocked path: JSON for the API, the site's not-found page otherwise. */
+function demoNotFoundResponse(request: NextRequest, kind: 'api' | 'page'): NextResponse {
+  const headers = { 'Cache-Control': 'no-store', 'X-Robots-Tag': NOINDEX };
+  if (kind === 'api') {
+    return NextResponse.json({ error: 'not_found' }, { status: 404, headers });
+  }
+  // A path no route matches: Next renders app/not-found.tsx with status 404.
+  const response = NextResponse.rewrite(new URL('/_demo/not-found', request.url), { headers });
+  response.headers.set('Referrer-Policy', 'no-referrer');
   return response;
 }
 
@@ -261,11 +303,25 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     console.error('[proxy] invalid environment', error instanceof Error ? error.message : error);
     // The admin never opens without a validated ADMIN_BASIC_AUTH.
     if (isAdminPath(request.nextUrl.pathname)) return adminText('Not Found', 404);
+    // Nor does anything a demo hides, whatever else is wrong with its env.
+    if (rawDemoFlag()) {
+      const path = canonicalPath(request.nextUrl.pathname);
+      const blocked = demoBlockedPath(path);
+      if (blocked !== null) {
+        return demoNotFoundResponse(request, path.startsWith('/api/') ? 'api' : blocked);
+      }
+    }
     return NextResponse.next();
   }
   const { pathname } = request.nextUrl;
   // Decoded and normalized, so `/o//token/` or `/%6f/token` gets the same headers.
   const path = canonicalPath(pathname);
+  if (env.DEMO_MODE) {
+    const blocked = isAdminPath(pathname) ? 'page' : demoBlockedPath(path);
+    if (blocked !== null) {
+      return demoNotFoundResponse(request, path.startsWith('/api/') ? 'api' : blocked);
+    }
+  }
   if (isAdminPath(pathname)) return adminGate(request, env);
 
   const limited = classifyLimitedRequest({

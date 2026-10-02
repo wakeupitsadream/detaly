@@ -181,3 +181,15 @@ export function createSettingsReader({
     },
   };
 }
+
+/**
+ * The env implementation of SettingsReader (DEMO_MODE, no database): the values the seed would
+ * have written (settingsDefaultsFromEnv) and the default stop list, computed once.
+ */
+export function createEnvSettingsReader(env: Env): SettingsReader {
+  const value: SearchSettings = {
+    ...resolveSearchSettings(new Map(), env, [...DEFAULT_EXCLUDED_RULES]),
+    fromDatabase: false,
+  };
+  return { get: () => Promise.resolve(value) };
+}

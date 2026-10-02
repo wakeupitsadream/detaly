@@ -13,10 +13,12 @@ import type { Env } from '@detaly/config';
 import type { Executor } from '@detaly/db';
 import type { DocumentKind } from '@detaly/domain';
 import { getDb } from './db';
+import { demoDocument } from './demo/documents';
 import { getPublishedDocument, type LegalDocument } from './documents';
 import { serverEnv } from './env';
 import { errorInfo } from './errors';
 import { getLogger } from './logger';
+import { isDemoMode } from './mode';
 
 export interface CheckoutDocuments {
   offer: LegalDocument;
@@ -102,10 +104,31 @@ export async function getCheckoutGate({
 }
 
 /**
+ * DEMO_MODE gate: open, so the storefront shows «В корзину» and «Оформить заказ» as in
+ * production; nothing collects personal data anyway (the checkout page shows the demo notice
+ * and POST /api/checkout answers 403). The documents are the bundled ones. Closed only when a
+ * required text is missing from the bundle.
+ */
+export function demoCheckoutGate(env: Env): CheckoutGate {
+  const offer = demoDocument('offer', env);
+  const privacy = demoDocument('privacy', env);
+  const consentPd = demoDocument('consent_pd', env);
+  if (!offer || !privacy || !consentPd) {
+    return { open: false, reason: 'documents', message: CHECKOUT_CLOSED_DOCUMENTS_MESSAGE };
+  }
+  return {
+    open: true,
+    docs: { offer, privacy, consentPd, consentMarketing: demoDocument('consent_marketing', env) },
+  };
+}
+
+/**
  * The gate for a page render: getCheckoutGate with the process env, database and logger. A
  * failure (database down) closes the gate for this render instead of failing the page.
+ * DEMO_MODE: demoCheckoutGate.
  */
 export async function currentCheckoutGate(): Promise<CheckoutGate> {
+  if (isDemoMode()) return demoCheckoutGate(serverEnv());
   try {
     return await getCheckoutGate({ env: serverEnv(), db: getDb(), logger: getLogger() });
   } catch (error) {

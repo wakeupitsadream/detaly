@@ -81,8 +81,16 @@ const envShape = {
     .string()
     .regex(/^[^:]+:.+$/, 'expected user:password')
     .optional(),
-  DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
-  REDIS_URL: z.url({ protocol: /^rediss?$/ }),
+  /** Required unless DEMO_MODE=true (see the refinement below); read via databaseUrl(env). */
+  DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }).optional(),
+  /** Required unless DEMO_MODE=true (see the refinement below); read via redisUrl(env). */
+  REDIS_URL: z.url({ protocol: /^rediss?$/ }).optional(),
+  /**
+   * Storefront demo without Postgres and Redis (docs/design.md, section 5): fixture search,
+   * cart in a signed cookie, checkout and orders disabled. Requires ROSSKO_MODE=fixtures and no
+   * YooKassa settings.
+   */
+  DEMO_MODE: bool(false),
   GIT_SHA: z.string().default('dev'),
   NOINDEX_ALL: bool(false),
   TRUSTED_IP_HEADER: z.enum(['none', 'x-real-ip']).default('none'),
@@ -249,7 +257,43 @@ const envShape = {
   RKN_NOTICE_NUMBER: optionalString,
 };
 
+/** YooKassa settings a demo must not carry: it never takes money. */
+const DEMO_FORBIDDEN_YOOKASSA = [
+  'YOOKASSA_SHOP_ID',
+  'YOOKASSA_SECRET_KEY',
+  'YOOKASSA_TAX_SYSTEM_CODE',
+  'YOOKASSA_VAT_CODE',
+  'YOOKASSA_RETURN_URL',
+] as const;
+
 export const envSchema = z.object(envShape).superRefine((env, ctx) => {
+  if (env.DEMO_MODE === true) {
+    if (env.ROSSKO_MODE !== 'fixtures') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['ROSSKO_MODE'],
+        message: 'must be fixtures when DEMO_MODE=true',
+      });
+    }
+    for (const key of DEMO_FORBIDDEN_YOOKASSA) {
+      if (env[key] !== undefined) {
+        ctx.addIssue({ code: 'custom', path: [key], message: 'not allowed when DEMO_MODE=true' });
+      }
+    }
+    if ((env.YOOKASSA_WEBHOOK_IP_ALLOWLIST ?? []).length > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['YOOKASSA_WEBHOOK_IP_ALLOWLIST'],
+        message: 'not allowed when DEMO_MODE=true',
+      });
+    }
+  } else {
+    for (const key of ['DATABASE_URL', 'REDIS_URL'] as const) {
+      if (!env[key]) {
+        ctx.addIssue({ code: 'custom', path: [key], message: 'required unless DEMO_MODE=true' });
+      }
+    }
+  }
   if (env.ROSSKO_MODE === 'live') {
     for (const key of ['ROSSKO_KEY1', 'ROSSKO_KEY2'] as const) {
       if (!env[key]) {
@@ -281,6 +325,29 @@ export class EnvError extends Error {
 
 type EnvSource = Record<string, string | undefined>;
 
+/** Host names Vercel sets for a deployment (system env, docs/demo-vercel.md). */
+const VERCEL_HOST_RE = /^[a-z0-9.-]+$/i;
+
+/**
+ * DEMO_MODE on Vercel without APP_BASE_URL: the host Vercel exposes (production: the project's
+ * VERCEL_PROJECT_PRODUCTION_URL, a preview: its own VERCEL_URL), so the same-origin checks
+ * of the cart accept the demo's own address. Never used outside the demo or over an explicit
+ * APP_BASE_URL.
+ */
+function demoVercelBaseUrl(source: EnvSource, input: Record<string, string>): string | null {
+  if (input.APP_BASE_URL !== undefined || input.DEMO_MODE === undefined) return null;
+  if (!/^(?:true|1|yes|on|y|enabled)$/i.test(input.DEMO_MODE.trim())) return null;
+  // A preview answers on its own deployment host; production on the project's main domain.
+  const hosts =
+    source.VERCEL_ENV === 'production'
+      ? [source.VERCEL_PROJECT_PRODUCTION_URL, source.VERCEL_URL]
+      : [source.VERCEL_URL, source.VERCEL_PROJECT_PRODUCTION_URL];
+  const host = hosts
+    .map((value) => value?.trim())
+    .find((value) => value && VERCEL_HOST_RE.test(value));
+  return host ? `https://${host}` : null;
+}
+
 /** Parses an env-like record (default process.env). Throws EnvError listing bad keys. */
 export function parseEnv(source: EnvSource = process.env): Env {
   const input: Record<string, string> = {};
@@ -288,6 +355,8 @@ export function parseEnv(source: EnvSource = process.env): Env {
     const value = source[key];
     if (value !== undefined && value !== '') input[key] = value;
   }
+  const vercelBaseUrl = demoVercelBaseUrl(source, input);
+  if (vercelBaseUrl) input.APP_BASE_URL = vercelBaseUrl;
   const result = envSchema.safeParse(input);
   if (!result.success) {
     throw new EnvError(
@@ -295,6 +364,18 @@ export function parseEnv(source: EnvSource = process.env): Env {
     );
   }
   return result.data;
+}
+
+/** DATABASE_URL of a parsed env; throws when it is absent (only possible with DEMO_MODE=true). */
+export function databaseUrl(env: Pick<Env, 'DATABASE_URL'>): string {
+  if (!env.DATABASE_URL) throw new EnvError(['DATABASE_URL: not set (DEMO_MODE=true?)']);
+  return env.DATABASE_URL;
+}
+
+/** REDIS_URL of a parsed env; throws when it is absent (only possible with DEMO_MODE=true). */
+export function redisUrl(env: Pick<Env, 'REDIS_URL'>): string {
+  if (!env.REDIS_URL) throw new EnvError(['REDIS_URL: not set (DEMO_MODE=true?)']);
+  return env.REDIS_URL;
 }
 
 let cached: Env | undefined;

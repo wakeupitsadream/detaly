@@ -5,6 +5,8 @@ import { getEngineDeps } from '@/server/engine';
 import { getLogger } from '@/server/logger';
 import { handleOrderAction } from '@/server/orders/actions-handler';
 import { getRedis } from '@/server/redis';
+import { demoNotFound } from '@/server/demo/responses';
+import { isDemoMode } from '@/server/mode';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +14,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ token: string }> },
 ): Promise<Response> {
+  // DEMO_MODE: the route does not exist (the proxy answers 404 first).
+  if (isDemoMode()) return demoNotFound();
   const { token } = await params;
   const engine = getEngineDeps();
   return handleOrderAction(request, token, {

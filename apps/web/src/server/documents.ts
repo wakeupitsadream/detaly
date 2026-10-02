@@ -11,7 +11,9 @@ import type { Env } from '@detaly/config';
 import { LEGAL_VERSION_ENV, type Executor } from '@detaly/db';
 import type { DocumentKind } from '@detaly/domain';
 import { getDb } from './db';
+import { demoDocument } from './demo/documents';
 import { serverEnv } from './env';
+import { isDemoMode } from './mode';
 
 export interface LegalDocument {
   /** document_versions.id: consents.document_version_id, orders.offer_version_id. */
@@ -85,8 +87,10 @@ export async function getPublishedDocument(
 
 /**
  * The published document of a kind for a page (/docs/*, /returns). One entry point so that the
- * demo mode (no database) can swap the source in one place; for now it is the database.
+ * demo mode swaps the source in one place: DEMO_MODE renders content/legal bundled into the
+ * build (server/demo/documents.ts), otherwise the database.
  */
 export async function loadPublishedDocument(kind: DocumentKind): Promise<LegalDocument | null> {
+  if (isDemoMode()) return demoDocument(kind, serverEnv());
   return getPublishedDocument(kind, { db: getDb(), env: serverEnv() });
 }

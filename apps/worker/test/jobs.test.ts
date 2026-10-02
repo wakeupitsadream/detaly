@@ -61,7 +61,7 @@ describe('phase 1B processors (wave 1 stubs)', () => {
     expect(Object.keys(PROCESSORS).sort()).toEqual([...PROCESSED_QUEUES].sort());
   });
 
-  it.each(['payments', 'receipts', 'rossko', 'notify', 'reconciliation'] as const)(
+  it.each(['payments', 'receipts', 'rossko', 'reconciliation'] as const)(
     "%s throws UnrecoverableError('not implemented')",
     async (queue) => {
       const error = await PROCESSORS[queue](job, deps).catch((e: unknown) => e);
@@ -69,6 +69,46 @@ describe('phase 1B processors (wave 1 stubs)', () => {
       expect((error as Error).message).toBe(NOT_IMPLEMENTED_MESSAGE);
     },
   );
+
+  it('notify fails an unknown job or bad data without retries (wave 3, worker-ops)', async () => {
+    const unknown = await PROCESSORS.notify(job, deps).catch((e: unknown) => e);
+    expect(unknown).toBeInstanceOf(UnrecoverableError);
+    const bad = await PROCESSORS.notify({ name: 'order', data: {} } as Job, deps).catch(
+      (e: unknown) => e,
+    );
+    expect(bad).toBeInstanceOf(UnrecoverableError);
+    expect((bad as Error).message).toBe('notify/order: bad job data');
+    const alert = await PROCESSORS.notify({ name: 'alert', data: { text: '' } } as Job, deps).catch(
+      (e: unknown) => e,
+    );
+    expect(alert).toBeInstanceOf(UnrecoverableError);
+  });
+
+  it('notify/alert goes through the AlertPort', async () => {
+    const calls: unknown[] = [];
+    const alerts = { send: async (input: unknown) => void calls.push(input) };
+    const result = await PROCESSORS.notify(
+      {
+        name: 'alert',
+        data: { audience: 'owner', text: 'SMS-бюджет', dedupeKey: 'sms-budget:2026-10:80' },
+      } as Job,
+      { alerts } as unknown as WorkerDeps,
+    );
+    expect(result).toEqual({ status: 'alerted' });
+    expect(calls).toEqual([
+      { audience: 'owner', text: 'SMS-бюджет', dedupeKey: 'sms-budget:2026-10:80' },
+    ]);
+  });
+
+  it('housekeeping jobs other than the heartbeat need full WorkerDeps', async () => {
+    const { redis } = fakeRedis();
+    const error = await processHousekeeping(
+      { name: 'timers' },
+      { redis, now: () => new Date(), heartbeatKey: 'k' },
+    ).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UnrecoverableError);
+    expect((error as Error).message).toBe('housekeeping timers needs WorkerDeps');
+  });
 
   it('seller cards port is a stub until wave 4', async () => {
     const cards = createSellerCards(deps);

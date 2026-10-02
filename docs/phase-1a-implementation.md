@@ -614,6 +614,27 @@ grep -cE '\+79[0-9]{9}' /tmp/web-1a.log   # 0: телефонов в логах 
 …/api/checkout` → 403; 11 POST с одним `X-Real-IP` → последний 429; `curl -I …/o/<token>` →
 `referrer-policy: no-referrer`, `x-robots-tag: noindex`.
 
+## 15a. Исправления по аудиту фазы 1A
+
+| Находка | Решение в коде |
+|---|---|
+| `client_cancelled` из `awaiting_payment` после «Оплатить заранее» (все позиции уже `arrived`) тихо отменял заказ | Правило разделено по прибытию: `all(noPaymentSucceeded, itemsNotArrived)` — как раньше, без уведомлений; `all(noPaymentSucceeded, allLiveItemsArrived)` — `cancelled` с `client('order_cancelled')`, `sellers('staff_cancel_at_supplier_task')` и эффектом `cancel_at_supplier_task` (отказ до передачи, PLAN раздел 3). Флаг считает `liveItemsAllArrived(order_items.state)` (`@detaly/domain`); отмена и страница заказа передают его в `clientCancelContext`. 1A уведомлений не шлёт: невыполненные `deferredEffects`/`deferredNotify` пишутся в `order_events.payload` для 1B |
+| Счётчик неверных 4 цифр проверялся до блокировки строки заказа | Повторная проверка `recentFailures` сразу после `select … for update`: попытки одного заказа сериализуются блокировкой, шестой и следующие запросы получают 429 до сравнения цифр |
+| Версии оферты и согласий брались из гейта в момент POST | Форма отправляет `offerVersionId`, `consentPdVersionId`, `consentMarketingVersionId` показанных документов; расхождение с гейтом → 409 `documents_changed`, галочки сбрасываются, страница перерисовывается |
+| Оформление по env-дефолтам при недоступных `settings`/`excluded_groups` | `CheckoutSettings.fromDatabase === false` → 503 `settings_unavailable`, поставщик не вызывается |
+| Срок получения пересчитывался молча | Форма отправляет `expectedPromisedDate`; свежая дата позже показанной → 409 `stale` с `promisedDate`/`promiseText` («Срок получения изменился: к пт 9 октября»), более ранняя принимается (Д8 для хэша сохраняется) |
+| Схема оплаты молча менялась на предоплату по неявкам | Форма отправляет `expectedScheme`; другая схема у сервера → откат транзакции и 409 `scheme_changed` с `explainPaymentScheme` (нейтральная фраза Д15), форма показывает новую схему и шлёт её при повторе; причины пишутся в `payload.schemeReasons` |
+| Нет верхней границы суммы | `MAX_ORDER_TOTAL_KOP` = 500 000 ₽ (VERIFY Ю13 в `docs/external.md`): `checkOrderMinimums` → `max_total`, корзина отвечает 422 `cart_total` на добавление и увеличение количества |
+| GET `/cart` и `/checkout` вызывали GetSearch при промахе кэша, без лимитов на IP | Просмотр страниц читает только кэш (`search(…, { cacheOnly: true })` в `@detaly/rossko`, промах — `SearchCacheMissError`, строка остаётся со старой ценой и пометкой «Цены и наличие проверим у поставщика при оформлении заказа»). Свежая проверка — только POST `/api/checkout` (лимит 10/час). Новых лимитов в proxy не понадобилось |
+| Секреты в логах (`DrizzleQueryError.message` с параметрами) | `errorInfo()` в `server/errors.ts` (имя драйверной ошибки, SQLSTATE, constraint, без message) в отмене, на страницах `/o/<token>`, `/cart`, `/checkout`; страницы бросают `PageDataError` без текста драйвера. E2E проверяет, что токены заказов не попали в лог сервера |
+| Тела запросов корзины и отмены без ограничения размера | `server/body.ts`: потоковое чтение с отсечкой (корзина 8 КБ, отмена 256 Б, оформление 16 КБ); `experimental.proxyClientMaxBodySize: '64kb'` |
+| Закрытый гейт: тупик с корзиной | `/search` при закрытом гейте не показывает «В корзину» и даёт подсказку с tel-ссылкой; `/cart` при любом закрытом гейте — кнопка «Позвонить …»; текст гейта: «Оформление на сайте скоро откроется. Пока закажите по телефону …» |
+| «Разделить на два заказа» без проверки минимумов частей | `splitAdvice` принимает `minOrderTotalKop`/`minMarginKop` и предлагает разделение, только если обе части проходят `checkOrderMinimums` |
+| «Окончательно способ оплаты определим по номеру телефона» под предоплатой | Одна константа `FINAL_SCHEME_NOTE`, только при `pay_on_handover` (на `/cart` и `/checkout`) |
+| Оформление без адреса и часов точки | Гейт закрыт (`reason: 'pickup'`) без `PICKUP_ADDRESS` или `PICKUP_HOURS`; заглушки адреса сведены к одной фразе без обещания сообщений |
+| Городские и 8-800 номера | Оформление принимает только мобильные 9xx (`normalizeMobilePhone`), подсказка «Мобильный номер» |
+| С `/cart` не вернуться к поиску | Ссылка «Найти ещё деталь» под корзиной |
+
 ## 16. Что не входит в 1A (честно)
 
 Платёж ЮKassa и `expires_at` для prepay, подтверждение pay_on_handover (SMS/мессенджер),

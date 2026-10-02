@@ -5,9 +5,10 @@ import { EmptyState } from '@/components/EmptyState';
 import { OfferRow } from '@/components/OfferRow';
 import { SearchBar } from '@/components/SearchBar';
 import { cartCountLabel } from '@/components/SiteHeader';
-import { getBrand } from '@/server/brand';
+import { getBrand, telHref } from '@/server/brand';
 import { requestCartCount } from '@/server/cart/count';
 import { parseLocalFlag } from '@/server/api/search-handler';
+import { currentCheckoutGate } from '@/server/checkout-gate';
 import { isNamedError } from '@/server/errors';
 import { getLogger } from '@/server/logger';
 import { getSearchService } from '@/server/search';
@@ -72,10 +73,12 @@ function OfferList({
   title,
   offers,
   searchArticleNorm,
+  orderingOpen,
 }: {
   title: string;
   offers: OfferView[];
   searchArticleNorm: string;
+  orderingOpen: boolean;
 }) {
   if (offers.length === 0) return null;
   return (
@@ -83,14 +86,43 @@ function OfferList({
       <h2 className="text-lg font-semibold">{title}</h2>
       <ul className="space-y-3">
         {offers.map((offer) => (
-          <OfferRow key={offer.id} offer={offer} searchArticleNorm={searchArticleNorm} />
+          <OfferRow
+            key={offer.id}
+            offer={offer}
+            searchArticleNorm={searchArticleNorm}
+            orderingOpen={orderingOpen}
+          />
         ))}
       </ul>
     </section>
   );
 }
 
-function Results({ result }: { result: SearchResponse }) {
+/** While online checkout is closed: how to order now, with a phone link (no cart buttons). */
+function OrderByPhoneHint({ phone }: { phone: string | null }) {
+  return (
+    <p
+      className="rounded-xl border border-line bg-card px-4 py-3 text-sm text-muted"
+      data-testid="order-by-phone"
+    >
+      Оформление заказа на сайте скоро откроется.
+      {phone ? (
+        <>
+          {' '}
+          Сейчас заказать можно по телефону{' '}
+          <a className="font-medium whitespace-nowrap text-ink underline" href={telHref(phone)}>
+            {phone}
+          </a>
+          .
+        </>
+      ) : (
+        ' Сейчас заказать можно в пункте выдачи.'
+      )}
+    </p>
+  );
+}
+
+function Results({ result, orderingOpen }: { result: SearchResponse; orderingOpen: boolean }) {
   const { query, brand, localOnly, offers } = result;
   const exact = offers.filter((offer) => !offer.isCross);
   const crosses = offers.filter((offer) => offer.isCross);
@@ -149,8 +181,14 @@ function Results({ result }: { result: SearchResponse }) {
             title="Запрошенный артикул"
             offers={exact}
             searchArticleNorm={result.articleNorm}
+            orderingOpen={orderingOpen}
           />
-          <OfferList title="Аналоги" offers={crosses} searchArticleNorm={result.articleNorm} />
+          <OfferList
+            title="Аналоги"
+            offers={crosses}
+            searchArticleNorm={result.articleNorm}
+            orderingOpen={orderingOpen}
+          />
         </>
       )}
     </div>
@@ -171,6 +209,8 @@ export default async function SearchPage({
 
   let result: SearchResponse | null = null;
   let problem: string | null = null;
+  // Gate checked only with a query: the bare page shows no offers.
+  const orderingOpen = q !== '' ? (await currentCheckoutGate()).open : false;
   if (q !== '') {
     try {
       result = await getSearchService().search({ q, brand: brandName || null, localOnly });
@@ -200,7 +240,10 @@ export default async function SearchPage({
           {problem}
         </p>
       ) : null}
-      {result ? <Results result={result} /> : null}
+      {result ? <Results result={result} orderingOpen={orderingOpen} /> : null}
+      {result && result.offers.length > 0 && !orderingOpen ? (
+        <OrderByPhoneHint phone={brand.contactPhone} />
+      ) : null}
       {cartCount > 0 ? (
         <p
           className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-card px-4 py-3 text-sm"

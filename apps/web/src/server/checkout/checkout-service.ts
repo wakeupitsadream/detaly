@@ -4,10 +4,13 @@
  * search-service.ts); server/checkout/service.ts wires the real ones.
  *
  * Order of checks: Origin (403) -> honeypot (400) -> gate (403) -> input and consents (400/422)
- * -> idempotency by checkout_key (200 with the same order) -> cart part (404) -> fresh supplier
- * search past the cache with priority critical (503) -> repricing and comparison with what the
- * client saw (409, nothing but the cart is written) -> minimums (422) -> one transaction:
- * user, order, consents, items, state-machine transition, event, cart cleanup -> 201.
+ * -> idempotency by checkout_key (200 with the same order) -> document versions shown on the
+ * page (409 documents_changed) -> cart part (404) -> settings read from the database (503) ->
+ * fresh supplier search past the cache with priority critical (503) -> repricing and
+ * comparison with what the client saw: lines, total, a later promised date (409, nothing but
+ * the cart is written) -> minimums and the maximum (422) -> one transaction: user, order,
+ * consents, items, state-machine transition, event, cart cleanup; a payment scheme other than
+ * the one shown rolls it back (409 scheme_changed) -> 201.
  *
  * Personal data (phone, name, IP, user agent) goes only to the database: log lines carry the
  * order number, scheme and counts.
@@ -31,6 +34,8 @@ import {
   cartTotals,
   checkOrderMinimums,
   choosePaymentScheme,
+  explainPaymentScheme,
+  formatPromise,
   promisedDate,
   repriceCartLines,
   resolveTransition,
@@ -41,6 +46,7 @@ import {
   type LineChange,
   type OrderStatus,
   type PaymentScheme,
+  type PaymentSchemeDecision,
   type RepricedLine,
   type TransitionContext,
 } from '@detaly/domain';
@@ -54,7 +60,7 @@ import {
 } from '../cart-store';
 import type { CheckoutGate } from '../checkout-gate';
 import { getClientIp } from '../client-ip';
-import { isNamedError } from '../errors';
+import { errorInfo, isNamedError, pgErrorOf } from '../errors';
 import {
   consentIp,
   HONEYPOT_FIELD,
@@ -78,7 +84,7 @@ export interface CheckoutLogger {
 
 export type CheckoutSettings = Pick<
   SearchSettings,
-  'markupRules' | 'excludedRules' | 'eta' | 'order'
+  'markupRules' | 'excludedRules' | 'eta' | 'order' | 'fromDatabase'
 >;
 
 export interface CheckoutServiceDeps {
@@ -137,6 +143,11 @@ export const MESSAGES = {
   cartTooLarge: `В заказе слишком много разных запросов — не больше ${MAX_CART_SEARCHES}. Разделите заказ`,
   supplierUnavailable: 'Не удалось проверить цены у поставщика — попробуйте через минуту',
   stale: 'Корзина изменилась — проверьте состав и сумму',
+  promiseChanged: 'Срок получения изменился — проверьте его и отправьте форму ещё раз',
+  documentsChanged:
+    'Мы обновили оферту или согласие на обработку данных — обновите страницу, прочитайте документы и отправьте форму ещё раз',
+  schemeChanged: 'Способ оплаты изменился — проверьте его и отправьте форму ещё раз',
+  settingsUnavailable: 'Не удалось загрузить условия заказа — попробуйте через минуту',
   keyConflict: 'Форма устарела — обновите страницу и попробуйте ещё раз',
   internal: 'Не удалось оформить заказ — попробуйте ещё раз или позвоните нам',
 } as const;
@@ -149,35 +160,27 @@ const STATUS_FOR_SCHEME: Record<PaymentScheme, OrderStatus> = {
   prepay: 'awaiting_payment',
 };
 
-/** postgres-js error (code, constraint) found in a drizzle error's cause chain. */
-function pgErrorOf(error: unknown): { code?: string; constraint_name?: string } | null {
-  let current: unknown = error;
-  for (let depth = 0; depth < 5 && current; depth += 1) {
-    if (typeof current === 'object' && current !== null && 'code' in current) {
-      return current as { code?: string; constraint_name?: string };
-    }
-    current = (current as { cause?: unknown }).cause;
-  }
-  return null;
-}
-
 function isCheckoutKeyConflict(error: unknown): boolean {
   const pg = pgErrorOf(error);
   return pg?.code === '23505' && pg.constraint_name === 'orders_checkout_key_unique';
 }
 
-/** Log-safe description of an error: names and SQLSTATE only (drizzle messages carry params). */
-function errorInfo(error: unknown): Record<string, unknown> {
-  const pg = pgErrorOf(error);
-  return {
-    err: error instanceof Error ? error.name : typeof error,
-    ...(pg?.code ? { pgCode: pg.code } : {}),
-    ...(pg?.constraint_name ? { constraint: pg.constraint_name } : {}),
-  };
-}
-
 class CheckoutInvariantError extends Error {
   override name = 'CheckoutInvariantError';
+}
+
+/**
+ * The scheme decided with the client's real no-show count differs from the one the page showed
+ * (it counts no-shows as 0): thrown inside the order transaction so that nothing is written.
+ */
+class SchemeChangedError extends Error {
+  override name = 'SchemeChangedError';
+  readonly decision: PaymentSchemeDecision;
+
+  constructor(decision: PaymentSchemeDecision) {
+    super('payment scheme differs from the one shown');
+    this.decision = decision;
+  }
 }
 
 function respond(
@@ -192,14 +195,26 @@ function staleResponse(
   changes: readonly LineChange[],
   totalKop: number | null,
   hash: string | null,
+  promise: { date: IsoDate; text: string } | null = null,
 ): CheckoutResponse {
   return respond(409, {
     error: 'stale',
-    message: MESSAGES.stale,
+    message: promise && changes.length === 0 ? MESSAGES.promiseChanged : MESSAGES.stale,
     changes,
     totalKop,
     itemsHash: hash,
+    ...(promise ? { promisedDate: promise.date, promiseText: promise.text } : {}),
   });
+}
+
+/** The document versions on the rendered page are still the ones the gate serves. */
+function documentsMatch(input: CheckoutInput, gate: Extract<CheckoutGate, { open: true }>) {
+  if (input.offerVersionId !== gate.docs.offer.id) return false;
+  if (input.consentPdVersionId !== gate.docs.consentPd.id) return false;
+  // The marketing consent matters only when it is given.
+  return (
+    !input.consentMarketing || input.consentMarketingVersionId === gate.docs.consentMarketing?.id
+  );
 }
 
 type TxOutcome =
@@ -245,13 +260,12 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
     gate: Extract<CheckoutGate, { open: true }>;
     headers: HeaderSource;
     hash: string;
+    promised: IsoDate;
     at: Date;
   }): Promise<TxOutcome> {
-    const { input, part, cartId, lines, settings, gate, hash, at } = args;
+    const { input, part, cartId, lines, settings, gate, hash, promised, at } = args;
     const totals = cartTotals(lines);
     const allItemsLocal = lines.every((l) => l.isLocal);
-    const etaDates = lines.map((l) => l.etaDate).filter((d): d is IsoDate => d !== null);
-    const promised = promisedDate(etaDates, settings.eta);
     const ip = consentIp(getClientIp(args.headers, deps.env.TRUSTED_IP_HEADER));
     const userAgent = userAgentForConsent(args.headers);
 
@@ -307,6 +321,10 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
         onPickupMaxTotalKop: settings.order.onPickupMaxTotalKop,
         fulfillment: 'pickup',
       });
+      // The page showed the scheme with no-shows counted as 0; payment terms are an essential
+      // condition, so a different one (prepay for this phone) is shown first, never applied
+      // silently. Thrown: the user upsert above rolls back too.
+      if (decision.scheme !== input.expectedScheme) throw new SchemeChangedError(decision);
       const courierFeeKop = 0;
       const totalKop = totals.subtotalKop + courierFeeKop;
       const accessToken = newAccessToken();
@@ -437,6 +455,7 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
         payload: {
           part,
           scheme: decision.scheme,
+          ...(decision.reasons.length > 0 ? { schemeReasons: decision.reasons } : {}),
           items: lines.length,
           ...(deferredEffects.length > 0 ? { deferredEffects } : {}),
         },
@@ -499,6 +518,13 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
     const replay = await replayOf(db, input.checkoutKey, cartToken);
     if (replay) return replay;
 
+    // The order and the consents must point at the texts the client saw and ticked (consent
+    // proof, ч. 3 ст. 9 152-ФЗ): a version published after the page was rendered is a 409.
+    if (!documentsMatch(input, gate)) {
+      logger.info({}, 'checkout stale: documents changed');
+      return respond(409, { error: 'documents_changed', message: MESSAGES.documentsChanged });
+    }
+
     // An empty or converted cart may be the work of a duplicate submit with this very key that
     // committed after the lookup above: it gets that order, not 404.
     const cartEmpty = async (): Promise<CheckoutResponse> =>
@@ -515,6 +541,17 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
     }
 
     const settings = await deps.loadSettings();
+    // Env fallbacks (database read failed, nothing cached) are fine for search, not for an
+    // order: stop rules added by the admin and the current markups and thresholds would be
+    // ignored.
+    if (!settings.fromDatabase) {
+      logger.warn({ lines: partLines.length }, 'checkout settings unavailable');
+      return respond(
+        503,
+        { error: 'settings_unavailable', message: MESSAGES.settingsUnavailable },
+        { 'Retry-After': '60' },
+      );
+    }
     let fresh;
     try {
       fresh = await fetchFreshOffers(deps.supplier.rossko, articles, {
@@ -558,6 +595,19 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
       return staleResponse(repriced.changes, totals.subtotalKop, hash);
     }
 
+    // The promised date is an essential term (ст. 23.1 ЗоЗПП): a later date than the page
+    // showed is a 409 with the new date; an earlier one is accepted as is (decision Д8 keeps
+    // the date out of the items hash).
+    const etaDates = okLines.map((l) => l.etaDate).filter((d): d is IsoDate => d !== null);
+    const promised = promisedDate(etaDates, settings.eta);
+    if (input.expectedPromisedDate !== null && promised > input.expectedPromisedDate) {
+      logger.info({ lines: partLines.length }, 'checkout stale: promised date moved');
+      return staleResponse([], totals.subtotalKop, hash, {
+        date: promised,
+        text: formatPromise(promised),
+      });
+    }
+
     const minimums = checkOrderMinimums({
       subtotalKop: totals.subtotalKop,
       marginKop: totals.marginKop,
@@ -583,9 +633,21 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
         gate,
         headers,
         hash,
+        promised,
         at,
       });
     } catch (error) {
+      if (isNamedError(error, SchemeChangedError, 'SchemeChangedError')) {
+        logger.info({ scheme: error.decision.scheme }, 'checkout stale: payment scheme changed');
+        return respond(409, {
+          error: 'scheme_changed',
+          message: MESSAGES.schemeChanged,
+          scheme: error.decision.scheme,
+          explanation: explainPaymentScheme(error.decision, {
+            onPickupMaxTotalKop: settings.order.onPickupMaxTotalKop,
+          }),
+        });
+      }
       if (isCheckoutKeyConflict(error)) {
         const again = await replayOf(db, input.checkoutKey, cartToken);
         if (again) return again;

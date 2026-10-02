@@ -13,6 +13,7 @@ import {
   RosskoCallError,
   RosskoConfigError,
   RosskoRateLimitError,
+  SearchCacheMissError,
 } from './errors';
 import { RosskoResponseError } from './mapper';
 import { createFixtureCaller } from './fixture-caller';
@@ -227,6 +228,34 @@ describe('createRosskoClient.search', () => {
     const { instance, calls } = client({ cache: broken });
     await expect(instance.search('OC90')).resolves.toMatchObject({ fromCache: false });
     expect(calls).toHaveLength(1);
+  });
+
+  it('cacheOnly never calls the supplier: a miss throws SearchCacheMissError', async () => {
+    const cache = memoryCache();
+    const { instance, calls } = client({ cache });
+    await expect(instance.search('OC90', { cacheOnly: true })).rejects.toBeInstanceOf(
+      SearchCacheMissError,
+    );
+    expect(calls).toHaveLength(0);
+    await instance.search('OC90');
+    expect(calls).toHaveLength(1);
+    await expect(instance.search('OC90', { cacheOnly: true })).resolves.toMatchObject({
+      fromCache: true,
+    });
+    expect(calls).toHaveLength(1);
+    // Without a cache, or with a broken one, there is nothing to read.
+    const bare = client();
+    await expect(bare.instance.search('OC90', { cacheOnly: true })).rejects.toThrow('cache miss');
+    const broken: SearchCache = {
+      key: (n) => n,
+      get: () => Promise.reject(new Error('redis down')),
+      set: () => Promise.resolve(),
+    };
+    const down = client({ cache: broken });
+    await expect(down.instance.search('OC90', { cacheOnly: true })).rejects.toBeInstanceOf(
+      SearchCacheMissError,
+    );
+    expect(bare.calls.length + down.calls.length).toBe(0);
   });
 });
 

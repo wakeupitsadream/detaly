@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   checkOrderMinimums,
+  MAX_ORDER_TOTAL_KOP,
   choosePaymentScheme,
   explainPaymentScheme,
   resolveTransition,
@@ -111,7 +112,7 @@ describe('splitAdvice', () => {
     priceSupplierKop: 1,
   });
   const remote = { isLocal: false, qty: 1, priceClientKop: 100_000, priceSupplierKop: 1 };
-  const ctx = { onPickupMaxTotalKop: LIMIT, noShowLimit: 2 };
+  const ctx = { onPickupMaxTotalKop: LIMIT, noShowLimit: 2, minOrderTotalKop: 0, minMarginKop: 0 };
 
   it('offers the split for a mixed cart whose local part qualifies', () => {
     expect(splitAdvice([local(52_800), remote], ctx)).toEqual({
@@ -128,9 +129,44 @@ describe('splitAdvice', () => {
     expect(splitAdvice([local(52_800)], ctx).offerSplit).toBe(false);
     expect(splitAdvice([remote], ctx)).toEqual({ offerSplit: false, localTotalKop: 0 });
   });
+
+  it('does not offer it when one part alone is below the order minimums', () => {
+    // The whole cart (1 528 ₽) passes a 1 100 ₽ minimum, the local part (528 ₽) does not.
+    const minTotal = { ...ctx, minOrderTotalKop: 110_000 };
+    expect(splitAdvice([local(52_800), remote], minTotal).offerSplit).toBe(false);
+    // The to-order part (1 000 ₽) misses the minimum, the local part (1 200 ₽) reaches it.
+    expect(splitAdvice([local(120_000), remote], minTotal).offerSplit).toBe(false);
+    expect(splitAdvice([local(120_000), remote, remote], minTotal).offerSplit).toBe(true);
+    // Margin: each part needs its own; the thin local line has 28 ₽ of margin.
+    const minMargin = { ...ctx, minMarginKop: 10_000 };
+    const richRemote = { ...remote, priceSupplierKop: 50_000 };
+    const thinLocal = { ...local(52_800), priceSupplierKop: 50_000 };
+    expect(splitAdvice([thinLocal, richRemote], minMargin).offerSplit).toBe(false);
+    const richLocal = { ...local(52_800), priceSupplierKop: 20_000 };
+    expect(splitAdvice([richLocal, richRemote], minMargin).offerSplit).toBe(true);
+  });
 });
 
 describe('checkOrderMinimums', () => {
+  it('rejects totals above MAX_ORDER_TOTAL_KOP (int4 columns, one payment)', () => {
+    const base = { marginKop: 1_000_000, minOrderTotalKop: 0, minMarginKop: 0 };
+    expect(checkOrderMinimums({ ...base, subtotalKop: MAX_ORDER_TOTAL_KOP })).toEqual({
+      ok: true,
+    });
+    const over = checkOrderMinimums({ ...base, subtotalKop: MAX_ORDER_TOTAL_KOP + 1 });
+    expect(over).toMatchObject({ ok: false, code: 'max_total', missingKop: null });
+    if (!over.ok) expect(over.message).toMatch(/500\s000/);
+    expect(MAX_ORDER_TOTAL_KOP).toBeLessThan(2_147_483_647);
+    // 20 lines x 99 units of an expensive part overflow int4: never accepted.
+    expect(checkOrderMinimums({ ...base, subtotalKop: 20 * 99 * 2_000_000 })).toMatchObject({
+      ok: false,
+      code: 'max_total',
+    });
+    expect(
+      checkOrderMinimums({ ...base, subtotalKop: 200_000, maxOrderTotalKop: 100_000 }),
+    ).toMatchObject({ ok: false, code: 'max_total' });
+  });
+
   it('zero thresholds mean no minimum', () => {
     expect(
       checkOrderMinimums({ subtotalKop: 100, marginKop: 0, minOrderTotalKop: 0, minMarginKop: 0 }),

@@ -25,7 +25,9 @@
  *   the order to needs_attention (before handover) or alerts the owner (after it);
  * - the client may cancel an order on /o/<token> before paying (awaiting_payment, while no
  *   payment succeeded) or before confirming (awaiting_confirmation): `client_cancelled`, no
- *   notification (phase 1A, docs/phase-1a-implementation.md decision Д3);
+ *   notification (phase 1A, docs/phase-1a-implementation.md decision Д3). An awaiting_payment
+ *   order whose live items all arrived came from `ready` through «Оплатить заранее»: its
+ *   cancellation is a refusal before handover and creates the seller's supplier-return task;
  * - the client (or staff) may cancel one delayed item in ordered_at_supplier ("Жду до" /
  *   "Отменить позицию", order.eta_changed): partial refund, the order stays with the others.
  */
@@ -417,8 +419,20 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'client_cancelled',
     to: 'cancelled',
     actors: ['client'],
-    guard: noPaymentSucceeded,
+    guard: all(noPaymentSucceeded, itemsNotArrived),
     notify: [],
+  },
+  {
+    // «Оплатить заранее» on a ready order: the parts are bought and wait at the point, so this
+    // is a refusal before handover (PLAN section 3), not a silent cancel before payment.
+    label: 'Клиент отменил заказ до оплаты (заказ уже приехал)',
+    from: ['awaiting_payment'],
+    event: 'client_cancelled',
+    to: 'cancelled',
+    actors: ['client'],
+    guard: all(noPaymentSucceeded, allLiveItemsArrived),
+    notify: [client('order_cancelled'), sellers('staff_cancel_at_supplier_task')],
+    effects: ['cancel_at_supplier_task'],
   },
 
   // --- cancelled ---------------------------------------------------------------------------

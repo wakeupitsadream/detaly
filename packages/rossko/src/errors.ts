@@ -43,6 +43,17 @@ export class QuotaBreakerError extends Error {
   }
 }
 
+/**
+ * `search` with `cacheOnly`: nothing usable in the cache, and the supplier was not called.
+ * Page views use it so that opening a page never spends the Rossko quota.
+ */
+export class SearchCacheMissError extends Error {
+  constructor() {
+    super('Rossko search cache miss (cache-only read)');
+    this.name = 'SearchCacheMissError';
+  }
+}
+
 /** The per-minute window is full and the slot frees up later than `maxWaitMs` allows. */
 export class RosskoRateLimitError extends Error {
   readonly retryAfterMs: number;

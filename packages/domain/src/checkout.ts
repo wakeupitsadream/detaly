@@ -76,19 +76,25 @@ export function explainPaymentScheme(
 export interface SplitAdviceContext {
   onPickupMaxTotalKop: Kop;
   noShowLimit: number;
+  /** settings pricing.min_order_total_kop: each part must reach it on its own. */
+  minOrderTotalKop: Kop;
+  /** settings pricing.min_margin_kop: each part must reach it on its own. */
+  minMarginKop: Kop;
 }
 
 /**
  * Offer "Разделить на два заказа" only for a mixed cart whose local part alone qualifies for
- * payment on handover. No-shows are unknown before the phone is entered (counted as 0); the
- * server decides finally at checkout.
+ * payment on handover and whose two parts each pass the order minimums (otherwise the split
+ * ends with a part that cannot be checked out). No-shows are unknown before the phone is
+ * entered (counted as 0); the server decides finally at checkout.
  */
 export function splitAdvice(
   lines: readonly Pick<CartLine, 'isLocal' | 'qty' | 'priceClientKop' | 'priceSupplierKop'>[],
   ctx: SplitAdviceContext,
 ): { offerSplit: boolean; localTotalKop: Kop } {
-  const { local, mixed } = splitCartLines(lines);
-  const localTotalKop = cartTotals(local).subtotalKop;
+  const { local, toOrder, mixed } = splitCartLines(lines);
+  const localTotals = cartTotals(local);
+  const localTotalKop = localTotals.subtotalKop;
   if (!mixed) return { offerSplit: false, localTotalKop };
   const decision = choosePaymentScheme({
     allItemsLocal: true,
@@ -98,8 +104,23 @@ export function splitAdvice(
     onPickupMaxTotalKop: ctx.onPickupMaxTotalKop,
     fulfillment: 'pickup',
   });
-  return { offerSplit: decision.scheme === 'pay_on_handover', localTotalKop };
+  if (decision.scheme !== 'pay_on_handover') return { offerSplit: false, localTotalKop };
+  const partOk = (totals: { subtotalKop: Kop; marginKop: number }) =>
+    checkOrderMinimums({
+      subtotalKop: totals.subtotalKop,
+      marginKop: totals.marginKop,
+      minOrderTotalKop: ctx.minOrderTotalKop,
+      minMarginKop: ctx.minMarginKop,
+    }).ok;
+  return { offerSplit: partOk(localTotals) && partOk(cartTotals(toOrder)), localTotalKop };
 }
+
+/**
+ * Largest order total accepted online: 500 000 ₽. Below the int4 range of the *_kop columns
+ * (21 474 836,47 ₽) with a wide margin, and a prepay order is one YooKassa payment.
+ * VERIFY: the per-payment maximum of the YooKassa shop (docs/external.md).
+ */
+export const MAX_ORDER_TOTAL_KOP: Kop = 50_000_000;
 
 export interface OrderMinimumsInput {
   subtotalKop: Kop;
@@ -109,24 +130,41 @@ export interface OrderMinimumsInput {
   minOrderTotalKop: Kop;
   /** settings pricing.min_margin_kop; 0 = no minimum (a negative margin still fails). */
   minMarginKop: Kop;
+  /** Upper bound of the order total; MAX_ORDER_TOTAL_KOP by default. */
+  maxOrderTotalKop?: Kop;
 }
 
 export type OrderMinimumsResult =
   | { ok: true }
-  | { ok: false; code: 'min_total' | 'min_margin'; message: string; missingKop: Kop | null };
+  | {
+      ok: false;
+      code: 'min_total' | 'min_margin' | 'max_total';
+      message: string;
+      missingKop: Kop | null;
+    };
 
 /**
- * Same thresholds as the guards minTotalReached and minMarginReached, with client wording.
+ * Same thresholds as the guards minTotalReached and minMarginReached, with client wording,
+ * plus the upper bound MAX_ORDER_TOTAL_KOP (int4 columns, one payment).
  * The margin is never disclosed: its message only asks for another item.
  */
 export function checkOrderMinimums(input: OrderMinimumsInput): OrderMinimumsResult {
   const { subtotalKop, marginKop, minOrderTotalKop, minMarginKop } = input;
+  const maxOrderTotalKop = input.maxOrderTotalKop ?? MAX_ORDER_TOTAL_KOP;
   if (!(subtotalKop > 0)) {
     return {
       ok: false,
       code: 'min_total',
       message: 'Добавьте детали в заказ',
       missingKop: minOrderTotalKop > 0 ? minOrderTotalKop : null,
+    };
+  }
+  if (!(subtotalKop <= maxOrderTotalKop)) {
+    return {
+      ok: false,
+      code: 'max_total',
+      message: `Заказ больше ${formatRub(maxOrderTotalKop)} на сайте не оформить — уменьшите количество или позвоните нам`,
+      missingKop: null,
     };
   }
   if (subtotalKop < minOrderTotalKop) {

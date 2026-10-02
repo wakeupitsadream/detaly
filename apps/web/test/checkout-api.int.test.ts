@@ -9,10 +9,12 @@ import {
   carts,
   consents,
   createDb,
+  documentVersions,
   eq,
   inArray,
   orderItems,
   orders,
+  sha256Hex,
   users,
   type Db,
 } from '@detaly/db';
@@ -21,6 +23,7 @@ import {
   cartLineFromOffer,
   explainPaymentScheme,
   formatPromise,
+  MAX_ORDER_TOTAL_KOP,
   type ExcludedRule,
   type IsoDate,
   type Offer,
@@ -239,6 +242,13 @@ interface Submit {
 /** POST /api/checkout as the browser would send it from the rendered page. */
 async function submit(options: Submit, svc = service()) {
   const pageData = options.page;
+  // Without a rendered page the hidden values come from what the gate serves now.
+  const open = await gate();
+  const documents = pageData?.documents ?? {
+    offerVersionId: open.open ? open.docs.offer.id : uuidV7(),
+    consentPdVersionId: open.open ? open.docs.consentPd.id : uuidV7(),
+    consentMarketingVersionId: open.open ? (open.docs.consentMarketing?.id ?? null) : null,
+  };
   const body = {
     part: pageData?.part ?? 'all',
     phone: options.phone ?? randomPhone().typed,
@@ -250,6 +260,9 @@ async function submit(options: Submit, svc = service()) {
     expectedTotalKop: pageData?.totals.subtotalKop ?? 0,
     itemsHash: pageData?.itemsHash ?? '0'.repeat(64),
     checkoutKey: pageData?.checkoutKey ?? uuidV7(),
+    ...documents,
+    expectedScheme: pageData?.decision.scheme ?? 'prepay',
+    expectedPromisedDate: pageData?.promisedDate ?? null,
     website: '',
     ...options.body,
   };
@@ -436,12 +449,39 @@ describe('POST /api/checkout: success', () => {
     const cart = await makeCart(KNECHT_LOCAL);
     const p = ready(await page(cart.token));
     expect(p.decision.scheme).toBe('pay_on_handover');
-    const res = await submit({ token: cart.token, page: p, phone: phone.typed, name: 'Новое имя' });
+    // The page showed payment on handover: the prepayment is shown first, never applied
+    // silently (409 scheme_changed with the neutral reason), and nothing is written.
+    const first = await submit({
+      token: cart.token,
+      page: p,
+      phone: phone.typed,
+      name: 'Новое имя',
+    });
+    expect(first.status).toBe(409);
+    expect(first.json).toEqual({
+      error: 'scheme_changed',
+      message: 'Способ оплаты изменился — проверьте его и отправьте форму ещё раз',
+      scheme: 'prepay',
+      explanation: ['Для этого номера доступна только предоплата.'],
+    });
+    expect(await db.select().from(orders).where(eq(orders.checkoutKey, p.checkoutKey))).toEqual([]);
+    const before = await db.select().from(users).where(eq(users.phone, phone.e164));
+    expect(before[0]).toMatchObject({ name: 'Старое имя' });
+
+    // The form sends the scheme it has now shown.
+    const res = await submit({
+      token: cart.token,
+      page: p,
+      phone: phone.typed,
+      name: 'Новое имя',
+      body: { expectedScheme: 'prepay' },
+    });
     expect(res.status).toBe(201);
     const order = await orderByUrl(res.json.orderUrl);
     expect(order).toMatchObject({ status: 'awaiting_payment', paymentScheme: 'prepay' });
     expect(order.events[0]?.payload).toMatchObject({
       scheme: 'prepay',
+      schemeReasons: ['no_show'],
       deferredEffects: ['create_payment'],
     });
     // Upsert by phone: one user, the latest name (decision Д14).
@@ -849,7 +889,9 @@ describe('POST /api/checkout: refusals that create nothing', () => {
     });
     expect(res.status).toBe(403);
     expect(res.json.error).toBe('checkout_closed');
-    expect(res.json.message).toContain('после регистрации оператора персональных данных');
+    expect(res.json.message).toBe(
+      'Оформление на сайте скоро откроется. Пока закажите по телефону +7 900 000-00-01.',
+    );
     expect(searches).toEqual([]);
     await nothingCreated(phone.e164, res.sent.checkoutKey);
 
@@ -859,7 +901,7 @@ describe('POST /api/checkout: refusals that create nothing', () => {
     const html = renderToStaticMarkup(
       createElement(CheckoutClosed, { message: data.message, phone: '+7 900 000-00-01' }),
     );
-    expect(html).toContain('Онлайн-оформление откроется после регистрации оператора');
+    expect(html).toContain('Оформление на сайте скоро откроется');
     expect(html).toContain('tel:+79000000001');
     expect(html).not.toMatch(/<(input|form|textarea|select)\b/);
   });
@@ -946,5 +988,173 @@ describe('/checkout page data', () => {
     const data = await page(cart.token);
     expect(data.kind).toBe('emptied');
     expect(await page(cart.token)).toEqual({ kind: 'no_cart' });
+  });
+});
+
+describe('checkout terms the client saw (audit of phase 1A)', () => {
+  it('a page view with nothing cached never calls the supplier; the submit checks fresh', async () => {
+    const cart = await makeCart(KNECHT_LOCAL, BOSCH_ORDER);
+    // Another prefix: the cache filled by makeCart is not visible to this supplier.
+    const prefix = testKeyPrefix();
+    prefixes.push(prefix);
+    supplier = createSupplierDeps({ env: intEnv(), db, redis, keyPrefix: prefix, caller });
+    rossko = supplier.rossko;
+    searches.length = 0;
+    const p = ready(await page(cart.token));
+    expect(searches).toEqual([]);
+    expect(p.staleCount).toBe(2);
+    const res = await submit({ token: cart.token, page: p });
+    expect(res.status).toBe(201);
+    expect(searches.sort()).toEqual(['OC90']);
+  });
+
+  it('a new consent version published after the page: 409 documents_changed, nothing created', async () => {
+    const cart = await makeCart(KNECHT_LOCAL);
+    const p = ready(await page(cart.token));
+    // Sorts before the seeded versions, so only an env pointing at it serves it.
+    const bodyMd = '# Согласие\n\nНовая редакция.\n';
+    await db
+      .insert(documentVersions)
+      .values({
+        kind: 'consent_pd',
+        version: '0000-web-test-pd2',
+        title: 'Согласие (новая редакция)',
+        bodyMd,
+        sha256: sha256Hex(bodyMd),
+        sourcePath: 'test/consent_pd/0000-web-test-pd2.md',
+        publishedAt: null,
+      })
+      .onConflictDoNothing();
+    gateEnv = intEnv({
+      RKN_NOTICE_NUMBER: 'TEST-1',
+      LEGAL_CONSENT_PD_VERSION: '0000-web-test-pd2',
+    });
+    const phone = randomPhone();
+    const res = await submit({ token: cart.token, page: p, phone: phone.typed });
+    expect(res.status).toBe(409);
+    expect(res.json).toMatchObject({ error: 'documents_changed' });
+    await nothingCreated(phone.e164, p.checkoutKey);
+    expect(searches).toEqual([]);
+
+    // The re-rendered page carries the new version; the consent records exactly that one.
+    const again = ready(await page(cart.token));
+    expect(again.documents.consentPdVersionId).not.toBe(p.documents.consentPdVersionId);
+    const ok = await submit({ token: cart.token, page: again, phone: phone.typed });
+    expect(ok.status).toBe(201);
+    const order = await orderByUrl(ok.json.orderUrl);
+    const [pd] = await db.select().from(consents).where(eq(consents.orderId, order.id));
+    expect(pd).toMatchObject({
+      documentVersionId: again.documents.consentPdVersionId,
+      textSha256: sha256Hex(bodyMd),
+    });
+    expect(order.offerVersionId).toBe(again.documents.offerVersionId);
+  });
+
+  it('an outdated offer or marketing version from the form: 409, nothing created', async () => {
+    const cart = await makeCart(KNECHT_LOCAL);
+    const p = ready(await page(cart.token));
+    const phone = randomPhone();
+    const offer = await submit({
+      token: cart.token,
+      page: p,
+      phone: phone.typed,
+      body: { offerVersionId: uuidV7() },
+    });
+    expect(offer.status).toBe(409);
+    expect(offer.json.error).toBe('documents_changed');
+    const marketing = await submit({
+      token: cart.token,
+      page: p,
+      phone: phone.typed,
+      body: { consentMarketing: true, consentMarketingVersionId: uuidV7() },
+    });
+    expect(marketing.status).toBe(409);
+    await nothingCreated(phone.e164, p.checkoutKey);
+    // Without the marketing tick its version does not matter.
+    const ok = await submit({
+      token: cart.token,
+      page: p,
+      phone: phone.typed,
+      body: { consentMarketingVersionId: uuidV7() },
+    });
+    expect(ok.status).toBe(201);
+  });
+
+  it('settings from env fallbacks (database read failed): 503, no supplier call, no order', async () => {
+    const cart = await makeCart(KNECHT_LOCAL);
+    const p = ready(await page(cart.token));
+    const svc = createCheckoutService({
+      db,
+      supplier: { rossko },
+      loadSettings: async () => ({ ...(await loadSettings()), fromDatabase: false }),
+      gate,
+      logger,
+      env: { APP_BASE_URL: BASE_URL, TRUSTED_IP_HEADER: 'x-real-ip' },
+    });
+    const phone = randomPhone();
+    const res = await submit({ token: cart.token, page: p, phone: phone.typed }, svc);
+    expect(res.status).toBe(503);
+    expect(res.json).toMatchObject({ error: 'settings_unavailable' });
+    expect(res.headers.get('retry-after')).toBe('60');
+    expect(searches).toEqual([]);
+    await nothingCreated(phone.e164, p.checkoutKey);
+  });
+
+  it('a later promised date than the page showed: 409 with the new date; an earlier one is fine', async () => {
+    const cart = await makeCart(KNECHT_LOCAL);
+    const p = ready(await page(cart.token));
+    if (p.promisedDate === null) throw new Error('no promised date');
+    const shown = addDays(p.promisedDate, -1);
+    const phone = randomPhone();
+    const res = await submit({
+      token: cart.token,
+      page: p,
+      phone: phone.typed,
+      body: { expectedPromisedDate: shown },
+    });
+    expect(res.status).toBe(409);
+    expect(res.json).toMatchObject({
+      error: 'stale',
+      message: 'Срок получения изменился — проверьте его и отправьте форму ещё раз',
+      changes: [],
+      promisedDate: p.promisedDate,
+      promiseText: formatPromise(p.promisedDate),
+      totalKop: p.totals.subtotalKop,
+      itemsHash: p.itemsHash,
+    });
+    await nothingCreated(phone.e164, p.checkoutKey);
+
+    const earlier = await submit({
+      token: cart.token,
+      page: p,
+      phone: phone.typed,
+      body: { expectedPromisedDate: addDays(p.promisedDate, 1) },
+    });
+    expect(earlier.status).toBe(201);
+    expect((await orderByUrl(earlier.json.orderUrl)).promisedDate).toBe(p.promisedDate);
+  });
+
+  it('an order above MAX_ORDER_TOTAL_KOP: the page blocks it and the API answers 422', async () => {
+    priceFactor = 200;
+    const cart = await makeCart(withQty(KNECHT_LOCAL, 6));
+    const p = ready(await page(cart.token));
+    expect(p.totals.subtotalKop).toBeGreaterThan(MAX_ORDER_TOTAL_KOP);
+    expect(p.minimums).toMatchObject({ ok: false, code: 'max_total' });
+    const phone = randomPhone();
+    const res = await submit({ token: cart.token, page: p, phone: phone.typed });
+    expect(res.status).toBe(422);
+    expect(res.json).toMatchObject({ error: 'below_minimum', code: 'max_total' });
+    await nothingCreated(phone.e164, p.checkoutKey);
+  });
+
+  it('the split is not offered when a part alone misses the minimum order total', async () => {
+    const cart = await makeCart(KNECHT_LOCAL, BOSCH_ORDER);
+    const whole = ready(await page(cart.token));
+    expect(whole.offerSplit).toBe(true);
+    // The whole cart passes, the Orenburg part alone (528 ₽) does not.
+    settingsOverride = { minOrderTotalKop: whole.totals.subtotalKop - 100 };
+    const p = ready(await page(cart.token));
+    expect(p.minimums.ok).toBe(true);
+    expect(p.offerSplit).toBe(false);
   });
 });

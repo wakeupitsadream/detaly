@@ -70,6 +70,25 @@ export const ORDER_ITEM_STATES = [
 ] as const;
 export type OrderItemState = (typeof ORDER_ITEM_STATES)[number];
 
+/** Item states that no longer belong to the order: not bought, replaced, money returned. */
+export const DROPPED_ORDER_ITEM_STATES = [
+  'failed',
+  'replaced',
+  'refund_pending',
+  'refunded',
+] as const satisfies readonly OrderItemState[];
+
+/**
+ * TransitionContext.allLiveItemsArrived from the order's item states: every live item is at
+ * the point (`arrived`, or already `handed`). An order without live items has nothing at the
+ * point: false.
+ */
+export function liveItemsAllArrived(states: readonly OrderItemState[]): boolean {
+  const dropped: readonly OrderItemState[] = DROPPED_ORDER_ITEM_STATES;
+  const live = states.filter((state) => !dropped.includes(state));
+  return live.length > 0 && live.every((state) => state === 'arrived' || state === 'handed');
+}
+
 /** prepay: 100% online prepayment (two receipts); pay_on_handover: pay at the pickup point. */
 export const PAYMENT_SCHEMES = ['prepay', 'pay_on_handover'] as const;
 export type PaymentScheme = (typeof PAYMENT_SCHEMES)[number];

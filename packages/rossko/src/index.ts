@@ -23,6 +23,7 @@ export {
   RosskoCallError,
   RosskoConfigError,
   RosskoRateLimitError,
+  SearchCacheMissError,
   type QuotaBreakerReason,
 } from './errors';
 export {

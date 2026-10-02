@@ -6,7 +6,12 @@
  * repeated blindly: after a timeout the worker checks GetOrders first.
  */
 import type { RosskoMode } from '@detaly/domain/statuses';
-import { CheckoutDisabledError, RosskoCallError, RosskoConfigError } from './errors';
+import {
+  CheckoutDisabledError,
+  RosskoCallError,
+  RosskoConfigError,
+  SearchCacheMissError,
+} from './errors';
 import { createFixtureCaller } from './fixture-caller';
 import { maskSecrets } from './mask';
 import {
@@ -188,7 +193,10 @@ export function createRosskoClient(options: RosskoClientOptions): RosskoClient {
   }
 
   return {
-    async search(text, { priority = 'search', bypassCache = false } = {}): Promise<SearchResult> {
+    async search(
+      text,
+      { priority = 'search', bypassCache = false, cacheOnly = false } = {},
+    ): Promise<SearchResult> {
       const articleNorm = normalizeArticle(text);
       const localIds = await localStockIds();
       if (articleNorm === '') {
@@ -216,6 +224,7 @@ export function createRosskoClient(options: RosskoClientOptions): RosskoClient {
           };
         }
       }
+      if (cacheOnly) throw new SearchCacheMissError();
       // Single-flight: identical concurrent searches share one supplier call. Priority is part
       // of the key, so a critical recheck never fails because of a search-level breaker.
       const flightKey = `${articleNorm}:${deliveryId ?? '-'}:${priority}`;

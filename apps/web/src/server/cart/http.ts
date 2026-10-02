@@ -9,6 +9,7 @@
  * only here, from cart-store's token and options. Rate limits are applied in src/proxy.ts.
  */
 import type { Env } from '@detaly/config';
+import { readBoundedText } from '../body';
 import { cartCookieOptions, CART_COOKIE, readCartToken } from '../cart-store';
 import { isSameOrigin } from '../request-guards';
 import type { CartService, CartSnapshot } from './cart-service';
@@ -73,20 +74,30 @@ export function cartSetCookie(
   return parts.join('; ');
 }
 
-/** Body fields of a form or a JSON object; null when the body cannot be parsed. */
+/** Largest cart request body: a form has three short fields (q, offerId, qty). */
+export const MAX_CART_BODY_BYTES = 8 * 1024;
+
+/**
+ * Body fields of a form or a JSON object; null when the body cannot be parsed or is larger
+ * than MAX_CART_BODY_BYTES (read as a bounded stream, never buffered whole).
+ */
 async function readBody(request: Request, mode: Mode): Promise<Record<string, unknown> | null> {
   try {
+    const body = await readBoundedText(request, MAX_CART_BODY_BYTES);
+    if (!body.ok) return null;
     if (mode === 'form') {
-      const form = await request.formData();
+      // The bounded text is parsed by the platform as the same content type (urlencoded, or
+      // multipart with its boundary).
+      const type = request.headers.get('content-type') ?? '';
+      const form = await new Response(body.text, { headers: { 'content-type': type } }).formData();
       const out: Record<string, unknown> = {};
       for (const [key, value] of form.entries()) {
         if (typeof value === 'string' && !(key in out)) out[key] = value;
       }
       return out;
     }
-    const text = await request.text();
-    if (text.trim() === '') return {};
-    const parsed: unknown = JSON.parse(text);
+    if (body.text.trim() === '') return {};
+    const parsed: unknown = JSON.parse(body.text);
     return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
       ? (parsed as Record<string, unknown>)
       : null;

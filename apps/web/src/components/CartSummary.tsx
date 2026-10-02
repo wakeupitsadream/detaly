@@ -1,8 +1,10 @@
 import type { OrderMinimumsResult } from '@detaly/domain';
+import { telHref } from '@/server/brand';
 
 /**
- * Sum, the order's date, the minimum-order hint and "Оформить заказ" — or the checkout gate's
- * text instead of the button while online checkout is closed.
+ * Sum, the order's date, the minimum-order hint and "Оформить заказ" — or, while online
+ * checkout is closed, the gate's text with a call button (every closed reason), so the client
+ * who collected a cart still has a way to order.
  */
 export function CartSummary({
   subtotalText,
@@ -15,7 +17,7 @@ export function CartSummary({
   itemsCount: number;
   promiseText: string | null;
   minimums: OrderMinimumsResult;
-  gate: { open: true } | { open: false; message: string };
+  gate: { open: true } | { open: false; message: string; phone: string | null };
 }) {
   return (
     <section
@@ -60,9 +62,18 @@ export function CartSummary({
           </span>
         )
       ) : (
-        <p className="text-sm text-muted" data-testid="checkout-closed">
-          {gate.message}
-        </p>
+        <div className="space-y-3" data-testid="checkout-closed">
+          <p className="text-sm text-muted">{gate.message}</p>
+          {gate.phone ? (
+            <a
+              href={telHref(gate.phone)}
+              className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-accent px-5 font-semibold whitespace-nowrap text-white hover:bg-accent-strong"
+              data-testid="call-to-order"
+            >
+              Позвонить {gate.phone}
+            </a>
+          ) : null}
+        </div>
       )}
     </section>
   );

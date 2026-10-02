@@ -6,7 +6,8 @@
  * Logs carry the order number only: no phone, no digits, no IP.
  */
 import type { Logger } from '@detaly/config';
-import { isNamedError } from '../errors';
+import { readBoundedJson } from '../body';
+import { errorInfo, isNamedError } from '../errors';
 import { isSameOrigin } from '../request-guards';
 import { isOrderToken } from './access';
 import {
@@ -40,16 +41,17 @@ function json(body: Record<string, unknown>, status: number, extra?: Record<stri
   return Response.json(body, { status, headers: { ...NO_STORE, ...extra } });
 }
 
+/** Largest cancel request body: `{"last4":"1234"}` needs a few dozen bytes. */
+export const MAX_CANCEL_BODY_BYTES = 256;
+
 async function readLast4(request: Request): Promise<{ ok: true; last4: unknown } | { ok: false }> {
   const type = request.headers.get('content-type') ?? '';
   if (!type.toLowerCase().includes('application/json')) return { ok: false };
-  try {
-    const body: unknown = await request.json();
-    if (body === null || typeof body !== 'object' || Array.isArray(body)) return { ok: false };
-    return { ok: true, last4: (body as Record<string, unknown>).last4 };
-  } catch {
+  const body = await readBoundedJson(request, MAX_CANCEL_BODY_BYTES);
+  if (body === undefined || body === null || typeof body !== 'object' || Array.isArray(body)) {
     return { ok: false };
   }
+  return { ok: true, last4: (body as Record<string, unknown>).last4 };
 }
 
 function respond(result: CancelResult, logger: CancelHandlerDeps['logger']): Response {
@@ -101,14 +103,14 @@ export async function handleCancelRequest(
     return respond(result, deps.logger);
   } catch (error) {
     if (isNamedError(error, CancelUnavailableError, 'CancelUnavailableError')) {
-      deps.logger?.warn({ err: error.message }, 'order cancel: attempt counter unavailable');
+      deps.logger?.warn(errorInfo(error.cause), 'order cancel: attempt counter unavailable');
       return json({ error: 'unavailable', message: CANCEL_MESSAGES.unavailable }, 503, {
         'Retry-After': '60',
       });
     }
-    // Name and message only: a driver error object may carry query parameters (the token).
-    const err = error instanceof Error ? `${error.name}: ${error.message}` : 'unknown error';
-    deps.logger?.error({ err }, 'order cancel failed');
+    // Names and SQLSTATE only: a drizzle error message carries the query parameters, the
+    // order's access token among them.
+    deps.logger?.error(errorInfo(error), 'order cancel failed');
     return json({ error: 'internal', message: CANCEL_MESSAGES.internal }, 500);
   }
 }

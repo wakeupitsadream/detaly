@@ -1,9 +1,10 @@
 'use client';
 
-import type { LineChange } from '@detaly/domain';
+import type { LineChange, PaymentScheme } from '@detaly/domain';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { DiffBanner } from '@/components/DiffBanner';
+import { PAYMENT_SCHEME_TITLE } from './scheme-text';
 
 type Field = 'phone' | 'name' | 'channel' | 'acceptOffer' | 'consentPd';
 
@@ -13,6 +14,16 @@ export interface CheckoutFormProps {
   itemsHash: string;
   /** uuid v7 rendered by the server: one order per form, whatever the number of submits. */
   checkoutKey: string;
+  /** Versions of the linked documents, sent back so the order records exactly these. */
+  documents: {
+    offerVersionId: string;
+    consentPdVersionId: string;
+    consentMarketingVersionId: string | null;
+  };
+  /** Payment scheme shown on the page (no-shows counted as 0). */
+  expectedScheme: PaymentScheme;
+  /** Promised date shown on the page (ISO), null without one. */
+  expectedPromisedDate: string | null;
   marketingAvailable: boolean;
   /** Order minimum not reached: the message, and the submit button stays disabled. */
   blockedMessage: string | null;
@@ -35,6 +46,10 @@ interface ApiBody {
   changes?: LineChange[];
   totalKop?: number | null;
   itemsHash?: string | null;
+  promisedDate?: string;
+  promiseText?: string;
+  scheme?: PaymentScheme;
+  explanation?: string[];
 }
 
 function FieldError({ id, message }: { id: string; message: string | undefined }) {
@@ -63,23 +78,34 @@ export function CheckoutForm(props: CheckoutFormProps) {
   const [changes, setChanges] = useState<LineChange[] | null>(null);
   // Values from a 409 answer until the refreshed page brings its own.
   const [override, setOverride] = useState<{ totalKop: number; itemsHash: string } | null>(null);
+  const [promise, setPromise] = useState<{ date: string; text: string } | null>(null);
+  // 409 scheme_changed: the scheme for this phone, shown here and sent back on resubmit.
+  const [schemeNotice, setSchemeNotice] = useState<{
+    scheme: PaymentScheme;
+    explanation: string[];
+  } | null>(null);
 
   useEffect(() => {
     setOverride(null);
   }, [props.expectedTotalKop, props.itemsHash]);
+  useEffect(() => {
+    setPromise(null);
+  }, [props.expectedPromisedDate]);
 
   // On a phone the submit button is far below the banner: bring a fresh 409 banner into view
   // and move focus there, so the client sees that the order was not created.
   const changesRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (changes === null) return;
+    if (changes === null && schemeNotice === null) return;
     const node = changesRef.current;
     node?.scrollIntoView({ block: 'center' });
     node?.focus({ preventScroll: true });
-  }, [changes]);
+  }, [changes, schemeNotice]);
 
   const expectedTotalKop = override?.totalKop ?? props.expectedTotalKop;
   const itemsHash = override?.itemsHash ?? props.itemsHash;
+  const expectedPromisedDate = promise?.date ?? props.expectedPromisedDate;
+  const expectedScheme = schemeNotice?.scheme ?? props.expectedScheme;
   const blocked = props.blockedMessage !== null;
   const canSubmit = acceptOffer && consentPd && !pending && !done && !blocked;
 
@@ -108,6 +134,9 @@ export function CheckoutForm(props: CheckoutFormProps) {
           expectedTotalKop,
           itemsHash,
           checkoutKey: props.checkoutKey,
+          ...props.documents,
+          expectedScheme,
+          expectedPromisedDate,
           website: String(data.get('website') ?? ''),
         }),
       });
@@ -129,6 +158,21 @@ export function CheckoutForm(props: CheckoutFormProps) {
       if (typeof body.totalKop === 'number' && typeof body.itemsHash === 'string') {
         setOverride({ totalKop: body.totalKop, itemsHash: body.itemsHash });
       }
+      if (typeof body.promisedDate === 'string' && typeof body.promiseText === 'string') {
+        setPromise({ date: body.promisedDate, text: body.promiseText });
+      }
+      router.refresh();
+      return;
+    }
+    if (response.status === 409 && body.error === 'scheme_changed' && body.scheme) {
+      setSchemeNotice({ scheme: body.scheme, explanation: body.explanation ?? [] });
+      return;
+    }
+    if (response.status === 409 && body.error === 'documents_changed') {
+      // New texts: the client reads them and ticks the boxes again on the refreshed page.
+      setAcceptOffer(false);
+      setConsentPd(false);
+      setFormError(body.message ?? GENERIC_ERROR);
       router.refresh();
       return;
     }
@@ -145,16 +189,43 @@ export function CheckoutForm(props: CheckoutFormProps) {
 
   return (
     <form className="space-y-5" onSubmit={(e) => void onSubmit(e)} data-testid="checkout-form">
-      {changes !== null ? (
+      {changes !== null || schemeNotice !== null ? (
         <div
           ref={changesRef}
           tabIndex={-1}
           className="space-y-2 outline-none"
           data-testid="checkout-stale"
         >
-          <DiffBanner changes={changes} cartChanged />
+          {changes !== null && (changes.length > 0 || promise === null) ? (
+            <DiffBanner changes={changes} cartChanged />
+          ) : null}
+          {promise !== null ? (
+            <p
+              className="rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn"
+              role="status"
+              data-testid="checkout-promise-changed"
+            >
+              Срок получения изменился: {promise.text}
+            </p>
+          ) : null}
+          {schemeNotice !== null ? (
+            <div
+              className="space-y-1 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn"
+              role="status"
+              data-testid="checkout-scheme-changed"
+            >
+              <p className="font-semibold">
+                Способ оплаты: {PAYMENT_SCHEME_TITLE[schemeNotice.scheme]}
+              </p>
+              {schemeNotice.explanation.map((sentence) => (
+                <p key={sentence}>{sentence}</p>
+              ))}
+            </div>
+          ) : null}
           <p className="text-sm text-muted">
-            Заказ не оформлен. Сумма и состав обновлены — проверьте их и отправьте форму ещё раз.
+            {schemeNotice !== null && changes === null
+              ? 'Заказ не оформлен. Проверьте способ оплаты и отправьте форму ещё раз.'
+              : 'Заказ не оформлен. Мы обновили данные заказа — проверьте их и отправьте форму ещё раз.'}
           </p>
         </div>
       ) : null}
@@ -177,7 +248,7 @@ export function CheckoutForm(props: CheckoutFormProps) {
           className={inputClass}
         />
         <p id="checkout-phone-hint" className="text-xs text-muted">
-          Российский номер: +7 или 8 и 10 цифр. По нему вы получите заказ.
+          Мобильный номер: +7 или 8 и 10 цифр. По нему вы получите заказ.
         </p>
         <FieldError id="checkout-phone-error" message={fieldErrors.phone} />
       </div>
@@ -282,6 +353,15 @@ export function CheckoutForm(props: CheckoutFormProps) {
       <input type="hidden" name="expectedTotalKop" value={expectedTotalKop} />
       <input type="hidden" name="itemsHash" value={itemsHash} />
       <input type="hidden" name="checkoutKey" value={props.checkoutKey} />
+      <input type="hidden" name="offerVersionId" value={props.documents.offerVersionId} />
+      <input type="hidden" name="consentPdVersionId" value={props.documents.consentPdVersionId} />
+      <input
+        type="hidden"
+        name="consentMarketingVersionId"
+        value={props.documents.consentMarketingVersionId ?? ''}
+      />
+      <input type="hidden" name="expectedScheme" value={expectedScheme} />
+      <input type="hidden" name="expectedPromisedDate" value={expectedPromisedDate ?? ''} />
 
       {blocked ? (
         <p className="rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">

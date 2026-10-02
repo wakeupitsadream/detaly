@@ -8,6 +8,8 @@ import {
   asc,
   createDb,
   eq,
+  sql,
+  type Executor,
   orderEvents,
   orderItems,
   orders,
@@ -15,14 +17,22 @@ import {
   users,
   type Db,
 } from '@detaly/db';
-import type { NotificationChannel, Offer, OrderStatus, PaymentStatus } from '@detaly/domain';
+import type {
+  NotificationChannel,
+  Offer,
+  OrderItemState,
+  OrderStatus,
+  PaymentStatus,
+} from '@detaly/domain';
 import type * as Navigation from 'next/navigation';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { OrderDetails } from '@/components/order/OrderDetails';
-import { resetSingleton } from '@/server/globals';
+import { resetSingleton, singleton } from '@/server/globals';
+import type { getLogger } from '@/server/logger';
 import { CANCEL_FAIL_LIMIT, cancelFailKey } from '@/server/orders/cancel';
+import { MAX_CANCEL_BODY_BYTES } from '@/server/orders/cancel-handler';
 import { handleCancelRequest, type CancelHandlerDeps } from '@/server/orders/cancel-handler';
 import type { CartReminder } from '@/server/orders/cart-reminder';
 import { findOrderNumber, loadOrderView, type OrderView } from '@/server/orders/order-view';
@@ -94,7 +104,10 @@ async function insertOrder({
   expiresAt = null,
   phone = `+79${randomInt(100_000_000, 1_000_000_000)}`,
   checkoutAt = new Date(Date.now() - 60_000),
+  itemState = 'pending',
 }: {
+  /** order_items.state of both items ('arrived': the order came from `ready`). */
+  itemState?: OrderItemState;
   status?: OrderStatus;
   scheme?: 'prepay' | 'pay_on_handover';
   preferredChannel?: NotificationChannel | null;
@@ -146,6 +159,7 @@ async function insertOrder({
       markupBp: 2800,
       etaDate: '2026-10-03',
       offerSnapshot: knecht,
+      state: itemState,
       createdAt: new Date('2026-10-02T09:05:00Z'),
     },
     {
@@ -163,6 +177,7 @@ async function insertOrder({
       markupBp: 3000,
       etaDate: '2026-10-07',
       offerSnapshot: bosch,
+      state: itemState,
       createdAt: new Date('2026-10-02T09:05:01Z'),
     },
   ]);
@@ -452,6 +467,38 @@ describe('/o/[token] page', () => {
     );
   });
 
+  it('a database failure is logged and rethrown without the token (driver messages carry it)', async () => {
+    const order = await insertOrder();
+    const lines: unknown[] = [];
+    const capture = (...args: unknown[]) => lines.push(args);
+    const fakeLogger = { info: capture, warn: capture, error: capture, debug: capture };
+    const { getDb } = await import('@/server/db');
+    await getDb().close();
+    resetSingleton('db');
+    resetSingleton('logger');
+    singleton('logger', () => fakeLogger as unknown as ReturnType<typeof getLogger>);
+    process.env.DATABASE_URL = 'postgres://detaly:detaly@127.0.0.1:1/unreachable';
+    resetEnvCache();
+    try {
+      const { default: OrderPage } = await import('@/app/(site)/o/[token]/page');
+      const error = await OrderPage({ params: Promise.resolve({ token: order.token }) }).then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).name).toBe('PageDataError');
+      expect(String((error as Error).message)).not.toContain(order.token);
+      expect(JSON.stringify(lines)).toContain('order page: database unavailable');
+      expect(JSON.stringify(lines)).not.toContain(order.token);
+    } finally {
+      await getDb().close();
+      resetSingleton('db');
+      resetSingleton('logger');
+      process.env.DATABASE_URL = webDatabaseUrl();
+      resetEnvCache();
+    }
+  });
+
   it('metadata: noindex, no-referrer, title with the order number', async () => {
     const order = await insertOrder();
     const { generateMetadata } = await import('@/app/(site)/o/[token]/page');
@@ -676,5 +723,147 @@ describe('POST /api/orders/<token>/cancel', () => {
     expect(logged).not.toMatch(/last4/i);
     expect(logged).not.toContain(`"${order.last4}"`);
     expect(logged).not.toContain(`"${wrong}"`);
+  });
+});
+
+describe('cancellation: refusal after arrival, the attempt counter under the lock (audit)', () => {
+  /** Failures recorded in Redis as the handler records them. */
+  async function recordFailures(orderId: string, n: number): Promise<void> {
+    const key = cancelFailKey(orderId, prefix);
+    const now = Date.now();
+    for (let i = 0; i < n; i += 1) await redis.zadd(key, now - 1000 + i, `seed-${i}-${now}`);
+  }
+
+  /** Cancel transactions waiting for the order row lock. */
+  async function lockWaiters(): Promise<number> {
+    const rows = await db.execute<{ n: number }>(
+      sql`select count(*)::int as n from pg_stat_activity
+          where datname = current_database() and wait_event_type = 'Lock'
+            and query ilike '%from "orders"%for update%'`,
+    );
+    return Number([...rows][0]?.n ?? 0);
+  }
+
+  async function until(check: () => Promise<boolean>): Promise<void> {
+    for (let i = 0; i < 200; i += 1) {
+      if (await check()) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error('condition not reached');
+  }
+
+  it('an order switched to prepay at `ready` (items arrived): cancel records the supplier-return task', async () => {
+    const order = await insertOrder({ itemState: 'arrived' });
+    await insertPayment(order.id, 'pending');
+    const view = await loadOrderView(db, order.token);
+    expect(view?.canCancel).toBe(true);
+    const res = await cancel(order.token, { last4: order.last4 });
+    expect(res.status).toBe(200);
+    expect((await orderRow(order.id)).status).toBe('cancelled');
+    const event = (await eventsOf(order.id)).find((e) => e.type === 'client_cancelled');
+    expect(event?.payload).toEqual({
+      deferredEffects: ['cancel_at_supplier_task'],
+      deferredNotify: ['client:order_cancelled', 'sellers:staff_cancel_at_supplier_task'],
+    });
+    // A plain cancel before payment owes nothing.
+    const plain = await insertOrder();
+    expect((await cancel(plain.token, { last4: plain.last4 })).status).toBe(200);
+    const plainEvent = (await eventsOf(plain.id)).find((e) => e.type === 'client_cancelled');
+    expect(plainEvent?.payload).toEqual({});
+  });
+
+  it('after 4 failures a wrong and a right guess queued on the lock: the right one is refused', async () => {
+    const order = await insertOrder();
+    await recordFailures(order.id, CANCEL_FAIL_LIMIT - 1);
+    const wrong = order.last4 === '0000' ? '1111' : '0000';
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let taken = () => {};
+    const lockTaken = new Promise<void>((resolve) => {
+      taken = resolve;
+    });
+    const holder = db.transaction(async (tx) => {
+      await tx.select({ id: orders.id }).from(orders).where(eq(orders.id, order.id)).for('update');
+      taken();
+      await held;
+    });
+    await lockTaken;
+    const wrongGuess = cancel(order.token, { last4: wrong });
+    await until(async () => (await lockWaiters()) >= 1);
+    const rightGuess = cancel(order.token, { last4: order.last4 });
+    await until(async () => (await lockWaiters()) >= 2);
+    release();
+    await holder;
+    const [first, second] = await Promise.all([wrongGuess, rightGuess]);
+    expect(first.status).toBe(422);
+    expect(first.body).toMatchObject({ error: 'wrong_digits', attemptsLeft: 0 });
+    expect(second.status).toBe(429);
+    expect((await orderRow(order.id)).status).toBe('awaiting_payment');
+  });
+
+  it('4 failures, then 10 parallel guesses with the right one among them: one comparison at most', async () => {
+    const order = await insertOrder();
+    await recordFailures(order.id, CANCEL_FAIL_LIMIT - 1);
+    const wrong = (i: number) => {
+      const guess = String(1000 + i);
+      return guess === order.last4 ? '9999' : guess;
+    };
+    const results = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        cancel(order.token, { last4: i === 7 ? order.last4 : wrong(i) }),
+      ),
+    );
+    const compared = results.filter((r) => r.status !== 429);
+    expect(compared).toHaveLength(1);
+    expect([200, 422]).toContain(compared[0]?.status);
+    const status = (await orderRow(order.id)).status;
+    // The right digits win only when they were the single comparison allowed.
+    expect(status).toBe(compared[0]?.status === 200 ? 'cancelled' : 'awaiting_payment');
+  });
+
+  it('a database failure is logged without the token (drizzle puts params into the message)', async () => {
+    const token = randomBytes(32).toString('base64url');
+    const driver = Object.assign(new Error('terminating connection'), {
+      name: 'PostgresError',
+      code: '57P01',
+    });
+    const failure = Object.assign(
+      new Error(
+        `Failed query: select "id" from "orders" where "access_token" = $1\nparams: ${token}`,
+      ),
+      { query: 'select', params: [token], cause: driver },
+    );
+    const broken = {
+      query: { orders: { findFirst: () => Promise.reject(failure) } },
+    } as unknown as Executor;
+    const lines: unknown[] = [];
+    const logger = {
+      info: (...args: unknown[]) => lines.push(args),
+      warn: (...args: unknown[]) => lines.push(args),
+      error: (...args: unknown[]) => lines.push(args),
+    } as unknown as CancelHandlerDeps['logger'];
+    const response = await handleCancelRequest(
+      cancelRequest(token, { last4: '1234' }),
+      token,
+      deps({ db: broken, logger }),
+    );
+    expect(response.status).toBe(500);
+    const logged = JSON.stringify(lines);
+    expect(logged).not.toContain(token);
+    expect(logged).not.toContain('Failed query');
+    expect(logged).toContain('PostgresError');
+    expect(logged).toContain('57P01');
+  });
+
+  it('a body above MAX_CANCEL_BODY_BYTES: 400 without reading it whole', async () => {
+    const order = await insertOrder();
+    const res = await cancel(order.token, {
+      last4: order.last4,
+      pad: 'x'.repeat(MAX_CANCEL_BODY_BYTES),
+    });
+    expect(res.status).toBe(400);
+    expect((await orderRow(order.id)).status).toBe('awaiting_payment');
   });
 });

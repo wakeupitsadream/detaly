@@ -1,12 +1,21 @@
 /**
  * Body of POST /api/checkout (docs/phase-1a-implementation.md section 6.2). Unknown fields are
- * dropped. Hidden technical fields (part, expectedTotalKop, itemsHash, checkoutKey) that are
+ * dropped. Hidden technical fields (part, expectedTotalKop, itemsHash, checkoutKey, the ids of
+ * the document versions shown, the expected scheme and promised date) that are
  * malformed mean a broken or forged client: 400. Fields the client types or ticks get Russian
  * messages per field: 422 `consent_required` when the offer or the PD consent is not accepted
  * (an order without consent is impossible), otherwise 422 `validation`.
  */
-import { NOTIFICATION_CHANNELS, normalizePhone, type CartPart } from '@detaly/domain';
-import type { NotificationChannel } from '@detaly/domain';
+import {
+  isIsoDate,
+  NOTIFICATION_CHANNELS,
+  normalizeMobilePhone,
+  PAYMENT_SCHEMES,
+  type CartPart,
+  type IsoDate,
+  type NotificationChannel,
+  type PaymentScheme,
+} from '@detaly/domain';
 import { z } from 'zod';
 import { ITEMS_HASH_RE } from './hash';
 
@@ -16,7 +25,7 @@ export const CART_PARTS = ['all', 'local', 'order'] as const satisfies readonly 
 export const MAX_NAME_LENGTH = 60;
 
 export const FIELD_MESSAGES = {
-  phone: 'Введите российский номер: +7 или 8 и 10 цифр, например 8 912 345-67-89',
+  phone: 'Введите мобильный номер: +7 или 8 и 10 цифр, например 8 912 345-67-89',
   name: `Укажите имя — до ${MAX_NAME_LENGTH} символов`,
   channel: 'Выберите, куда присылать статусы заказа',
   acceptOffer: 'Нужно принять условия оферты',
@@ -27,6 +36,16 @@ export type CheckoutField = keyof typeof FIELD_MESSAGES;
 
 export interface CheckoutInput {
   part: CartPart;
+  /** document_versions.id of the offer shown on the rendered page. */
+  offerVersionId: string;
+  /** document_versions.id of the PD consent shown on the rendered page. */
+  consentPdVersionId: string;
+  /** document_versions.id of the marketing consent shown, null when there was none. */
+  consentMarketingVersionId: string | null;
+  /** Scheme shown on the page (no-shows counted as 0); the server's must match (409). */
+  expectedScheme: PaymentScheme;
+  /** promisedDate shown on the page; a later fresh date is a 409, an earlier one is fine. */
+  expectedPromisedDate: IsoDate | null;
   /** E.164, normalized. */
   phone: string;
   name: string;
@@ -52,6 +71,11 @@ const technical = z.object({
   expectedTotalKop: z.int().min(0).max(2_147_483_647),
   itemsHash: z.string().regex(ITEMS_HASH_RE),
   checkoutKey: z.uuid(),
+  offerVersionId: z.uuid(),
+  consentPdVersionId: z.uuid(),
+  consentMarketingVersionId: z.uuid().nullable(),
+  expectedScheme: z.enum(PAYMENT_SCHEMES),
+  expectedPromisedDate: z.string().refine(isIsoDate).nullable(),
 });
 
 /** Name as stored: control characters removed, whitespace collapsed, trimmed. */
@@ -77,7 +101,9 @@ export function parseCheckoutInput(body: unknown): CheckoutInputResult {
   const raw = body as Record<string, unknown>;
 
   const fields: Partial<Record<CheckoutField, string>> = {};
-  const phone = typeof raw.phone === 'string' ? normalizePhone(raw.phone) : null;
+  // Mobile (9xx) only: SMS is the fallback channel for confirmations (PLAN), and the last four
+  // digits of this number confirm a cancellation.
+  const phone = typeof raw.phone === 'string' ? normalizeMobilePhone(raw.phone) : null;
   if (phone === null) fields.phone = FIELD_MESSAGES.phone;
   const name = cleanName(raw.name);
   if (name === null) fields.name = FIELD_MESSAGES.name;
@@ -99,6 +125,7 @@ export function parseCheckoutInput(body: unknown): CheckoutInputResult {
     ok: true,
     input: {
       ...tech.data,
+      expectedPromisedDate: tech.data.expectedPromisedDate as IsoDate | null,
       phone,
       name,
       channel,

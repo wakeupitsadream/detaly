@@ -62,9 +62,16 @@ export interface CartSummaryView {
 
 export const MIXED_CART_TEXT =
   'В корзине есть детали в Оренбурге и под заказ. Одним заказом — предоплата 100%.';
-/** Shown on /cart when some prices could not be re-checked now. */
-export const STALE_PRICES_TEXT = 'Не удалось обновить цены, проверим при оформлении';
-export const FINAL_SCHEME_NOTE = 'Окончательно способ оплаты определим после ввода телефона.';
+/**
+ * Shown on /cart and /checkout when some prices were not re-checked now: pages read the
+ * supplier cache only, so this is normal after a quarter of an hour without a search.
+ */
+export const STALE_PRICES_TEXT = 'Цены и наличие проверим у поставщика при оформлении заказа';
+/**
+ * Only payment on handover can still change with the phone (no-shows, decision Д15): shown on
+ * /cart and /checkout for that scheme only, never under a prepayment that is final already.
+ */
+export const FINAL_SCHEME_NOTE = 'Окончательно способ оплаты определим по номеру телефона.';
 
 /**
  * «к пт 2 октября» for the given supplier dates with the eta buffer (promisedDate), as /cart,
@@ -115,6 +122,8 @@ export function summarizeCart(
     const advice = splitAdvice(lines, {
       onPickupMaxTotalKop: order.onPickupMaxTotalKop,
       noShowLimit: order.noShowLimit,
+      minOrderTotalKop: order.minOrderTotalKop,
+      minMarginKop: order.minMarginKop,
     });
     payment = { mixed: true, sentences: [MIXED_CART_TEXT], offerSplit: advice.offerSplit };
   } else {

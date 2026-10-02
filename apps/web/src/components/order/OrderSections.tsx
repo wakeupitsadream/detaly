@@ -57,12 +57,18 @@ export function phoneHref(phone: string): string {
   return `tel:${phone.replace(/[^\d+]/g, '')}`;
 }
 
+/**
+ * Shown when PICKUP_ADDRESS is not set. Checkout is closed without it (checkout-gate.ts), so an
+ * order page only meets it for orders made before; no message is promised that nobody sends.
+ */
+export const PICKUP_ADDRESS_UNKNOWN = 'Адрес пункта выдачи уточните по телефону магазина.';
+
 export function PickupBlock({ pickup }: { pickup: PickupInfo }) {
   const empty = !pickup.name && !pickup.address && !pickup.hours && !pickup.phone;
   return (
     <Card title="Самовывоз" testId="order-pickup">
       {empty ? (
-        <p className="text-muted">Адрес точки выдачи сообщим по телефону.</p>
+        <p className="text-muted">{PICKUP_ADDRESS_UNKNOWN}</p>
       ) : (
         <address className="space-y-1.5 text-base not-italic">
           {pickup.name ? <p className="font-medium wrap-anywhere">{pickup.name}</p> : null}

@@ -10,12 +10,18 @@ import { StockBadge } from './StockBadge';
 export function OfferRow({
   offer,
   searchArticleNorm,
+  orderingOpen = true,
 }: {
   offer: OfferView;
   /** Normalized article of the search query the offer was found by. */
   searchArticleNorm: string;
+  /**
+   * Online checkout is open (checkout gate). While it is closed there is no "В корзину": a
+   * cart that cannot be checked out is a dead end, the page offers the phone instead.
+   */
+  orderingOpen?: boolean;
 }) {
-  const canAdd = !offer.excluded && offer.available >= offer.multiplicity;
+  const canAdd = orderingOpen && !offer.excluded && offer.available >= offer.multiplicity;
   return (
     <li
       className="grid min-w-0 grid-cols-1 gap-3 rounded-card border border-line bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1.9fr)_auto] md:items-center md:gap-4"

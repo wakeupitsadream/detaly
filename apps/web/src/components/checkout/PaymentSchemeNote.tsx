@@ -1,15 +1,15 @@
 import type { PaymentScheme } from '@detaly/domain';
+import { FINAL_SCHEME_NOTE } from '@/server/cart/summary';
+import { PAYMENT_SCHEME_TITLE } from './scheme-text';
 
-export const PAYMENT_SCHEME_TITLE: Record<PaymentScheme, string> = {
-  pay_on_handover: 'Оплата при получении',
-  prepay: 'Предоплата 100% онлайн',
-};
+export { PAYMENT_SCHEME_TITLE };
 
-export const FINAL_SCHEME_NOTE = 'Окончательно способ оплаты определим по номеру телефона.';
+export { FINAL_SCHEME_NOTE };
 
 /**
  * How the order will be paid, in words (explainPaymentScheme). Before the phone is known
- * no-shows count as 0, so the note says the server decides finally.
+ * no-shows count as 0, so under payment on handover the note says the server decides finally;
+ * a prepayment (to-order parts, sum over the limit) does not depend on the phone.
  */
 export function PaymentSchemeNote({
   scheme,
@@ -30,7 +30,9 @@ export function PaymentSchemeNote({
           {sentence}
         </p>
       ))}
-      <p className="text-xs text-muted">{FINAL_SCHEME_NOTE}</p>
+      {scheme === 'pay_on_handover' ? (
+        <p className="text-xs text-muted">{FINAL_SCHEME_NOTE}</p>
+      ) : null}
     </section>
   );
 }

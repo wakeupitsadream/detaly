@@ -5,8 +5,8 @@
  * - The browser holds only an opaque token in the `cart` cookie (carts.anon_token); prices,
  *   markups and quantities live in the database and are never taken from the client.
  * - Lines are re-priced against fresh supplier offers searched by their query article
- *   (cart_items.search_article_norm): through the 15-minute cache when a page opens, past it
- *   (priority critical) at checkout.
+ *   (cart_items.search_article_norm): from the 15-minute cache only when a page opens (no
+ *   supplier call on a miss), past the cache (priority critical) at checkout.
  *
  * VERIFY: matching by offer_key assumes live Rossko keeps stock ids stable between calls, and
  * searching by the query article assumes crosses come back for it (docs/external.md). An empty
@@ -123,6 +123,14 @@ export interface FetchFreshOptions {
   priority: CallPriority;
   /** Skip the cache read (checkout); the fresh answer is still cached. */
   bypassCache?: boolean;
+  /**
+   * Page views (/cart, /checkout): read the supplier cache only, never call Rossko. A miss maps
+   * to null (the line keeps its stored price, flagged stale) like a failed search; the fresh
+   * check past the cache stays with POST /api/checkout. Opening pages therefore never spends
+   * the Rossko quota, whatever the number of carts and reloads (the IP limits guard /search,
+   * the cart writes and checkout only).
+   */
+  cacheOnly?: boolean;
 }
 
 /**
@@ -133,13 +141,17 @@ export interface FetchFreshOptions {
 export async function fetchFreshOffers(
   rossko: Pick<RosskoClient, 'search'>,
   articleNorms: Iterable<string>,
-  { priority, bypassCache = false }: FetchFreshOptions,
+  { priority, bypassCache = false, cacheOnly = false }: FetchFreshOptions,
 ): Promise<Map<string, Offer[] | null>> {
   const unique = [...new Set(articleNorms)];
   const searchOne = async (articleNorm: string): Promise<Offer[]> => {
     let result;
     try {
-      result = await rossko.search(articleNorm, { priority, bypassCache });
+      result = await rossko.search(articleNorm, {
+        priority,
+        bypassCache,
+        ...(cacheOnly ? { cacheOnly } : {}),
+      });
     } catch (error) {
       throw new SupplierSearchError(
         articleNorm,

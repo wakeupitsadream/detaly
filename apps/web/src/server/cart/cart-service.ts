@@ -8,8 +8,9 @@
  *   never a price or a markup.
  * - Every write locks the cart row (`for update`), so the line limits and the quantity sum of
  *   a repeated add hold under concurrent requests.
- * - Opening the cart re-prices it through the cache; a supplier failure keeps the stored
- *   prices (checkout re-checks past the cache anyway).
+ * - Opening the cart re-prices it from the supplier cache only (no supplier call: page views
+ *   must not spend the Rossko quota); a miss keeps the stored prices, and checkout re-checks
+ *   past the cache anyway.
  *
  * VERIFY: the offer id posted from /search is `${articleNorm}:${brand}:${stockId}`; finding it
  * again in a (possibly re-fetched) answer assumes live Rossko keeps stock ids stable between
@@ -20,6 +21,7 @@ import {
   CartError,
   cartLineFromOffer,
   cartTotals,
+  MAX_ORDER_TOTAL_KOP,
   offerViewId,
   repriceCartLines,
   validateQty,
@@ -187,6 +189,17 @@ async function lockActiveCart(tx: Executor, token: string | null): Promise<CartR
   return cart ?? null;
 }
 
+/**
+ * The cart after a write that may grow it; above MAX_ORDER_TOTAL_KOP the write is refused
+ * (thrown inside the transaction, so it rolls back): such a cart could never be checked out,
+ * and its total would overflow the int4 *_kop columns of an order.
+ */
+async function boundedSnapshot(tx: Executor, cartId: string): Promise<CartSnapshot> {
+  const result = await snapshot(tx, cartId);
+  if (result.totalKop > MAX_ORDER_TOTAL_KOP) throw new CartRequestError('cart_total');
+  return result;
+}
+
 async function snapshot(tx: Executor, cartId: string): Promise<CartSnapshot> {
   const rows = await tx
     .select({
@@ -332,7 +345,7 @@ export function createCartService(deps: CartServiceDeps): CartService {
           await tx.insert(cartItems).values({ cartId, ...lineValues(line, at) });
         }
         await tx.update(carts).set({ updatedAt: at }).where(eq(carts.id, cartId));
-        const totals = await snapshot(tx, cartId);
+        const totals = await boundedSnapshot(tx, cartId);
         return { ...totals, token: cart.anonToken ?? '', created };
       });
     },
@@ -360,7 +373,7 @@ export function createCartService(deps: CartServiceDeps): CartService {
           await tx.update(cartItems).set({ qty, updatedAt: at }).where(eq(cartItems.id, row.id));
           await tx.update(carts).set({ updatedAt: at }).where(eq(carts.id, cart.id));
         }
-        return snapshot(tx, cart.id);
+        return qty > row.qty ? boundedSnapshot(tx, cart.id) : snapshot(tx, cart.id);
       });
     },
 
@@ -388,10 +401,11 @@ export function createCartService(deps: CartServiceDeps): CartService {
       const at = now();
       const base = { cartId: active.cart.id, settings, now: at };
       try {
+        // Cache only: opening the cart never calls the supplier (a miss keeps stored prices).
         const fresh = await fetchFreshOffers(
           deps.supplier.rossko,
           active.lines.map((l) => l.searchArticleNorm),
-          { priority: 'search' },
+          { priority: 'search', cacheOnly: true },
         );
         const { lines, changes } = repriceCartLines(
           active.lines,

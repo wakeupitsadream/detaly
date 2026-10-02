@@ -20,6 +20,9 @@ export function intEnv(overrides: Record<string, string | undefined> = {}): Env 
       DATABASE_URL: webDatabaseUrl(),
       REDIS_URL: testRedisUrl(),
       ROSSKO_MODE: 'fixtures',
+      // The checkout gate needs the pickup point (checkout-gate.ts).
+      PICKUP_ADDRESS: 'г. Оренбург, ул. Тестовая, 1',
+      PICKUP_HOURS: 'Пн–Пт 10:00–19:00',
       ...overrides,
     }),
   );

@@ -120,12 +120,26 @@ describe('order token and cancel context', () => {
     expect(isOrderToken(undefined)).toBe(false);
   });
 
-  it('builds the client context with the latest payment status', () => {
-    expect(clientCancelContext({ scheme: 'prepay', latestPaymentStatus: null })).toEqual({
+  it('builds the client context with the latest payment status and item arrival', () => {
+    expect(
+      clientCancelContext({
+        scheme: 'prepay',
+        latestPaymentStatus: null,
+        itemStates: ['pending', 'pending'],
+      }),
+    ).toEqual({
       actor: 'client',
       scheme: 'prepay',
       providerPaymentStatus: null,
+      allLiveItemsArrived: false,
     });
+    expect(
+      clientCancelContext({
+        scheme: 'prepay',
+        latestPaymentStatus: 'pending',
+        itemStates: ['arrived', 'failed'],
+      }),
+    ).toMatchObject({ allLiveItemsArrived: true });
   });
 
   it('keys the failure counter by order', () => {

@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { AddToCartForm } from '@/components/AddToCartForm';
 import { CartLineRow } from '@/components/CartLineRow';
 import { CartSummary } from '@/components/CartSummary';
+import { PaymentSchemeNote } from '@/components/checkout/PaymentSchemeNote';
 import { OfferRow } from '@/components/OfferRow';
 import {
   PaymentModeNotice,
@@ -154,6 +155,16 @@ describe('summarizeCart', () => {
     expect(summary.payment.offerSplit).toBe(false);
   });
 
+  it('no split when one part alone is below the minimum order total', () => {
+    // The whole cart (1 170 ₽) passes a 1 000 ₽ minimum; the Orenburg part (528 ₽) does not.
+    const summary = summarizeCart(
+      [line('a', true, 52_800), line('b', false, 64_200)],
+      settings({ minOrderTotalKop: 100_000 }),
+    );
+    expect(summary.minimums).toEqual({ ok: true });
+    expect(summary.payment.offerSplit).toBe(false);
+  });
+
   it('only Orenburg lines: payment on handover explained, final decision after the phone', () => {
     const summary = summarizeCart([line('a', true, 52_800)], settings());
     expect(summary.payment.mixed).toBe(false);
@@ -234,11 +245,28 @@ describe('cart components', () => {
       createElement(CartSummary, {
         ...base,
         minimums: { ok: true },
-        gate: { open: false, message: 'Онлайн-оформление откроется позже' },
+        gate: {
+          open: false,
+          message: 'Оформление на сайте скоро откроется',
+          phone: '+7 900 000-00-01',
+        },
       }),
     );
     expect(closed).not.toContain('href="/checkout"');
-    expect(text(closed)).toContain('Онлайн-оформление откроется позже');
+    expect(text(closed)).toContain('Оформление на сайте скоро откроется');
+    // Every closed reason keeps a way to order: a tappable call button.
+    expect(closed).toContain('href="tel:+79000000001"');
+    expect(text(closed)).toContain('Позвонить +7 900 000-00-01');
+
+    const noPhone = renderToStaticMarkup(
+      createElement(CartSummary, {
+        ...base,
+        minimums: { ok: true },
+        gate: { open: false, message: 'Оформление на сайте временно недоступно.', phone: null },
+      }),
+    );
+    expect(noPhone).not.toContain('tel:');
+    expect(text(noPhone)).toContain('временно недоступно');
   });
 
   it('PaymentModeNotice: split button to /checkout?part=local, else one order', () => {
@@ -316,6 +344,26 @@ describe('cart components', () => {
       createElement(OfferRow, { offer: { ...view, available: 0 }, searchArticleNorm: 'OC90' }),
     );
     expect(empty).not.toContain('/api/cart/items');
+  });
+
+  it('OfferRow: no "В корзину" while online checkout is closed (no dead-end cart)', () => {
+    const closed = renderToStaticMarkup(
+      createElement(OfferRow, { offer: view, searchArticleNorm: 'OC90', orderingOpen: false }),
+    );
+    expect(closed).not.toContain('/api/cart/items');
+    expect(text(closed)).toContain(view.priceText.replace(/\u00a0/g, ' '));
+  });
+
+  it('PaymentSchemeNote: the phone note only under payment on handover', () => {
+    const cod = renderToStaticMarkup(
+      createElement(PaymentSchemeNote, { scheme: 'pay_on_handover', sentences: ['Оплата'] }),
+    );
+    expect(text(cod)).toContain(FINAL_SCHEME_NOTE);
+    const prepay = renderToStaticMarkup(
+      createElement(PaymentSchemeNote, { scheme: 'prepay', sentences: ['Предоплата'] }),
+    );
+    expect(text(prepay)).not.toContain(FINAL_SCHEME_NOTE);
+    expect(text(prepay)).toContain('Предоплата 100% онлайн');
   });
 
   it('AddToCartForm names the offer for screen readers', () => {

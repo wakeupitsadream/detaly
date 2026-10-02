@@ -1,4 +1,5 @@
 import { formatPromise, formatRub, safeMul, type IsoDate, type RepricedLine } from '@detaly/domain';
+import { PICKUP_ADDRESS_UNKNOWN } from '@/components/order/OrderSections';
 import { StockBadge } from '@/components/StockBadge';
 import type { Brand } from '@/server/brand';
 import { telHref } from '@/server/brand';
@@ -91,7 +92,7 @@ export function PickupPoint({ pickup }: { pickup: Brand['pickup'] }) {
         </p>
       ) : null}
       {!pickup.name && !pickup.address ? (
-        <p className="text-sm text-muted">Адрес пункта выдачи пришлём вместе со статусом заказа.</p>
+        <p className="text-sm text-muted">{PICKUP_ADDRESS_UNKNOWN}</p>
       ) : null}
     </section>
   );

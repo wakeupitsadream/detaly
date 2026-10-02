@@ -57,6 +57,13 @@ const nextConfig: NextConfig = {
   // default), so genuine router prefetches are not counted against the search limit. The proxy never rewrites or
   // redirects, which is what this flag would otherwise affect.
   skipProxyUrlNormalize: true,
+  experimental: {
+    // Next buffers a request body for the proxy (10 MB by default) before any route handler
+    // runs. The forms here are tiny (cart 8 KB, checkout 16 KB, cancel 256 B, each also read as
+    // a bounded stream in its handler): past this size Next keeps only the first 64 KB, which
+    // the handlers then reject as malformed.
+    proxyClientMaxBodySize: '64kb',
+  },
   // `next build` must not need a database or env: pages are dynamic (see (site)/layout.tsx).
   // NOINDEX_ALL is a runtime switch (one image for prod and stage), so it is applied in
   // src/proxy.ts, not here: headers() below is evaluated at build time.

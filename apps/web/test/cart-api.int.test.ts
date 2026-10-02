@@ -4,13 +4,19 @@
 import { createRedis, type Redis } from '@detaly/config';
 import { deleteKeysByPrefix, testKeyPrefix, testRedisUrl } from '@detaly/config/testing';
 import { cartItems, carts, createDb, eq, sql, type Db } from '@detaly/db';
+import { MAX_ORDER_TOTAL_KOP } from '@detaly/domain';
 import { createFixtureCaller, RosskoCallError, type RosskoCaller } from '@detaly/rossko';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { cartServiceFromSupplier } from '@/server/cart';
 import { CART_ERROR_MESSAGES } from '@/server/cart/errors';
 import { countCartLines } from '@/server/cart/count';
 import type { CartService } from '@/server/cart/cart-service';
-import { handleAddItem, handleLineRequest, type CartHandlerDeps } from '@/server/cart/http';
+import {
+  handleAddItem,
+  handleLineRequest,
+  MAX_CART_BODY_BYTES,
+  type CartHandlerDeps,
+} from '@/server/cart/http';
 import { CART_COOKIE, MAX_CART_LINES, MAX_CART_SEARCHES, newCartToken } from '@/server/cart-store';
 import { createSupplierDeps, type Supplier } from '@/server/supplier';
 import { intEnv, webDatabaseUrl } from './helpers';
@@ -58,7 +64,7 @@ beforeAll(() => {
   redis = createRedis(testRedisUrl());
   db = createDb(webDatabaseUrl(), { max: 4 });
   supplier = createSupplierDeps({ env, db, redis, keyPrefix: prefix, caller });
-  service = cartServiceFromSupplier(supplier, db);
+  service = cartServiceFromSupplier(supplier, countingDb(db));
   deps = { service, env };
 });
 
@@ -136,9 +142,43 @@ async function linesOf(token: string) {
   return db.select().from(cartItems).where(eq(cartItems.cartId, cart.id));
 }
 
+/**
+ * Carts created (committed) by this file's cart service. Counting rows of the shared carts
+ * table raced with other test files creating carts in parallel; the service's own committed
+ * inserts are counted instead, through a wrapper around its database handle.
+ */
+let committedCartInserts = 0;
+
+function countingDb(inner: Db): Db {
+  return new Proxy(inner, {
+    get(target, prop, receiver) {
+      if (prop !== 'transaction') return Reflect.get(target, prop, receiver) as unknown;
+      return async (run: (tx: unknown) => Promise<unknown>) => {
+        let inserted = 0;
+        const result = await target.transaction((tx) =>
+          run(
+            new Proxy(tx, {
+              get(txTarget, txProp, txReceiver) {
+                if (txProp !== 'insert') {
+                  return Reflect.get(txTarget, txProp, txReceiver) as unknown;
+                }
+                return (table: unknown) => {
+                  if (table === carts) inserted += 1;
+                  return txTarget.insert(table as typeof carts);
+                };
+              },
+            }),
+          ),
+        );
+        committedCartInserts += inserted;
+        return result;
+      };
+    },
+  });
+}
+
 async function cartCount(): Promise<number> {
-  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(carts);
-  return row?.n ?? 0;
+  return Promise.resolve(committedCartInserts);
 }
 
 describe('POST /api/cart/items', () => {
@@ -220,6 +260,8 @@ describe('POST /api/cart/items', () => {
     // Into an existing cart: nothing is added either.
     const existing = await add(KNECHT_ORB1);
     if (!existing.token) throw new Error('no cookie');
+    // The counter does see a cart the service creates.
+    expect(await cartCount()).toBe(before + 1);
     const again = await add(CASTROL_ORB1, { q: 'EDGE5W40', token: existing.token });
     expect(again.res.status).toBe(422);
     expect((await linesOf(existing.token)).map((r) => r.offerKey)).toEqual([KNECHT_ORB1]);
@@ -508,8 +550,19 @@ describe('opening the cart (viewCart)', () => {
     await clearSupplierCache();
     priceFactor = 1.1;
     calls.length = 0;
+    // Cache only: with nothing cached, opening the cart never calls the supplier.
+    const missed = await service.viewCart(token);
+    expect(calls).toEqual([]);
+    expect(missed?.stale).toBe(true);
+    expect(missed?.changes).toEqual([]);
+    expect(missed?.lines.map((l) => l.priceClientKop)).toContain(52_800);
+
+    // A search (/search, the add-to-cart lookup) fills the cache; the cart picks it up.
+    await supplier.rossko.search('OC90');
+    await supplier.rossko.search('GDB1330');
+    calls.length = 0;
     const view = await service.viewCart(token);
-    expect(calls.sort()).toEqual(['GDB1330', 'OC90']);
+    expect(calls).toEqual([]);
     expect(view?.stale).toBe(false);
     expect(view?.changes).toEqual(
       expect.arrayContaining([
@@ -532,6 +585,20 @@ describe('opening the cart (viewCart)', () => {
     expect(calls).toEqual([]);
     expect(again?.changes).toEqual([]);
     expect(again?.lines.map((l) => l.priceClientKop)).toContain(58_100);
+  });
+
+  it('reloading an uncached cart many times never reaches the supplier (quota)', async () => {
+    const { token } = await add(KNECHT_ORB1);
+    if (!token) throw new Error('no cookie');
+    await add(LUCAS_MSK7, { q: 'GDB1330', token });
+    await clearSupplierCache();
+    calls.length = 0;
+    for (let i = 0; i < 5; i += 1) {
+      const view = await service.viewCart(token);
+      expect(view?.stale).toBe(true);
+      expect(view?.lines).toHaveLength(2);
+    }
+    expect(calls).toEqual([]);
   });
 
   it('a supplier failure keeps the stored prices and marks the cart stale', async () => {
@@ -563,5 +630,92 @@ describe('opening the cart (viewCart)', () => {
     expect(await service.viewCart(token)).toBeNull();
     expect(await service.viewCart(null)).toBeNull();
     expect(await service.viewCart(newCartToken())).toBeNull();
+  });
+});
+
+describe('limits of the cart (audit of phase 1A)', () => {
+  it(`a cart above MAX_ORDER_TOTAL_KOP is refused: 422 cart_total, nothing changes`, async () => {
+    await clearSupplierCache();
+    priceFactor = 200;
+    try {
+      const big = await add(KNECHT_ORB1, { qty: 6 });
+      expect(big.res.status).toBe(422);
+      expect(big.body).toEqual({ error: 'cart_total', message: CART_ERROR_MESSAGES.cart_total });
+      expect(big.token).toBeNull();
+
+      const { res, token } = await add(KNECHT_ORB1, { qty: 2 });
+      expect(res.status).toBe(200);
+      if (!token) throw new Error('no cookie');
+      const [line] = await linesOf(token);
+      if (!line) throw new Error('line missing');
+      expect(line.priceClientKop * 6).toBeGreaterThan(MAX_ORDER_TOTAL_KOP);
+      const patched = await handleLineRequest(
+        json(`/api/cart/items/${line.id}`, { qty: 6 }, { token, method: 'PATCH' }),
+        line.id,
+        deps,
+      );
+      expect(patched.status).toBe(422);
+      expect((await patched.json()).error).toBe('cart_total');
+      expect((await linesOf(token))[0]?.qty).toBe(2);
+      // Lowering stays possible.
+      const lower = await handleLineRequest(
+        json(`/api/cart/items/${line.id}`, { qty: 1 }, { token, method: 'PATCH' }),
+        line.id,
+        deps,
+      );
+      expect(lower.status).toBe(200);
+    } finally {
+      priceFactor = 1;
+      await clearSupplierCache();
+    }
+  });
+
+  it('a body above MAX_CART_BODY_BYTES is refused before it is buffered', async () => {
+    const huge = 'x'.repeat(MAX_CART_BODY_BYTES + 1);
+    const asForm = await handleAddItem(
+      form('/api/cart/items', { q: 'OC90', offerId: KNECHT_ORB1, pad: huge }),
+      deps,
+    );
+    expect(asForm.status).toBe(303);
+    expect(asForm.headers.get('location')).toBe('/cart?error=invalid');
+    const asJson = await handleAddItem(
+      json('/api/cart/items', { q: 'OC90', offerId: KNECHT_ORB1, pad: huge }),
+      deps,
+    );
+    expect(asJson.status).toBe(400);
+    // A body that streams past the limit without Content-Length.
+    let sent = 0;
+    const endless = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        sent += 4096;
+        controller.enqueue(new Uint8Array(4096).fill(120));
+        if (sent > 10 * MAX_CART_BODY_BYTES) controller.close();
+      },
+    });
+    const streamed = await handleAddItem(
+      new Request(`${ORIGIN}/api/cart/items`, {
+        method: 'POST',
+        headers: headersFor('application/json', {}),
+        body: endless,
+        duplex: 'half',
+      } as RequestInit),
+      deps,
+    );
+    expect(streamed.status).toBe(400);
+    expect(sent).toBeLessThan(10 * MAX_CART_BODY_BYTES);
+    // A multipart form within the limit still works (parsed from the bounded text).
+    const data = new FormData();
+    data.set('q', 'OC90');
+    data.set('offerId', KNECHT_ORB1);
+    const multipart = await handleAddItem(
+      new Request(`${ORIGIN}/api/cart/items`, {
+        method: 'POST',
+        headers: { origin: ORIGIN },
+        body: data,
+      }),
+      deps,
+    );
+    expect(multipart.status).toBe(303);
+    expect(multipart.headers.get('location')).toBe('/cart?added=1');
   });
 });

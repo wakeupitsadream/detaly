@@ -9,13 +9,10 @@ import { getCartService } from '@/server/cart';
 import { CART_ERROR_MESSAGES, isCartErrorCode } from '@/server/cart/errors';
 import { STALE_PRICES_TEXT, summarizeCart } from '@/server/cart/summary';
 import { readCartToken } from '@/server/cart-store';
-import {
-  CHECKOUT_CLOSED_DOCUMENTS_MESSAGE,
-  getCheckoutGate,
-  type CheckoutGate,
-} from '@/server/checkout-gate';
-import { getDb } from '@/server/db';
-import { serverEnv } from '@/server/env';
+import { getBrand } from '@/server/brand';
+import type { CartView } from '@/server/cart/cart-service';
+import { currentCheckoutGate } from '@/server/checkout-gate';
+import { errorInfo, PageDataError } from '@/server/errors';
 import { getLogger } from '@/server/logger';
 
 export const metadata: Metadata = {
@@ -27,18 +24,6 @@ type SearchParams = Record<string, string | string[] | undefined>;
 
 function first(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? '';
-}
-
-async function checkoutGate(): Promise<CheckoutGate> {
-  try {
-    return await getCheckoutGate({ env: serverEnv(), db: getDb(), logger: getLogger() });
-  } catch (error) {
-    getLogger().warn(
-      { err: error instanceof Error ? error.message : String(error) },
-      'checkout gate failed',
-    );
-    return { open: false, reason: 'documents', message: CHECKOUT_CLOSED_DOCUMENTS_MESSAGE };
-  }
 }
 
 function EmptyCart() {
@@ -66,11 +51,19 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
   const errorCode = first(params.error);
   const added = first(params.added) === '1';
   const token = readCartToken(await cookies());
-  // Re-prices through the supplier cache and stores the result: the banner shows once.
-  const view = await getCartService().viewCart(token);
+  let view: CartView | null;
+  try {
+    // Re-prices from the supplier cache and stores the result: the banner shows once.
+    view = await getCartService().viewCart(token);
+  } catch (error) {
+    // Names and SQLSTATE only: a driver message carries the cart token from the cookie.
+    getLogger().error(errorInfo(error), 'cart page failed');
+    throw new PageDataError('cart page: data unavailable');
+  }
   const lines = view?.lines ?? [];
-  const gate = lines.length > 0 ? await checkoutGate() : null;
+  const gate = lines.length > 0 ? await currentCheckoutGate() : null;
   const summary = view && lines.length > 0 ? summarizeCart(lines, view.settings) : null;
+  const phone = getBrand().contactPhone;
 
   return (
     <div className="min-w-0 space-y-6">
@@ -117,7 +110,7 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
               itemsCount={summary.itemsCount}
               promiseText={summary.promiseText}
               minimums={summary.minimums}
-              gate={gate.open ? { open: true } : { open: false, message: gate.message }}
+              gate={gate.open ? { open: true } : { open: false, message: gate.message, phone }}
             />
             {/* Below the minimum no part of the cart can be checked out either. */}
             <PaymentModeNotice
@@ -129,6 +122,16 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
       ) : (
         <EmptyCart />
       )}
+      {summary ? (
+        <p className="min-w-0" data-testid="cart-more">
+          <Link
+            href="/"
+            className="inline-flex h-11 items-center rounded-xl border border-ink px-4 font-semibold hover:bg-ink hover:text-white"
+          >
+            Найти ещё деталь
+          </Link>
+        </p>
+      ) : null}
     </div>
   );
 }

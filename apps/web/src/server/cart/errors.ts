@@ -2,6 +2,7 @@
  * Error codes of the cart API (docs/phase-1a-implementation.md section 5.1). The code is what a
  * no-JS form gets in `/cart?error=<code>`; the page turns it back into the message below.
  */
+import { formatRub, MAX_ORDER_TOTAL_KOP } from '@detaly/domain';
 import { MAX_CART_LINES, MAX_CART_SEARCHES } from '../cart-store';
 
 export type CartErrorCode =
@@ -12,6 +13,7 @@ export type CartErrorCode =
   | 'excluded'
   | 'qty'
   | 'cart_full'
+  | 'cart_total'
   | 'too_many_searches'
   | 'supplier_unavailable'
   | 'internal';
@@ -24,6 +26,7 @@ const STATUS: Record<CartErrorCode, number> = {
   excluded: 422,
   qty: 422,
   cart_full: 422,
+  cart_total: 422,
   too_many_searches: 422,
   supplier_unavailable: 503,
   internal: 500,
@@ -38,6 +41,7 @@ export const CART_ERROR_MESSAGES: Record<CartErrorCode, string> = {
   excluded: 'Не продаём онлайн, спросите в сервисе',
   qty: 'Такое количество выбрать нельзя: проверьте остаток и кратность',
   cart_full: `В корзине уже ${MAX_CART_LINES} позиций — оформите заказ или удалите лишнее`,
+  cart_total: `Сумма корзины больше ${formatRub(MAX_ORDER_TOTAL_KOP)} — такой заказ на сайте не оформить. Уменьшите количество или позвоните нам`,
   too_many_searches: `В корзине детали из ${MAX_CART_SEARCHES} разных поисков — оформите заказ или удалите лишнее`,
   supplier_unavailable: 'Поставщик сейчас не отвечает, попробуйте через минуту',
   internal: 'Ошибка сервера, попробуйте позже',

@@ -5,12 +5,18 @@
  * - the offer, privacy policy and PD consent texts must exist; with NODE_ENV=production they
  *   must be published versions (a consent to a draft is no proof). Outside production drafts
  *   are accepted, and consents record the draft's version and sha256.
+ * - the pickup point must be known (PICKUP_ADDRESS and PICKUP_HOURS): pickup is the only way
+ *   to receive an order, and the client must see where and when before ordering.
  * The marketing consent document is optional: without it the checkbox is not shown.
  */
 import type { Env } from '@detaly/config';
 import type { Executor } from '@detaly/db';
 import type { DocumentKind } from '@detaly/domain';
+import { getDb } from './db';
 import { getPublishedDocument, type LegalDocument } from './documents';
+import { serverEnv } from './env';
+import { errorInfo } from './errors';
+import { getLogger } from './logger';
 
 export interface CheckoutDocuments {
   offer: LegalDocument;
@@ -21,20 +27,23 @@ export interface CheckoutDocuments {
 
 export type CheckoutGate =
   | { open: true; docs: CheckoutDocuments }
-  | { open: false; reason: 'rkn' | 'documents'; message: string };
+  | { open: false; reason: 'rkn' | 'documents' | 'pickup'; message: string };
 
-export const CHECKOUT_CLOSED_DOCUMENTS_MESSAGE = 'Оформление временно недоступно';
+export const CHECKOUT_CLOSED_DOCUMENTS_MESSAGE = 'Оформление на сайте временно недоступно.';
+
+/** Phone the closed gate sends clients to (the pickup point, else the seller's). */
+export function gatePhone(env: Pick<Env, 'PICKUP_PHONE' | 'SELLER_REQUISITES_PHONE'>) {
+  return env.PICKUP_PHONE ?? env.SELLER_REQUISITES_PHONE ?? null;
+}
 
 /** Text of the closed gate before Roskomnadzor registration, with the point's phone. */
 export function rknClosedMessage(
   env: Pick<Env, 'PICKUP_PHONE' | 'SELLER_REQUISITES_PHONE'>,
 ): string {
-  const phone = env.PICKUP_PHONE ?? env.SELLER_REQUISITES_PHONE;
-  const how = phone ? `по телефону ${phone}` : 'по телефону пункта выдачи';
-  return (
-    'Онлайн-оформление откроется после регистрации оператора персональных данных. ' +
-    `Пока заказать можно ${how}.`
-  );
+  const phone = gatePhone(env);
+  return phone
+    ? `Оформление на сайте скоро откроется. Пока закажите по телефону ${phone}.`
+    : 'Оформление на сайте скоро откроется. Пока закажите в пункте выдачи.';
 }
 
 interface GateLogger {
@@ -58,6 +67,10 @@ export async function getCheckoutGate({
 }: CheckoutGateOptions): Promise<CheckoutGate> {
   if (!env.RKN_NOTICE_NUMBER) {
     return { open: false, reason: 'rkn', message: rknClosedMessage(env) };
+  }
+  if (!env.PICKUP_ADDRESS || !env.PICKUP_HOURS) {
+    logger?.warn({}, 'checkout closed: PICKUP_ADDRESS or PICKUP_HOURS is not set');
+    return { open: false, reason: 'pickup', message: CHECKOUT_CLOSED_DOCUMENTS_MESSAGE };
   }
   const production = env.NODE_ENV === 'production';
   const usable = (doc: LegalDocument | null): doc is LegalDocument =>
@@ -86,4 +99,17 @@ export async function getCheckoutGate({
       consentMarketing: usable(consentMarketing ?? null) ? (consentMarketing ?? null) : null,
     },
   };
+}
+
+/**
+ * The gate for a page render: getCheckoutGate with the process env, database and logger. A
+ * failure (database down) closes the gate for this render instead of failing the page.
+ */
+export async function currentCheckoutGate(): Promise<CheckoutGate> {
+  try {
+    return await getCheckoutGate({ env: serverEnv(), db: getDb(), logger: getLogger() });
+  } catch (error) {
+    getLogger().warn(errorInfo(error), 'checkout gate failed');
+    return { open: false, reason: 'documents', message: CHECKOUT_CLOSED_DOCUMENTS_MESSAGE };
+  }
 }

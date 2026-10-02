@@ -10,8 +10,17 @@
  */
 import { timingSafeEqual } from 'node:crypto';
 import { slidingWindowHit, type Redis } from '@detaly/config';
-import { desc, eq, orderEvents, orders, payments, users, type Executor } from '@detaly/db';
-import { phoneLast4, resolveTransition, type OrderStatus } from '@detaly/domain';
+import {
+  desc,
+  eq,
+  orderEvents,
+  orderItems,
+  orders,
+  payments,
+  users,
+  type Executor,
+} from '@detaly/db';
+import { effectsFor, phoneLast4, resolveTransition, type OrderStatus } from '@detaly/domain';
 import { clientCancelContext, isOrderToken } from './access';
 
 /** Wrong last-4 attempts per order and window (decision Д16). */
@@ -109,6 +118,7 @@ export async function cancelOrderByToken(
   if (!found) return { kind: 'not_found' };
 
   const key = cancelFailKey(found.id, keyPrefix);
+  // Cheap early answer without taking the row lock; the binding check is the one below.
   const before = await withRedis(() => recentFailures(redis, key, now().getTime()));
   if (before.count >= CANCEL_FAIL_LIMIT) {
     return { kind: 'too_many_attempts', retryAfterSec: before.retryAfterSec };
@@ -127,6 +137,14 @@ export async function cancelOrderByToken(
       .where(eq(orders.id, found.id))
       .for('update');
     if (!order) return { kind: 'not_found' };
+
+    // Attempts of one order are serialized by the row lock above, so the counter read here is
+    // the one every earlier attempt already wrote to: parallel guesses that all passed the
+    // early check cannot reach the comparison after the fifth failure (decision Д16).
+    const locked = await withRedis(() => recentFailures(redis, key, now().getTime()));
+    if (locked.count >= CANCEL_FAIL_LIMIT) {
+      return { kind: 'too_many_attempts', retryAfterSec: locked.retryAfterSec };
+    }
 
     const [user] = await tx
       .select({ phone: users.phone })
@@ -157,9 +175,14 @@ export async function cancelOrderByToken(
       .where(eq(payments.orderId, order.id))
       .orderBy(desc(payments.createdAt), desc(payments.id))
       .limit(1);
+    const items = await tx
+      .select({ state: orderItems.state })
+      .from(orderItems)
+      .where(eq(orderItems.orderId, order.id));
     const ctx = clientCancelContext({
       scheme: order.scheme,
       latestPaymentStatus: payment?.status ?? null,
+      itemStates: items.map((item) => item.state),
     });
     const decision = resolveTransition(order.status, 'client_cancelled', ctx);
     if (!decision.ok) {
@@ -172,18 +195,26 @@ export async function cancelOrderByToken(
     }
 
     const at = now();
+    const { rule } = decision;
+    // Notifications and effects are sent by phase 1B; 1A records what is owed (as checkout
+    // records deferredEffects), e.g. the supplier-return task of an order that already arrived.
+    const effects = effectsFor(rule, ctx);
+    const notify = rule.notify.map((spec) => `${spec.audience}:${spec.template}`);
     await tx
       .update(orders)
-      .set({ status: decision.rule.to, cancelledAt: at, expiresAt: null })
+      .set({ status: rule.to, cancelledAt: at, expiresAt: null, updatedAt: at })
       .where(eq(orders.id, order.id));
     await tx.insert(orderEvents).values({
       orderId: order.id,
       type: 'client_cancelled',
       fromStatus: order.status,
-      toStatus: decision.rule.to,
+      toStatus: rule.to,
       actorType: 'client',
       actorId: order.userId,
-      payload: {},
+      payload: {
+        ...(effects.length > 0 ? { deferredEffects: effects } : {}),
+        ...(notify.length > 0 ? { deferredNotify: notify } : {}),
+      },
       createdAt: at,
     });
     return { kind: 'cancelled', orderId: order.id, number: order.number, from: order.status };

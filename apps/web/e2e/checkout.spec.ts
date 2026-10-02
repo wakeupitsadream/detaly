@@ -25,8 +25,15 @@ const OIL_EXCLUDED = 'EDGE5W40:CASTROL:ORB1';
 const ORDER_PATH_RE = /^\/o\/[A-Za-z0-9_-]{43}$/;
 const PROMISE_RE = /к (пн|вт|ср|чт|пт|сб|вс) \d{1,2} [а-я]+/;
 
-/** What this worker typed into the forms: the server log must contain none of it. */
-const typed: { phones: string[]; names: string[] } = { phones: [], names: [] };
+/**
+ * What this worker typed into the forms and the order links it got: the server log must contain
+ * none of it (an access token is a bearer secret of /o/<token>).
+ */
+const typed: { phones: string[]; names: string[]; tokens: string[] } = {
+  phones: [],
+  names: [],
+  tokens: [],
+};
 
 // A fresh client ip per test: a test never eats another one's rate limit budget.
 test.use({
@@ -99,6 +106,7 @@ async function submitAndOpenOrder(page: Page): Promise<Response> {
   await submitButton(page).click();
   const response = await orderDocument;
   await expect(page).toHaveURL((url) => ORDER_PATH_RE.test(url.pathname));
+  typed.tokens.push(new URL(response.url()).pathname.slice('/o/'.length));
   expect(response.status()).toBe(200);
   return response;
 }
@@ -136,6 +144,8 @@ test('mixed cart: prepayment order from search to the order page', async ({ page
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
   const cartPromises = await linePromises(page, 'cart-line', 'cart-line-promise');
   expect(Object.keys(cartPromises)).toHaveLength(2);
+  // A second part is one tap away from the cart, not only through «Назад».
+  await expect(page.getByTestId('cart-more').getByRole('link')).toHaveAttribute('href', '/');
   await expectNoHorizontalScroll(page, '/cart');
   await screenshot(page, project, 'cart');
 
@@ -337,6 +347,13 @@ test('no consent, no order: the button stays off and the API answers 422', async
     expectedTotalKop: Number(await form.locator('input[name="expectedTotalKop"]').inputValue()),
     itemsHash: await form.locator('input[name="itemsHash"]').inputValue(),
     checkoutKey: await form.locator('input[name="checkoutKey"]').inputValue(),
+    offerVersionId: await form.locator('input[name="offerVersionId"]').inputValue(),
+    consentPdVersionId: await form.locator('input[name="consentPdVersionId"]').inputValue(),
+    consentMarketingVersionId:
+      (await form.locator('input[name="consentMarketingVersionId"]').inputValue()) || null,
+    expectedScheme: await form.locator('input[name="expectedScheme"]').inputValue(),
+    expectedPromisedDate:
+      (await form.locator('input[name="expectedPromisedDate"]').inputValue()) || null,
     website: '',
   };
   // A same-origin fetch from the page, as the form would send it, minus the consent.
@@ -392,5 +409,8 @@ test.afterAll(async () => {
   const log = await readFile(logPath, 'utf8');
   for (const value of [...typed.phones, ...typed.names]) {
     expect(log.includes(value), 'personal data in the server log').toBe(false);
+  }
+  for (const token of typed.tokens) {
+    expect(log.includes(token), 'an order access token in the server log').toBe(false);
   }
 });

@@ -7,10 +7,16 @@ import { CheckoutSummary, PickupPoint } from '@/components/checkout/CheckoutSumm
 import { PaymentSchemeNote } from '@/components/checkout/PaymentSchemeNote';
 import { DiffBanner } from '@/components/DiffBanner';
 import { getBrand } from '@/server/brand';
+import { STALE_PRICES_TEXT } from '@/server/cart/summary';
 import { readCartToken } from '@/server/cart-store';
 import { getCheckoutGate } from '@/server/checkout-gate';
-import { loadCheckoutPage, parseCartPart } from '@/server/checkout/page-data';
+import {
+  loadCheckoutPage,
+  parseCartPart,
+  type CheckoutPageData,
+} from '@/server/checkout/page-data';
 import { getDb } from '@/server/db';
+import { errorInfo, PageDataError } from '@/server/errors';
 import { serverEnv } from '@/server/env';
 import { getLogger } from '@/server/logger';
 import { getSupplier } from '@/server/supplier';
@@ -35,15 +41,22 @@ export default async function CheckoutPage({
   const brand = getBrand();
   const cookieStore = await cookies();
 
-  const data = await loadCheckoutPage(
-    {
-      db,
-      supplier,
-      loadSettings: () => supplier.settings.get(),
-      gate: () => getCheckoutGate({ env, db, logger: getLogger() }),
-    },
-    { cartToken: readCartToken(cookieStore), part: parseCartPart(params.part) },
-  );
+  let data: CheckoutPageData;
+  try {
+    data = await loadCheckoutPage(
+      {
+        db,
+        supplier,
+        loadSettings: () => supplier.settings.get(),
+        gate: () => getCheckoutGate({ env, db, logger: getLogger() }),
+      },
+      { cartToken: readCartToken(cookieStore), part: parseCartPart(params.part) },
+    );
+  } catch (error) {
+    // Names and SQLSTATE only: a driver message carries the cart token from the cookie.
+    getLogger().error(errorInfo(error), 'checkout page failed');
+    throw new PageDataError('checkout page: data unavailable');
+  }
 
   if (data.kind === 'no_cart') redirect('/cart');
 
@@ -65,8 +78,11 @@ export default async function CheckoutPage({
           <div className="min-w-0 space-y-4">
             <DiffBanner changes={data.changes} />
             {data.staleCount > 0 ? (
-              <p className="rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
-                Не удалось обновить цены, проверим при оформлении.
+              <p
+                className="rounded-xl border border-line bg-card px-4 py-3 text-sm text-muted"
+                data-testid="checkout-stale-prices"
+              >
+                {STALE_PRICES_TEXT}.
               </p>
             ) : null}
             {data.mixed && data.part === 'local' ? (
@@ -104,6 +120,9 @@ export default async function CheckoutPage({
               expectedTotalKop={data.totals.subtotalKop}
               itemsHash={data.itemsHash}
               checkoutKey={data.checkoutKey}
+              documents={data.documents}
+              expectedScheme={data.decision.scheme}
+              expectedPromisedDate={data.promisedDate}
               marketingAvailable={data.marketingAvailable}
               blockedMessage={data.minimums.ok ? null : data.minimums.message}
               contactPhone={brand.contactPhone}

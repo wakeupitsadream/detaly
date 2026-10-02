@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ACTOR_TYPES,
   effectsFor,
+  liveItemsAllArrived,
   ORDER_EVENTS,
   ORDER_NOTIFY_TEMPLATES,
   ORDER_STATUSES,
@@ -151,7 +152,19 @@ const EXPECTED: readonly Row[] = [
   ],
 
   // client cancellation before payment (phase 1A, decision Д3)
-  ['awaiting_payment', 'client_cancelled', client({ providerPaymentStatus: null }), 'cancelled'],
+  [
+    'awaiting_payment',
+    'client_cancelled',
+    client({ providerPaymentStatus: null, allLiveItemsArrived: false }),
+    'cancelled',
+  ],
+  // ... and after «Оплатить заранее» on a ready order: a refusal with the supplier-return task
+  [
+    'awaiting_payment',
+    'client_cancelled',
+    client({ providerPaymentStatus: 'pending', allLiveItemsArrived: true }),
+    'cancelled',
+  ],
 
   // cancelled: late payment must be refunded
   ['cancelled', 'payment_succeeded', paid(500_000), 'refund_pending'],
@@ -920,7 +933,7 @@ describe('guards', () => {
         const result = resolveTransition(
           'awaiting_payment',
           'client_cancelled',
-          client({ providerPaymentStatus: status }),
+          client({ providerPaymentStatus: status, allLiveItemsArrived: false }),
         );
         expect(result).toMatchObject({ ok: true, rule: { to: 'cancelled', notify: [] } });
         if (result.ok) expect(effectsFor(result.rule, client())).toEqual([]);
@@ -929,22 +942,56 @@ describe('guards', () => {
 
     it('a succeeded (or captured) payment cannot be cancelled by the client', () => {
       for (const status of ['succeeded', 'waiting_for_capture'] as const) {
-        expect(
-          resolveTransition(
-            'awaiting_payment',
-            'client_cancelled',
-            client({ providerPaymentStatus: status }),
-          ),
-        ).toEqual({ ok: false, reason: 'guard_failed', failed: ['no_payment_succeeded'] });
+        for (const allLiveItemsArrived of [false, true]) {
+          expect(
+            resolveTransition(
+              'awaiting_payment',
+              'client_cancelled',
+              client({ providerPaymentStatus: status, allLiveItemsArrived }),
+            ),
+          ).toEqual({ ok: false, reason: 'guard_failed', failed: ['no_payment_succeeded'] });
+        }
       }
     });
 
-    it('without providerPaymentStatus the guard fails closed', () => {
-      expect(resolveTransition('awaiting_payment', 'client_cancelled', client())).toEqual({
-        ok: false,
-        reason: 'guard_failed',
-        failed: ['no_payment_succeeded'],
-      });
+    it('without providerPaymentStatus or the arrival flag the guards fail closed', () => {
+      expect(
+        resolveTransition(
+          'awaiting_payment',
+          'client_cancelled',
+          client({ allLiveItemsArrived: false }),
+        ),
+      ).toEqual({ ok: false, reason: 'guard_failed', failed: ['no_payment_succeeded'] });
+      expect(
+        resolveTransition(
+          'awaiting_payment',
+          'client_cancelled',
+          client({ providerPaymentStatus: null }),
+        ),
+      ).toMatchObject({ ok: false, reason: 'guard_failed' });
+    });
+
+    it('liveItemsAllArrived: dropped items do not count, nothing live is not arrived', () => {
+      expect(liveItemsAllArrived(['arrived', 'arrived'])).toBe(true);
+      expect(liveItemsAllArrived(['arrived', 'failed', 'replaced'])).toBe(true);
+      expect(liveItemsAllArrived(['arrived', 'ordered'])).toBe(false);
+      expect(liveItemsAllArrived(['pending'])).toBe(false);
+      expect(liveItemsAllArrived(['failed', 'refunded'])).toBe(false);
+      expect(liveItemsAllArrived([])).toBe(false);
+    });
+
+    it('ready -> «Оплатить заранее» -> client_cancelled is a refusal, never a silent cancel', () => {
+      const switched = resolveTransition('ready', 'switch_to_prepay', client({ ...COD }));
+      expect(switched).toMatchObject({ ok: true, rule: { to: 'awaiting_payment' } });
+      const ctx = client({ providerPaymentStatus: 'pending', allLiveItemsArrived: true });
+      const result = resolveTransition('awaiting_payment', 'client_cancelled', ctx);
+      expect(result).toMatchObject({ ok: true, rule: { to: 'cancelled' } });
+      if (!result.ok) return;
+      expect(result.rule.notify).toEqual([
+        { audience: 'client', template: 'order_cancelled' },
+        { audience: 'sellers', template: 'staff_cancel_at_supplier_task' },
+      ]);
+      expect(effectsFor(result.rule, ctx)).toEqual(['cancel_at_supplier_task']);
     });
 
     it('awaiting_confirmation is cancelled without payment data, by the client only', () => {
@@ -958,7 +1005,7 @@ describe('guards', () => {
         resolveTransition(
           'awaiting_payment',
           'client_cancelled',
-          system({ providerPaymentStatus: null }),
+          system({ providerPaymentStatus: null, allLiveItemsArrived: false }),
         ),
       ).toMatchObject({ ok: false, reason: 'guard_failed', failed: ['actor'] });
     });

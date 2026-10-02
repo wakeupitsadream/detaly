@@ -1,6 +1,6 @@
 /**
  * Data of the /checkout page (docs/phase-1a-implementation.md section 6.1): the gate, the cart
- * part, a repricing through the supplier cache (as /cart) with its changes stored and shown
+ * part, a repricing from the supplier cache only (as /cart) with its changes stored and shown
  * once, totals, the delivery promise, the payment scheme as it would be without no-shows, the
  * order minimums and the hidden values of the form (expected total, items hash, checkout key).
  * POST /api/checkout repeats the repricing past the cache and answers 409 on any difference.
@@ -70,6 +70,15 @@ export interface CheckoutPageReady {
   remainingCount: number;
   marketingAvailable: boolean;
   checkoutKey: string;
+  /**
+   * Versions of the documents linked from the form (hidden fields): the order and the consents
+   * must record exactly these, POST answers 409 documents_changed otherwise.
+   */
+  documents: {
+    offerVersionId: string;
+    consentPdVersionId: string;
+    consentMarketingVersionId: string | null;
+  };
 }
 
 export type CheckoutPageData =
@@ -100,11 +109,12 @@ export async function loadCheckoutPage(
   const now = (deps.now ?? (() => new Date()))();
   const [settings, fresh] = await Promise.all([
     deps.loadSettings(),
-    // Through the cache; a failed article keeps its line as is (null) instead of failing.
+    // Cache only (a page view never calls the supplier); a missed or failed article keeps its
+    // line as is (null) instead of failing. POST /api/checkout re-checks past the cache.
     fetchFreshOffers(
       deps.supplier.rossko,
       partLines.map((l) => l.searchArticleNorm),
-      { priority: 'search' },
+      { priority: 'search', cacheOnly: true },
     ),
   ]);
   const repriced = repriceCartLines(partLines, fresh, {
@@ -158,9 +168,16 @@ export async function loadCheckoutPage(
       splitAdvice(active.lines, {
         onPickupMaxTotalKop: settings.order.onPickupMaxTotalKop,
         noShowLimit: settings.order.noShowLimit,
+        minOrderTotalKop: settings.order.minOrderTotalKop,
+        minMarginKop: settings.order.minMarginKop,
       }).offerSplit,
     remainingCount: active.lines.filter((l) => !partIds.has(l.id) && !removedIds.has(l.id)).length,
     marketingAvailable: gate.docs.consentMarketing !== null,
     checkoutKey: uuidV7(now.getTime()),
+    documents: {
+      offerVersionId: gate.docs.offer.id,
+      consentPdVersionId: gate.docs.consentPd.id,
+      consentMarketingVersionId: gate.docs.consentMarketing?.id ?? null,
+    },
   };
 }

@@ -28,6 +28,16 @@ export function normalizePhone(input: string): string | null {
   return NSN_RE.test(nsn) ? `+7${nsn}` : null;
 }
 
+/**
+ * A mobile (DEF 9xx) number in E.164, or null. Checkout accepts only these: SMS is the fallback
+ * channel for confirmations and decisions (PLAN), and a landline or an 8-800 number cannot
+ * receive it.
+ */
+export function normalizeMobilePhone(input: string): string | null {
+  const e164 = normalizePhone(input);
+  return e164 !== null && e164.startsWith('+79') ? e164 : null;
+}
+
 /** Last four digits ('+79123456789' -> '6789'): the order cancellation check. */
 export function phoneLast4(e164: string): string {
   return e164.replace(/\D/g, '').slice(-4);

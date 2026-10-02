@@ -6,6 +6,7 @@ import { OrderDetails } from '@/components/order/OrderDetails';
 import { getBrand } from '@/server/brand';
 import { readCartToken } from '@/server/cart-store';
 import { getDb } from '@/server/db';
+import { errorInfo, PageDataError } from '@/server/errors';
 import { getLogger } from '@/server/logger';
 import { isOrderToken } from '@/server/orders/access';
 import { findCartReminder } from '@/server/orders/cart-reminder';
@@ -13,8 +14,19 @@ import { loadOrderView } from '@/server/orders/order-view';
 
 type Params = Promise<{ token: string }>;
 
-/** One query per request for both the metadata and the page. */
-const getOrderView = cache((token: string) => loadOrderView(getDb(), token));
+/**
+ * One query per request for both the metadata and the page. A database failure is logged
+ * with names and SQLSTATE only and rethrown without the driver message: that message carries
+ * the query parameters, and the access token is one of them (the error page shows nothing).
+ */
+const getOrderView = cache(async (token: string) => {
+  try {
+    return await loadOrderView(getDb(), token);
+  } catch (error) {
+    getLogger().error(errorInfo(error), 'order page: database unavailable');
+    throw new PageDataError('order page: database unavailable');
+  }
+});
 
 const PRIVATE: Pick<Metadata, 'robots' | 'referrer'> = {
   robots: { index: false, follow: false },
@@ -37,10 +49,7 @@ export default async function OrderPage({ params }: { params: Params }) {
 
   const brand = getBrand();
   const cartReminder = await findCartReminder(getDb(), readCartToken(await cookies()), (error) =>
-    getLogger().warn(
-      { err: error instanceof Error ? error.message : 'error' },
-      'order page: cart lookup failed',
-    ),
+    getLogger().warn(errorInfo(error), 'order page: cart lookup failed'),
   );
 
   return (

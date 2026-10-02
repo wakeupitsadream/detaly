@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { maskPhone, normalizePhone, phoneLast4 } from '../src';
+import { maskPhone, normalizeMobilePhone, normalizePhone, phoneLast4 } from '../src';
 
 describe('normalizePhone', () => {
   it.each([
@@ -55,5 +55,19 @@ describe('phoneLast4 and maskPhone', () => {
   it('masks everything except the last four digits', () => {
     expect(maskPhone('+79123454567')).toBe('+7 ••• •••-45-67');
     expect(maskPhone('+79123456789')).not.toContain('912');
+  });
+});
+
+describe('normalizeMobilePhone', () => {
+  it('accepts DEF 9xx numbers only', () => {
+    expect(normalizeMobilePhone('8 (912) 345-67-89')).toBe('+79123456789');
+    expect(normalizeMobilePhone('+7 912 345 67 89')).toBe('+79123456789');
+  });
+
+  it('rejects landlines, 8-800 and anything normalizePhone rejects', () => {
+    expect(normalizeMobilePhone('3532123456')).toBeNull();
+    expect(normalizeMobilePhone('8 800 555-35-35')).toBeNull();
+    expect(normalizeMobilePhone('+7 495 123-45-67')).toBeNull();
+    expect(normalizeMobilePhone('12345')).toBeNull();
   });
 });

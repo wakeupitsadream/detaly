@@ -76,6 +76,11 @@ export interface SearchOptions {
   priority?: CallPriority;
   /** Skip the cache read (cart recheck, POST /checkout); the fresh result is still cached. */
   bypassCache?: boolean;
+  /**
+   * Read the cache only: a miss (or no cache) throws SearchCacheMissError instead of calling
+   * the supplier. For page views that must not spend the quota (/cart, /checkout).
+   */
+  cacheOnly?: boolean;
 }
 
 /** Parsed GetSearch response before caching. */

@@ -10,6 +10,8 @@ import { newAccessToken, newPickupCode, orderUrl } from '@/server/checkout/check
 import { UUID_V7_RE, uuidV7 } from '@/server/checkout/uuid';
 
 const HASH = 'a'.repeat(64);
+const OFFER_ID = uuidV7();
+const PD_ID = uuidV7();
 
 function body(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -22,6 +24,11 @@ function body(overrides: Record<string, unknown> = {}): Record<string, unknown> 
     expectedTotalKop: 52_800,
     itemsHash: HASH,
     checkoutKey: uuidV7(),
+    offerVersionId: OFFER_ID,
+    consentPdVersionId: PD_ID,
+    consentMarketingVersionId: null,
+    expectedScheme: 'pay_on_handover',
+    expectedPromisedDate: '2026-10-08',
     ...overrides,
   };
 }
@@ -40,6 +47,11 @@ describe('parseCheckoutInput', () => {
       expectedTotalKop: 52_800,
       itemsHash: HASH,
       checkoutKey: expect.stringMatching(UUID_V7_RE),
+      offerVersionId: OFFER_ID,
+      consentPdVersionId: PD_ID,
+      consentMarketingVersionId: null,
+      expectedScheme: 'pay_on_handover',
+      expectedPromisedDate: '2026-10-08',
     });
     expect(result.input).not.toHaveProperty('priceClientKop');
   });
@@ -62,6 +74,13 @@ describe('parseCheckoutInput', () => {
     ['a short hash', body({ itemsHash: 'abc' })],
     ['an upper-case hash', body({ itemsHash: 'A'.repeat(64) })],
     ['a bad checkout key', body({ checkoutKey: 'not-a-uuid' })],
+    ['no offer version', body({ offerVersionId: undefined })],
+    ['no PD consent version', body({ consentPdVersionId: 'v1' })],
+    ['a missing marketing version field', body({ consentMarketingVersionId: undefined })],
+    ['an unknown scheme', body({ expectedScheme: 'cash' })],
+    ['no expected scheme', body({ expectedScheme: undefined })],
+    ['a bad promised date', body({ expectedPromisedDate: '2026-13-01' })],
+    ['a promised date with time', body({ expectedPromisedDate: '2026-10-08T00:00:00Z' })],
   ])('rejects %s with 400', (_label, value) => {
     expect(parseCheckoutInput(value)).toEqual({ ok: false, status: 400, error: 'bad_request' });
   });
@@ -98,6 +117,18 @@ describe('parseCheckoutInput', () => {
     expect(parseCheckoutInput(body({ phone: 89123456789 }))).toMatchObject({
       fields: { phone: FIELD_MESSAGES.phone },
     });
+  });
+
+  it('accepts mobile numbers only: no landline, no 8-800 (SMS is the fallback channel)', () => {
+    for (const phone of ['8 (3532) 12-34-56', '8 800 555-35-35', '+7 495 123-45-67']) {
+      expect(parseCheckoutInput(body({ phone }))).toEqual({
+        ok: false,
+        status: 422,
+        error: 'validation',
+        fields: { phone: FIELD_MESSAGES.phone },
+      });
+    }
+    expect(FIELD_MESSAGES.phone).toMatch(/^Введите мобильный номер/);
   });
 
   it('cleanName: letters required, 60 characters at most, control characters removed', () => {

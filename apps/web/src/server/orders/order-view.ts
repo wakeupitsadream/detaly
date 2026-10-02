@@ -106,6 +106,7 @@ export async function loadOrderView(db: Executor, token: string): Promise<OrderV
           qty: true,
           isLocal: true,
           priceClientKop: true,
+          state: true,
         },
         orderBy: (t, ops) => [ops.asc(t.createdAt), ops.asc(t.id)],
       },
@@ -128,6 +129,7 @@ export async function loadOrderView(db: Executor, token: string): Promise<OrderV
   const ctx = clientCancelContext({
     scheme: order.paymentScheme,
     latestPaymentStatus: order.payments[0]?.status ?? null,
+    itemStates: order.items.map((item) => item.state),
   });
   const items = order.items.map((item): OrderItemView => ({
     id: item.id,

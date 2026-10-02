@@ -62,13 +62,28 @@ describe('getCheckoutGate', () => {
     expect(gate).toEqual({
       open: false,
       reason: 'rkn',
-      message:
-        'Онлайн-оформление откроется после регистрации оператора персональных данных. ' +
-        'Пока заказать можно по телефону +7 900 000-00-01.',
+      message: 'Оформление на сайте скоро откроется. Пока закажите по телефону +7 900 000-00-01.',
     });
-    expect(
-      rknClosedMessage({ PICKUP_PHONE: undefined, SELLER_REQUISITES_PHONE: undefined }),
-    ).toContain('по телефону пункта выдачи');
+    expect(rknClosedMessage({ PICKUP_PHONE: undefined, SELLER_REQUISITES_PHONE: undefined })).toBe(
+      'Оформление на сайте скоро откроется. Пока закажите в пункте выдачи.',
+    );
+  });
+
+  it('is closed without PICKUP_ADDRESS or PICKUP_HOURS: the client must see where to go', async () => {
+    for (const missing of ['PICKUP_ADDRESS', 'PICKUP_HOURS'] as const) {
+      const warnings: string[] = [];
+      const gate = await getCheckoutGate({
+        env: intEnv({ RKN_NOTICE_NUMBER: 'TEST-1', [missing]: undefined }),
+        db,
+        logger: { warn: (_details, message) => warnings.push(message) },
+      });
+      expect(gate).toEqual({
+        open: false,
+        reason: 'pickup',
+        message: 'Оформление на сайте временно недоступно.',
+      });
+      expect(warnings).toEqual(['checkout closed: PICKUP_ADDRESS or PICKUP_HOURS is not set']);
+    }
   });
 
   it('is open with the seeded drafts outside production', async () => {

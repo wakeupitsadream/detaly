@@ -438,7 +438,7 @@ describe('admin card', () => {
     expect(html).toContain('action="/api/admin/orders/');
     expect(html).toContain('data-action="refund_payment"');
 
-    const view = await loadOrderView(db, order.token);
+    const view = await loadOrderView(db, order.token, { env: engine.env, paymentsEnabled: false });
     if (!view) throw new Error('order view missing');
     expect(JSON.stringify(view)).not.toContain(order.phone);
     const page = renderToStaticMarkup(

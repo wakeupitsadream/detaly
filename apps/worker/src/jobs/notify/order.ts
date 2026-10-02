@@ -54,6 +54,7 @@ import {
 } from '@detaly/orders';
 import { UnrecoverableError, type Job } from 'bullmq';
 import type { WorkerDeps } from '../../deps';
+import { refreshCard } from '../receipts/offset';
 import { guardedSmsDriver } from './sms';
 import { loadTemplateData, type TemplateExtras } from './template-data';
 
@@ -228,6 +229,9 @@ async function notifyOwner(ctx: NotifyContext): Promise<NotifyOrderOutcome> {
     text,
     dedupeKey: `${data.orderEventId}:${data.template}`,
   });
+  // Owner-only events (staff_supplier_invoice_due, ...) change the buttons the sellers chat card
+  // should offer («Счёт оплачен»): redraw the open card, best effort.
+  await refreshCard(deps, { orderId: ctx.orderId });
   return { status: 'sent', channel: 'telegram' };
 }
 

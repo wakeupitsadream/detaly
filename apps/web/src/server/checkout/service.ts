@@ -1,6 +1,7 @@
 /** Process-wide checkout service wired to the real database, supplier, gate and logger. */
 import { getCheckoutGate } from '../checkout-gate';
 import { getDb } from '../db';
+import { getEngineDeps } from '../engine';
 import { serverEnv } from '../env';
 import { singleton } from '../globals';
 import { getLogger } from '../logger';
@@ -20,6 +21,8 @@ export function getCheckoutService(): CheckoutService {
       gate: () => getCheckoutGate({ env, db, logger }),
       logger,
       env,
+      // Wakes the outbox dispatcher after the order commit (decision Б1).
+      nudge: () => getEngineDeps().nudge?.(),
     });
   });
 }

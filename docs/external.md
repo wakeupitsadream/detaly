@@ -96,6 +96,7 @@
 | Ю19 [ф1B] | VERIFY (к Ю1, Ю14): если `GET /receipts?payment_id=` недоступен или не показывает чек, а у платежа `receipt_registration = succeeded`, воркер считает чек платежа зарегистрированным и пишет id платежа вместо `provider_receipt_id` (`apps/worker/src/jobs/receipts/payment-receipt.ts`). Ночная сверка `GET /payments` (Ю15, решение Б29) только шлёт алерты и ничего не меняет (`apps/worker/src/jobs/reconciliation/nightly.ts`) | | |
 | Ю11 [ф1B, лимиты] | VERIFY: лимиты `metadata` — 16 ключей, ключ до 32 и значение до 512 символов; `description` до 128 символов (`packages/payments/src/yookassa.ts`, `packages/orders/src/rows.ts`) | | |
 | Ю11 [ф1B, web-pay] | VERIFY: хост `confirmation_url` у платежа с `confirmation.type=redirect` — `yoomoney.ru` (CSP `form-action` в `apps/web/next.config.ts`: браузер применяет его к 303 после формы «Оплатить», чужой хост заблокирует переход); сохраняет ли ЮKassa query `?paid=1` в `return_url` (`apps/web/src/server/payments/pay-handler.ts`) | | |
+| Ю5 [ф1B, web-pay] | VERIFY: самое большое тело уведомления ЮKassa (платёж с чеком и `metadata`) укладывается в лимит 64 КБ (`MAX_WEBHOOK_BODY_BYTES`, `apps/web/src/server/payments/webhook-handler.ts`; больше — 413 и уведомление теряется до ночной сверки); график повторов уведомления после ответа 500 (сбой записи в `webhook_events`) — сколько попыток и как долго | | |
 
 ## 4. Маркировка «Честный знак» (результат проверки, гейт фазы 0)
 

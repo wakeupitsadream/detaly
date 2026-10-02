@@ -15,7 +15,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import type { Env } from '@detaly/config';
-import { and, cartItems, carts, eq, inArray, type Executor } from '@detaly/db';
+import { and, cartItems, carts, eq, inArray, sql, type Executor } from '@detaly/db';
 import type { CartLine, Offer, RepricedLine } from '@detaly/domain';
 import { searchFailure, type CallPriority, type RosskoClient } from '@detaly/rossko';
 
@@ -182,11 +182,17 @@ export async function persistRepricing(
   const fresh = repriced.filter((l) => l.status === 'ok' && !l.stale);
   if (removed.length === 0 && fresh.length === 0) return [];
   await db.transaction(async (tx) => {
+    // Same lock order as the cart API and checkout (carts row, then its lines): without it a
+    // checkout in another tab could deadlock against this write (40P01).
+    await tx.select({ id: carts.id }).from(carts).where(eq(carts.id, cartId)).for('update');
     for (const line of fresh) {
       await tx
         .update(cartItems)
         .set({
-          qty: line.qty,
+          // Repricing only ever lowers a quantity (stock, multiplicity). The snapshot was read
+          // before the supplier call, so a quantity changed meanwhile in another tab is kept
+          // when it is already lower; it is never raised back to the snapshot value.
+          qty: sql`least(${cartItems.qty}, ${line.qty})`,
           brand: line.offer.brand,
           article: line.offer.article,
           name: line.offer.name,

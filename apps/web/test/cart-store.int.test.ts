@@ -319,6 +319,22 @@ describe('persistRepricing and removeCartLines', () => {
     expect((await findActiveCart(db, cart.token))?.lines).toEqual([]);
   });
 
+  it('keeps a quantity lowered in another tab after the snapshot was read', async () => {
+    const cart = await insertCart();
+    const knecht = await offerOf('OC90', 'Knecht', 'ORB1');
+    const line = await insertLine(cart.id, knecht, 'OC90', 3);
+    const active = await findActiveCart(db, cart.token);
+    if (!active) throw new Error('cart not found');
+    const fresh = await fetchFreshOffers(supplier.rossko, ['OC90'], { priority: 'search' });
+    const { lines } = repriceCartLines(active.lines, fresh, ctx());
+    expect(lines[0]?.qty).toBe(3);
+    // Another tab lowers the quantity while the supplier call was in flight.
+    await db.update(cartItems).set({ qty: 1 }).where(eq(cartItems.id, line.id));
+    await persistRepricing(db, cart.id, lines);
+    const [row] = await db.select().from(cartItems).where(eq(cartItems.id, line.id));
+    expect(row?.qty).toBe(1);
+  });
+
   it('removeCartLines ignores lines of other carts', async () => {
     const a = await insertCart();
     const b = await insertCart();

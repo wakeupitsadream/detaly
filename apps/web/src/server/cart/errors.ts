@@ -83,14 +83,7 @@ export function isCartRequestError(error: unknown): error is CartRequestError {
   );
 }
 
-/** Error of a class from another bundle's copy of a package, matched by `name` (see above). */
-export function isNamedError<T extends Error>(
-  error: unknown,
-  ctor: abstract new (...args: never[]) => T,
-  name: string,
-): error is T {
-  return error instanceof ctor || (error instanceof Error && error.name === name);
-}
+export { isNamedError } from '../errors';
 
 /**
  * Loggable description of an unexpected failure without request data: a drizzle query error

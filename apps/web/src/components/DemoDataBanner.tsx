@@ -1,4 +1,7 @@
-/** Shown in ROSSKO_MODE=fixtures: search answers from synthetic supplier data. */
+/**
+ * Shown in ROSSKO_MODE=fixtures: search answers from synthetic supplier data, and the cart and
+ * checkout work on it, but such an order is never placed with the supplier.
+ */
 export const DEMO_ARTICLES = ['OC90', 'W9142', 'GDB1330'] as const;
 
 export function DemoDataBanner() {
@@ -8,8 +11,8 @@ export function DemoDataBanner() {
       role="note"
       data-testid="demo-banner"
     >
-      <strong className="font-semibold">Демо-данные.</strong> Цены, наличие и сроки условные, заказы
-      пока не принимаются. Попробуйте артикулы{' '}
+      <strong className="font-semibold">Демо-данные.</strong> Цены, наличие и сроки условные:
+      оформленный заказ не будет выполнен. Попробуйте артикулы{' '}
       {DEMO_ARTICLES.map((article, index) => (
         <span key={article}>
           {index > 0 ? ', ' : ''}

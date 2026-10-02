@@ -54,6 +54,7 @@ import {
 } from '../cart-store';
 import type { CheckoutGate } from '../checkout-gate';
 import { getClientIp } from '../client-ip';
+import { isNamedError } from '../errors';
 import {
   consentIp,
   HONEYPOT_FIELD,
@@ -526,10 +527,9 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
         { ...errorInfo(cause), lines: partLines.length },
         'checkout supplier unavailable',
       );
-      const retry =
-        cause instanceof RosskoRateLimitError
-          ? { 'Retry-After': String(Math.max(1, Math.ceil(cause.retryAfterMs / 1000))) }
-          : undefined;
+      const retry = isNamedError(cause, RosskoRateLimitError, 'RosskoRateLimitError')
+        ? { 'Retry-After': String(Math.max(1, Math.ceil(cause.retryAfterMs / 1000))) }
+        : undefined;
       return respond(
         503,
         { error: 'supplier_unavailable', message: MESSAGES.supplierUnavailable },

@@ -6,6 +6,7 @@
  * Logs carry the order number only: no phone, no digits, no IP.
  */
 import type { Logger } from '@detaly/config';
+import { isNamedError } from '../errors';
 import { isSameOrigin } from '../request-guards';
 import { isOrderToken } from './access';
 import {
@@ -99,7 +100,7 @@ export async function handleCancelRequest(
     }
     return respond(result, deps.logger);
   } catch (error) {
-    if (error instanceof CancelUnavailableError) {
+    if (isNamedError(error, CancelUnavailableError, 'CancelUnavailableError')) {
       deps.logger?.warn({ err: error.message }, 'order cancel: attempt counter unavailable');
       return json({ error: 'unavailable', message: CANCEL_MESSAGES.unavailable }, 503, {
         'Retry-After': '60',

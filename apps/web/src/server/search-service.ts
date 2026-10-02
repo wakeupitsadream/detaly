@@ -13,6 +13,7 @@ import {
   type RosskoClient,
   type RosskoLimiter,
 } from '@detaly/rossko';
+import { isNamedError } from './errors';
 import type { SearchSettings } from './settings';
 
 /** Shortest normalized article we search for ("OC9" is fine, "OC" is not). */
@@ -134,10 +135,10 @@ function sameBrand(a: string, b: string): boolean {
 }
 
 function toUnavailable(error: unknown): SearchUnavailableError | null {
-  if (error instanceof QuotaBreakerError) {
+  if (isNamedError(error, QuotaBreakerError, 'QuotaBreakerError')) {
     return new SearchUnavailableError('quota', 'Поиск временно недоступен, попробуйте позже', null);
   }
-  if (error instanceof RosskoRateLimitError) {
+  if (isNamedError(error, RosskoRateLimitError, 'RosskoRateLimitError')) {
     return new SearchUnavailableError(
       'rate',
       'Поиск перегружен, попробуйте через минуту',

@@ -8,6 +8,7 @@ import { cartCountLabel } from '@/components/SiteHeader';
 import { getBrand } from '@/server/brand';
 import { requestCartCount } from '@/server/cart/count';
 import { parseLocalFlag } from '@/server/api/search-handler';
+import { isNamedError } from '@/server/errors';
 import { getLogger } from '@/server/logger';
 import { getSearchService } from '@/server/search';
 import {
@@ -174,7 +175,10 @@ export default async function SearchPage({
     try {
       result = await getSearchService().search({ q, brand: brandName || null, localOnly });
     } catch (error) {
-      if (error instanceof SearchInputError || error instanceof SearchUnavailableError) {
+      if (
+        isNamedError(error, SearchInputError, 'SearchInputError') ||
+        isNamedError(error, SearchUnavailableError, 'SearchUnavailableError')
+      ) {
         problem = error.message;
       } else {
         getLogger().error({ err: error }, 'search page failed');

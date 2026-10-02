@@ -1,4 +1,5 @@
 /** GET /api/search?q=&brand=&local=1 -> {offers, fromCache, quota, ...}. */
+import { isNamedError } from '../errors';
 import { SearchInputError, SearchUnavailableError, type SearchService } from '../search-service';
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
@@ -34,13 +35,13 @@ export async function handleSearchRequest(
       { headers: NO_STORE },
     );
   } catch (error) {
-    if (error instanceof SearchInputError) {
+    if (isNamedError(error, SearchInputError, 'SearchInputError')) {
       return Response.json(
         { error: error.code, message: error.message },
         { status: 400, headers: NO_STORE },
       );
     }
-    if (error instanceof SearchUnavailableError) {
+    if (isNamedError(error, SearchUnavailableError, 'SearchUnavailableError')) {
       const headers: Record<string, string> = { ...NO_STORE };
       if (error.retryAfterSec !== null) headers['Retry-After'] = String(error.retryAfterSec);
       return Response.json(

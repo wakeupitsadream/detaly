@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
@@ -40,8 +41,16 @@ export function createDb(url: string, options: CreateDbOptions = {}): Db {
   });
 }
 
-/** packages/db/drizzle, resolved relative to this file (works from src and in the worker image). */
-export const MIGRATIONS_FOLDER = fileURLToPath(new URL('../drizzle', import.meta.url));
+/**
+ * packages/db/drizzle, resolved relative to this file (works from src and in the worker image).
+ * Built with path.join on purpose: bundlers (Next/Turbopack, webpack) treat a `new URL` of a
+ * string literal against import.meta.url as an asset import and fail the web build.
+ */
+export const MIGRATIONS_FOLDER = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'drizzle',
+);
 
 /** Arbitrary constant key for pg_advisory_lock around migrations. */
 const MIGRATION_LOCK_KEY = 410_020_126;

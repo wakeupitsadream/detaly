@@ -132,7 +132,8 @@ export const orderItems = pgTable(
     namedCheck(
       'order_items',
       'refunded_amount_le_line',
-      sql`${t.refundedAmountKop} <= ${t.priceClientKop} * ${t.qty}`,
+      // bigint: price * qty may exceed int4 and must not turn the check into an error.
+      sql`${t.refundedAmountKop}::bigint <= ${t.priceClientKop}::bigint * ${t.qty}`,
     ),
   ],
 );

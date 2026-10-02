@@ -165,6 +165,10 @@ describe('orders', () => {
       CHECK,
       'order_items_refunded_amount_le_line_check',
     );
+    // price * qty beyond int4 must still be checked, not fail with 22003 (out of range).
+    await db
+      .insert(orderItems)
+      .values({ ...item, priceClientKop: 2_000_000_000, qty: 3, refundedAmountKop: 0 });
     const [first] = await db.insert(orderItems).values(item).returning();
     const [second] = await db
       .insert(orderItems)

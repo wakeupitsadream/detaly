@@ -56,6 +56,18 @@ describe('migrations on an empty database', () => {
     expect(seq).toHaveLength(1);
   });
 
+  it('names columns in plain snake_case (no digit split like upd_s_3_key)', async () => {
+    const columns = await db.$client<{ table_name: string; column_name: string }[]>`
+      select table_name, column_name from information_schema.columns
+      where table_schema = 'public' order by table_name, column_name`;
+    const split = columns
+      .map((c) => `${c.table_name}.${c.column_name}`)
+      .filter((name) => /(^|[._])[a-z]_[0-9]/.test(name));
+    expect(split).toEqual([]);
+    expect(columns).toContainEqual({ table_name: 'supplier_orders', column_name: 'upd_s3_key' });
+    expect(columns).toContainEqual({ table_name: 'order_photos', column_name: 's3_key' });
+  });
+
   it('is idempotent and records every journal entry once', async () => {
     await migrateDb(db);
     await migrateDb(db);

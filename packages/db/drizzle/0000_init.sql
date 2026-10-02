@@ -222,7 +222,7 @@ CREATE TABLE "order_items" (
 	CONSTRAINT "order_items_price_client_kop_check" CHECK ("order_items"."price_client_kop" >= 0),
 	CONSTRAINT "order_items_refunded_amount_kop_check" CHECK ("order_items"."refunded_amount_kop" >= 0),
 	CONSTRAINT "order_items_markup_bp_check" CHECK ("order_items"."markup_bp" >= 0),
-	CONSTRAINT "order_items_refunded_amount_le_line_check" CHECK ("order_items"."refunded_amount_kop" <= "order_items"."price_client_kop" * "order_items"."qty")
+	CONSTRAINT "order_items_refunded_amount_le_line_check" CHECK ("order_items"."refunded_amount_kop"::bigint <= "order_items"."price_client_kop"::bigint * "order_items"."qty")
 );
 --> statement-breakpoint
 CREATE TABLE "orders" (
@@ -349,7 +349,7 @@ CREATE TABLE "supplier_orders" (
 	"item_errors" jsonb,
 	"delivery_cost_kop" integer,
 	"status_code" integer,
-	"upd_s_3_key" text,
+	"upd_s3_key" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "supplier_orders_order_id_attempt_no_unique" UNIQUE("order_id","attempt_no"),

@@ -1,5 +1,5 @@
 {
-  "id": "70db6df3-88dd-44fd-bcb7-a960ff863724",
+  "id": "d1b9c05d-cd11-46f9-9920-3cb68d23b5d3",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1492,7 +1492,7 @@
         },
         "order_items_refunded_amount_le_line_check": {
           "name": "order_items_refunded_amount_le_line_check",
-          "value": "\"order_items\".\"refunded_amount_kop\" <= \"order_items\".\"price_client_kop\" * \"order_items\".\"qty\""
+          "value": "\"order_items\".\"refunded_amount_kop\"::bigint <= \"order_items\".\"price_client_kop\"::bigint * \"order_items\".\"qty\""
         }
       },
       "isRLSEnabled": false
@@ -2565,8 +2565,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "upd_s_3_key": {
-          "name": "upd_s_3_key",
+        "upd_s3_key": {
+          "name": "upd_s3_key",
           "type": "text",
           "primaryKey": false,
           "notNull": false

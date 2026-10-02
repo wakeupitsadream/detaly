@@ -18,9 +18,18 @@ import { parse as parseYaml } from 'yaml';
 import type { Executor } from '../executor';
 import { documentVersions } from '../schema';
 
-/** Repository content/legal, resolved from packages/db/src/seed. */
-export const DEFAULT_LEGAL_DIR = fileURLToPath(
-  new URL('../../../../content/legal', import.meta.url),
+/**
+ * Repository content/legal, resolved from packages/db/src/seed. path.join instead of a
+ * `new URL` of a string literal against import.meta.url, which bundlers treat as an asset.
+ */
+export const DEFAULT_LEGAL_DIR = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  '..',
+  '..',
+  'content',
+  'legal',
 );
 
 /** Env variable selecting the published version per document kind. */

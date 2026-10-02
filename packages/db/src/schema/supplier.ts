@@ -36,8 +36,11 @@ export const supplierOrders = pgTable(
     deliveryCostKop: kop(),
     /** Rossko order status code from GetOrders (phase 2 polling). */
     statusCode: integer(),
-    /** UPD (universal transfer document) in S3. */
-    updS3Key: text(),
+    /**
+     * UPD (universal transfer document) in S3. Explicit name: snake_case casing would turn
+     * `updS3Key` into `upd_s_3_key`.
+     */
+    updS3Key: text('upd_s3_key'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

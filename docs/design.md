@@ -387,7 +387,7 @@ planInstallForDate(etaDate: IsoDate, now: Date): Promise<InstallPlanView | null>
 (тест реестра env). `SESSION_SECRET` в демо обязателен, как и раньше.
 
 **Vercel**: Root Directory `apps/web`, install `pnpm install --frozen-lockfile` (монорепо),
-build `pnpm --filter @detaly/web build`. Env: `DEMO_MODE=true`, `SESSION_SECRET`,
+build `pnpm run build` из `apps/web` (`apps/web/vercel.json`; проект — `docs/runbook.md`, раздел 13). Env: `DEMO_MODE=true`, `SESSION_SECRET`,
 `APP_BASE_URL`, `NOINDEX_ALL=true`, `BRAND_NAME`, `PICKUP_*`, `SELLER_REQUISITES_*`.
 `output: 'standalone'` Vercel не мешает. Критерий готовности:
 `DEMO_MODE=true pnpm --filter @detaly/web build && next start` без `DATABASE_URL`/`REDIS_URL`

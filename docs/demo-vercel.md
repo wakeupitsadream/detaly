@@ -11,7 +11,7 @@
 | Поиск | фикстуры Rossko из `packages/rossko/fixtures`, кэш и лимитер в памяти процесса. Есть артикулы `OC90`, `W9142`, `GDB1330`, `EDGE5W40`, а `NOTFOUND` показывает пустой поиск |
 | Цены и наценка | значения по умолчанию, как их записал бы сид (`settingsDefaultsFromEnv`), и стандартный стоп-лист |
 | Корзина | подписанная httpOnly-cookie `demo_cart` (HMAC от `SESSION_SECRET`, не больше 20 строк). Цены в cookie не хранятся: при каждом чтении корзина пересчитывается по фикстурам |
-| Документы | `content/legal`, вшитые в сборку модулем `apps/web/src/server/demo/legal-bundle.ts`. Реквизиты подставляются из env. Пока `LEGAL_*_VERSION` и реквизиты не заданы, документ показывается как черновик с видимыми пропусками |
+| Документы | `content/legal`, вшитые в сборку модулем `apps/web/src/server/demo/legal-bundle.ts`. Реквизиты подставляются из env. Пока `LEGAL_*_VERSION` и реквизиты не заданы, документ показывается как черновик: над текстом одна строка «Реквизиты продавца появятся к запуску», в тексте на месте реквизитов пропуски `________` |
 | Оформление | на `/checkout` настоящая форма над демо-корзиной, поля заполнены примером. Кнопка «Оформить — покажем пример заказа» ведёт на `/o/demo`, форма никуда не отправляется. `POST /api/checkout` отвечает `403 {"error":"demo"}`, тело запроса не читается |
 | Заказ | `/o/demo`: пример заказа из двух позиций из фикстур со статусом «Заказан у поставщика». Остальные `/o/*` отвечают 404 |
 | Админка, вебхуки, API заказов | `/admin`, `/api/admin/*`, `/api/webhooks/*`, `/api/orders/*` отвечают 404 |
@@ -32,7 +32,8 @@
    Build Step» должна стоять (она стоит по умолчанию): сборке нужны `packages/*`.
 3. Framework Preset: Next.js. Install и Build берутся из `apps/web/vercel.json`:
    - install: `pnpm install --frozen-lockfile` (pnpm сам поднимается к корню монорепо);
-   - build: `pnpm --filter @detaly/web build`.
+   - build: `pnpm run build`, то есть `next build` в `apps/web`. Генерировать перед сборкой
+     ничего не нужно: модуль с документами закоммичен, к базе и Redis сборка не обращается.
 4. Node.js Version: **22.x**.
 5. Переменные окружения (Production и Preview) — ниже.
 6. Deploy. `output: 'standalone'` в `next.config.ts` Vercel не мешает.
@@ -55,7 +56,7 @@
 | `PICKUP_POINT_NAME`, `PICKUP_ADDRESS`, `PICKUP_HOURS`, `PICKUP_PHONE` | точка выдачи и установки: автосервис-партнёр. Телефон точки — единственный номер для покупателя во всех кнопках |
 | `PICKUP_MAP_URL_YANDEX`, `PICKUP_MAP_URL_2GIS` | ссылки «Маршрут в Яндекс Картах» и «2ГИС» (https). Без них кнопки ищут адрес точки в картах |
 | `PICKUP_TELEGRAM_URL` | чат точки (https://t.me/…): на `/vin` появляется кнопка «Отправить фото СТС в Telegram» с готовым началом сообщения |
-| `SELLER_REQUISITES_*` | реквизиты в футере и документах. Без них документы показываются черновиками с пропусками |
+| `SELLER_REQUISITES_*` | реквизиты в футере, на «О нас» и в документах. Без них везде одна нейтральная строка «Реквизиты продавца появятся к запуску», в документах — пропуски `________` и пометка «Черновик» |
 | `LEGAL_OFFER_VERSION`, `LEGAL_PRIVACY_VERSION`, `LEGAL_CONSENT_PD_VERSION`, `LEGAL_CONSENT_MARKETING_VERSION`, `LEGAL_RETURN_MEMO_VERSION` | `2026-10-d1` (версия файла в `content/legal`). С ними и реквизитами документ идёт как «Действующая редакция», без плашки черновика. Сама пометка юриста внутри текста остаётся, пока её не уберут из `content/legal` |
 | `APP_BASE_URL` | адрес демо, например `https://detaly-demo.vercel.app`. Если не задан, в демо берётся из системных переменных Vercel: в production это `VERCEL_PROJECT_PRODUCTION_URL`, в preview — `VERCEL_URL` |
 
@@ -73,10 +74,10 @@
 ```bash
 pnpm install --frozen-lockfile
 unset DATABASE_URL REDIS_URL
-DEMO_MODE=true pnpm --filter @detaly/web build
+cd apps/web
+DEMO_MODE=true ROSSKO_MODE=fixtures pnpm run build   # как Vercel: из apps/web
 
 # standalone, как в Docker-образе; на Vercel этот шаг не нужен
-cd apps/web
 cp -r .next/static .next/standalone/apps/web/.next/static
 cp -r public .next/standalone/apps/web/public 2>/dev/null || true
 DEMO_MODE=true SESSION_SECRET=$(openssl rand -hex 32) PORT=3101 \

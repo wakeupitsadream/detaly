@@ -1142,3 +1142,82 @@ where source = 'sms'
   ```
 
 - согласен на аналог или новый срок — только кнопкой «Согласен» на странице заказа.
+
+## 13. Демо на Vercel
+
+Витрина для показа партнёру по ссылке: тот же `apps/web`, что и в проде, с `DEMO_MODE=true`, без
+Postgres, Redis и воркера. Устройство демо и разбор проблем — `docs/demo-vercel.md`, дизайн —
+`docs/design.md`, раздел 5. Секретов в репозитории нет: значения задаются только в настройках
+проекта Vercel.
+
+### 13.1. Проект
+
+| Настройка | Значение |
+| --- | --- |
+| Root Directory | `apps/web`, галочка «Include files outside the root directory in the Build Step» включена (по умолчанию): сборке нужны `packages/*` и `pnpm-lock.yaml` из корня |
+| Framework Preset | Next.js |
+| Install Command | из `apps/web/vercel.json`: `pnpm install --frozen-lockfile`. pnpm сам поднимается к корню воркспейса (`pnpm-workspace.yaml`) и ставит весь монорепо по корневому lock. Версию pnpm Vercel выбирает по `lockfileVersion: '9.0'`; у нас закреплена pnpm@10.28.0 (`packageManager` в корне) — сверьте строку версии в логе сборки |
+| Build Command | из `apps/web/vercel.json`: `pnpm run build` (= `next build` в `apps/web`). Генерировать ничего не нужно: тексты документов вшиты в закоммиченный `apps/web/src/server/demo/legal-bundle.ts`, к базе и Redis сборка не обращается |
+| Output Directory | по умолчанию (Next.js) |
+| Node.js Version | 22.x (корневой `engines` — `>=22.12`, в `.npmrc` `engine-strict=true`) |
+
+Проверка сборки локально — ровно как на Vercel, из `apps/web` и без базы:
+
+```bash
+pnpm install --frozen-lockfile
+cd apps/web
+env -u DATABASE_URL -u REDIS_URL DEMO_MODE=true ROSSKO_MODE=fixtures pnpm run build
+```
+
+### 13.2. Переменные окружения (Production и Preview)
+
+| Переменная | Значение |
+| --- | --- |
+| `DEMO_MODE` | `true` — обязательно |
+| `SESSION_SECRET` | обязательно, не короче 32 символов (`openssl rand -hex 32`); подписывает cookie корзины |
+| `ROSSKO_MODE` | `fixtures` (или не задавать) |
+| `NOINDEX_ALL` | `true` (демо закрыто от индексации и без этого, переменная — для ясности) |
+| `TRUSTED_IP_HEADER` | `x-real-ip`: без него все посетители делят один счётчик лимитов, а в логе при старте предупреждение `untrusted_client_ip` |
+| `BRAND_NAME` | `Детали` |
+| `PICKUP_POINT_NAME`, `PICKUP_ADDRESS`, `PICKUP_HOURS`, `PICKUP_PHONE` | точка выдачи, например `Сервис56`, `Оренбург — адрес уточняется`, `Пн–Пт 10:00–19:00` |
+| `PICKUP_MAP_URL_YANDEX`, `PICKUP_MAP_URL_2GIS`, `PICKUP_TELEGRAM_URL` | по желанию, только https |
+| `APP_BASE_URL` | по желанию: без него берётся адрес из системных переменных Vercel (`VERCEL_PROJECT_PRODUCTION_URL` / `VERCEL_URL`). Для своего домена задать явно, иначе «В корзину» не пройдёт проверку `Origin` |
+| `SELLER_REQUISITES_*`, `LEGAL_*_VERSION` | можно не задавать до запуска. Тогда в футере, на «О нас» и над документами одна строка «Реквизиты продавца появятся к запуску», а в тексте документов на месте реквизитов пропуски `________`; документы помечены «Черновик» |
+
+Не задавать: `DATABASE_URL`, `REDIS_URL`, любые `YOOKASSA_*`, `ROSSKO_KEY*`, `RKN_NOTICE_NUMBER`,
+`TG_*`, `ADMIN_BASIC_AUTH`. С `DEMO_MODE=true` схема env сама отвергает `ROSSKO_MODE=live` и
+`YOOKASSA_*`: процесс падает с понятной ошибкой `Invalid environment`.
+
+### 13.3. Что работает и что нет
+
+Работает: главная с расчётом «Когда машина будет готова», поиск по фикстурам (`OC90`, `W9142`,
+`GDB1330`, `EDGE5W40`, `NOTFOUND` — пустой поиск), корзина в подписанной cookie, `/checkout` с
+формой-примером, пример заказа `/o/demo`, документы, «О нас», `/vin`, `/returns`,
+`/api/health` (`"mode":"demo"`).
+
+Не работает, и так задумано:
+
+- **Оформление заказа закрыто.** Демо не собирает персональные данные: по 152-ФЗ формы сбора ПД
+  публикуются только после уведомления РКН (раздел 11.1), а хранить согласия и заказы в демо
+  негде. Кнопка на `/checkout` ничего не отправляет и открывает `/o/demo`; `POST /api/checkout`
+  отвечает `403 {"error":"demo"}`.
+- **Оплаты, чеки, бот продавца, уведомления клиенту и заказ у Rossko** живут в воркере
+  (BullMQ на Redis) и в базе. На Vercel их нет: вебхук ЮKassa (`/api/webhooks/*`), API заказов
+  (`/api/orders/*`) и админка (`/admin`, `/api/admin/*`) отвечают 404, другие `/o/<token>` — тоже
+  404.
+- Цены и сроки условные (фикстуры), лимиты поиска считаются в памяти каждого инстанса отдельно.
+
+### 13.4. Проверка после деплоя
+
+```bash
+URL=https://<проект>.vercel.app
+curl -s "$URL/api/health"                                       # {"status":"ok","mode":"demo",...}
+curl -s -o /dev/null -w '%{http_code}\n' "$URL/admin"            # 404
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$URL/api/webhooks/yookassa"   # 404
+curl -sI "$URL/" | grep -i x-robots-tag                          # noindex
+```
+
+Затем руками: главная → поиск `OC90` → «В корзину» → `/cart` → «Оформить» → кнопка на
+`/checkout` открывает `/o/demo`. В Runtime Logs при холодном старте два предупреждения
+(`demo_mode`, и `untrusted_client_ip`, если не задан `TRUSTED_IP_HEADER`), ошибок быть не должно.
+`DemoModeError` в логе — баг: какая-то страница обошла переключатель и полезла в базу.

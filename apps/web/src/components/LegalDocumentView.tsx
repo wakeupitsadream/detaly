@@ -1,4 +1,5 @@
 import { hasTopHeading, Markdown } from '@/lib/markdown';
+import { blankMissingLegalValues, legalBlanksNotice, missingLegalValues } from '@/lib/requisites';
 import type { LegalDocument } from '@/server/documents';
 import { IconDocument } from './icons';
 import { Notice } from './page/Notice';
@@ -21,12 +22,13 @@ function escapeRe(text: string): string {
 
 /**
  * What the sheet shows of the body: the «Редакция 2026-10-d1.» line under the title is dropped,
- * the title block above says it already. Display only: the stored text and its hash stay.
+ * the title block above says it already, and the seed's «[не задано: …]» markers of a draft
+ * become blanks (one notice above explains them). Display only: the stored text and its hash
+ * stay.
  */
 export function legalBodyForView(doc: Pick<LegalDocument, 'bodyMd' | 'version'>): string {
-  return doc.bodyMd.replace(
-    new RegExp(`^Редакция ${escapeRe(doc.version)}\\.?[ \\t]*\\n?`, 'm'),
-    '',
+  return blankMissingLegalValues(
+    doc.bodyMd.replace(new RegExp(`^Редакция ${escapeRe(doc.version)}\\.?[ \\t]*\\n?`, 'm'), ''),
   );
 }
 
@@ -55,6 +57,7 @@ export function LegalDocumentView({
   const bodyDraft = BODY_DRAFT_RE.test(doc.bodyMd);
   const draft = legalIsDraft(doc);
   const body = legalBodyForView(doc);
+  const blanks = legalBlanksNotice(missingLegalValues(`${doc.title}\n${doc.bodyMd}`));
   return (
     <article
       className={cn(
@@ -93,7 +96,14 @@ export function LegalDocumentView({
           Черновик документа: действующая редакция ещё не опубликована.
         </Notice>
       ) : null}
-      {hasTopHeading(body) ? null : <h1 className="mb-6 text-h1">{doc.title}</h1>}
+      {blanks ? (
+        <Notice tone="info" role="note" className="mb-6" data-testid="legal-blanks">
+          {blanks}
+        </Notice>
+      ) : null}
+      {hasTopHeading(body) ? null : (
+        <h1 className="mb-6 text-h1">{blankMissingLegalValues(doc.title)}</h1>
+      )}
       <Markdown source={body} className="legal" />
     </article>
   );

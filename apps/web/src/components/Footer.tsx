@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { hasSellerRequisites, REQUISITES_PENDING } from '@/lib/requisites';
 import type { Brand } from '@/server/brand';
 import { IconExternal } from './icons';
 import { BrandMark } from './ui/BrandMark';
@@ -29,6 +30,10 @@ function Rivet({ className }: { className: string }) {
 export function Footer({ brand, year }: { brand: Brand; year: number }) {
   const { seller } = brand;
   const contacts = [seller.phone, seller.email].filter((part) => part !== null);
+  const registration = [
+    seller.inn ? `ИНН ${seller.inn}` : null,
+    seller.ogrnip ? `ОГРНИП ${seller.ogrnip}` : null,
+  ].filter((part) => part !== null);
   return (
     <footer
       className="site-footer grain-dark bg-graphite-950 bg-blueprint text-steel-200"
@@ -47,23 +52,31 @@ export function Footer({ brand, year }: { brand: Brand; year: number }) {
           </p>
         </div>
 
-        <div className="relative min-w-0 rounded border border-graphite-700 bg-graphite-900/70 px-5 py-4 md:row-span-2 lg:row-span-1">
+        <div className="relative min-w-0 self-start rounded border border-graphite-700 bg-graphite-900/70 px-5 py-4 md:row-span-2 lg:row-span-1">
           <Rivet className="top-2 left-2" />
           <Rivet className="top-2 right-2" />
           <Rivet className="bottom-2 left-2" />
           <Rivet className="right-2 bottom-2" />
           <p className="text-label text-steel-400">Продавец</p>
-          <div className="mt-2 space-y-1 font-mono text-[0.8125rem] leading-relaxed text-steel-200">
-            <p className="wrap-anywhere text-paper">
-              {seller.name ? `ИП ${seller.name}` : 'Индивидуальный предприниматель'}
+          {hasSellerRequisites(seller) ? (
+            <div className="mt-2 space-y-1 font-mono text-[0.8125rem] leading-relaxed text-steel-200">
+              <p className="wrap-anywhere text-paper">
+                {seller.name ? `ИП ${seller.name}` : 'Индивидуальный предприниматель'}
+              </p>
+              {registration.length > 0 ? (
+                <p className="wrap-anywhere" data-testid="footer-inn">
+                  {registration.join(', ')}
+                </p>
+              ) : null}
+              {seller.address ? <p className="wrap-anywhere">{seller.address}</p> : null}
+              {contacts.length > 0 ? <p className="wrap-anywhere">{contacts.join(' · ')}</p> : null}
+            </div>
+          ) : (
+            // Nothing is set yet (a demo before the launch): one neutral line, no «уточняется».
+            <p className="mt-2 text-sm text-steel-200" data-testid="footer-requisites-pending">
+              {REQUISITES_PENDING}
             </p>
-            <p className="wrap-anywhere" data-testid="footer-inn">
-              ИНН {seller.inn ?? 'уточняется'}
-              {seller.ogrnip ? `, ОГРНИП ${seller.ogrnip}` : ''}
-            </p>
-            {seller.address ? <p className="wrap-anywhere">{seller.address}</p> : null}
-            {contacts.length > 0 ? <p className="wrap-anywhere">{contacts.join(' · ')}</p> : null}
-          </div>
+          )}
         </div>
 
         <nav aria-label="Документы" className="min-w-0">

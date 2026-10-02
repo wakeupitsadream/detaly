@@ -1,20 +1,21 @@
-// BullMQ Workers. With `deps` (phase 1B) every queue runs its processor from jobs/*; without
-// them (the phase 0 composition in app.ts until worker-core builds WorkerDeps) housekeeping runs
-// the heartbeat and the other queues get the phase 0 stub.
-import {
-  BULLMQ_PREFIX,
-  HEARTBEAT_KEY,
-  QUEUE,
-  type Logger,
-  type QueueName,
-  type Redis,
-} from '@detaly/config';
-import { Worker, type ConnectionOptions, type Job } from 'bullmq';
-import type { WorkerDeps } from './deps';
+// BullMQ Workers: every worked queue runs its processor from jobs/* with WorkerDeps. Around the
+// processor:
+// - RosskoRateLimitError (the per-minute Rossko window is full) delays the job by retryAfterMs
+//   instead of spending an attempt (DelayedError), up to MAX_RATE_LIMIT_DELAYS times;
+// - UnrecoverableSmsError (the SMS gateway refused for good) becomes UnrecoverableError;
+// - a final failure is parked in dead-letter with an alert to the sellers (dead-letter/).
+import type { Logger, OutboxQueue } from '@detaly/config';
+import { RosskoRateLimitError } from '@detaly/rossko';
+import { DelayedError, UnrecoverableError, Worker, type ConnectionOptions, type Job } from 'bullmq';
+import { attachDeadLetter, safeErrorMessage } from './dead-letter';
+import type { JobProcessor, WorkerDeps } from './deps';
 import { PROCESSORS } from './jobs';
-import { processHousekeeping } from './jobs/housekeeping';
-import { processStub } from './jobs/stub';
 import { PROCESSED_QUEUES } from './queues';
+
+/** Smallest delay after a Rossko rate limit (the limiter's estimate may be 0). */
+export const MIN_RATE_LIMIT_DELAY_MS = 1_000;
+/** After this many starts a rate-limited job fails like any other error (no endless delays). */
+export const MAX_RATE_LIMIT_DELAYS = 20;
 
 export interface CreateWorkersOptions {
   /**
@@ -22,50 +23,76 @@ export interface CreateWorkersOptions {
    * (`protocol: 2`, `maxRetriesPerRequest: null`). BullMQ duplicates it for blocking calls.
    */
   connection: ConnectionOptions;
-  /** Client for job side effects (heartbeat key); createRedis(). Ignored with `deps`. */
-  redis: Redis;
   logger: Logger;
+  deps: WorkerDeps;
+  /** BullMQ prefix; default deps.bullPrefix. */
   prefix?: string;
-  heartbeatKey?: string;
-  now?: () => Date;
-  /** Phase 1B dependencies: every queue runs its processor with them. */
-  deps?: WorkerDeps;
+  /** Processors by queue; default PROCESSORS (tests replace one). */
+  processors?: Partial<Record<OutboxQueue, JobProcessor>>;
+  /** Called after a dead-letter entry is written (tests). */
+  onDeadLetter?: (id: string | null) => void;
+}
+
+function isUnrecoverableSmsError(error: unknown): error is Error {
+  return error instanceof Error && error.name === 'UnrecoverableSmsError';
+}
+
+/** Wraps a processor with the rate-limit delay and the error mapping described above. */
+export function wrapProcessor(
+  processor: JobProcessor,
+  deps: WorkerDeps,
+): (job: Job, token?: string) => Promise<unknown> {
+  return async (job, token) => {
+    try {
+      return await processor(job, deps);
+    } catch (error) {
+      if (
+        error instanceof RosskoRateLimitError &&
+        token !== undefined &&
+        job.attemptsStarted <= MAX_RATE_LIMIT_DELAYS
+      ) {
+        const delayMs = Math.max(MIN_RATE_LIMIT_DELAY_MS, error.retryAfterMs);
+        await job.moveToDelayed(Date.now() + delayMs, token);
+        throw new DelayedError();
+      }
+      if (isUnrecoverableSmsError(error)) throw new UnrecoverableError(error.message);
+      throw error;
+    }
+  };
 }
 
 export function createWorkers(options: CreateWorkersOptions): Worker[] {
-  const { connection, redis, logger, deps } = options;
-  const prefix = options.prefix ?? BULLMQ_PREFIX;
-  const heartbeat = {
-    redis,
-    now: options.now ?? (() => new Date()),
-    heartbeatKey: options.heartbeatKey ?? HEARTBEAT_KEY,
-  };
-
-  const processorFor = (name: QueueName) => {
-    if (name === QUEUE.deadLetter) throw new Error('dead-letter is a parking queue');
-    if (deps) {
-      const processor = PROCESSORS[name];
-      return (job: Job) => processor(job, deps);
-    }
-    return name === QUEUE.housekeeping
-      ? (job: Job) => processHousekeeping(job, heartbeat)
-      : (job: Job) => processStub(job);
-  };
+  const { connection, logger, deps } = options;
+  const prefix = options.prefix ?? deps.bullPrefix;
+  const processors = { ...PROCESSORS, ...options.processors };
 
   return PROCESSED_QUEUES.map((name) => {
-    const worker = new Worker(name, processorFor(name), {
+    const worker = new Worker(name, wrapProcessor(processors[name], deps), {
       connection,
       prefix,
       concurrency: 1,
     });
     worker.on('failed', (job, error) => {
       logger.warn(
-        { queue: name, jobId: job?.id, jobName: job?.name, err: error.message },
+        {
+          queue: name,
+          jobId: job?.id,
+          jobName: job?.name,
+          attemptsMade: job?.attemptsMade,
+          err: safeErrorMessage(error),
+        },
         'job failed',
       );
     });
     worker.on('error', (error) => {
-      logger.error({ queue: name, err: error }, 'worker error');
+      logger.error({ queue: name, err: safeErrorMessage(error) }, 'worker error');
+    });
+    attachDeadLetter(worker, name, {
+      deadLetter: deps.queues['dead-letter'],
+      alerts: deps.alerts,
+      logger,
+      now: deps.now,
+      onParked: options.onDeadLetter,
     });
     return worker;
   });

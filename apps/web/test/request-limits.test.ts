@@ -202,8 +202,15 @@ describe('isForeignOriginWrite', () => {
   it('is true only for an Origin other than the shop origin', () => {
     expect(foreign({ origin: 'https://evil.example' })).toBe(true);
     expect(foreign({ origin: 'null' })).toBe(true);
+    expect(foreign({ origin: 'null', 'sec-fetch-site': 'cross-site' })).toBe(true);
     expect(foreign({ origin: 'http://detaly.example' })).toBe(true);
     expect(foreign({ origin: 'https://detaly.example' })).toBe(false);
+  });
+
+  it('counts a same-origin form post from a no-referrer page (Origin: null)', () => {
+    // /o/<token> forms (pay, order actions) post `Origin: null`; their handlers accept them,
+    // so the proxy must spend the visitor's allowance on them.
+    expect(foreign({ origin: 'null', 'sec-fetch-site': 'same-origin' })).toBe(false);
   });
 
   it('is false without Origin, so scripts and curl are still counted', () => {

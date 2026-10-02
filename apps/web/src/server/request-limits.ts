@@ -109,7 +109,8 @@ export function classifyLimitedRequest(request: LimitedRequestLike): LimitedRequ
 
 /**
  * True for a checkout, cancel, pay, order action or cart write that carries an `Origin` other than APP_BASE_URL's
- * (`null` included). Browsers send `Origin` on every cross-site POST, and a cross-site PATCH or
+ * (`null` included, unless `Sec-Fetch-Site: same-origin` marks it as a form on one of our
+ * no-referrer pages, see isSameOrigin). Browsers send `Origin` on every cross-site POST, and a cross-site PATCH or
  * DELETE never gets past the CORS preflight, so this is exactly the CSRF case: the handler
  * answers 403 (decision Д19) and the proxy does not spend the visitor's allowance on it.
  * Otherwise five hidden forms on any page would block cancellation for the visitor's whole

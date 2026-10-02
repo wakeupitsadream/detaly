@@ -31,13 +31,26 @@ describe('isSameOrigin', () => {
       'http://detaly.example',
       'https://detaly.example:8443',
       'https://sub.detaly.example',
-      'null',
       '',
     ]) {
       expect(isSameOrigin(headers({ origin, 'sec-fetch-site': 'same-origin' }), BASE), origin).toBe(
         false,
       );
     }
+  });
+
+  it('treats Origin: null (a form on a no-referrer page) like a missing Origin', () => {
+    // Chromium and Firefox post `Origin: null` from /admin and /o/<token>
+    // (Referrer-Policy: no-referrer); only the browser-set Sec-Fetch-Site tells them apart.
+    expect(isSameOrigin(headers({ origin: 'null', 'sec-fetch-site': 'same-origin' }), BASE)).toBe(
+      true,
+    );
+    for (const site of ['cross-site', 'same-site', 'none']) {
+      expect(isSameOrigin(headers({ origin: 'null', 'sec-fetch-site': site }), BASE), site).toBe(
+        false,
+      );
+    }
+    expect(isSameOrigin(headers({ origin: 'null' }), BASE)).toBe(false);
   });
 
   it('without Origin accepts only Sec-Fetch-Site: same-origin', () => {

@@ -42,7 +42,7 @@ function Section({
 function Table({ head, children }: { head: string[]; children: ReactNode }) {
   return (
     <div className="min-w-0 overflow-x-auto">
-      <table className="w-full text-left text-sm">
+      <table className="w-full min-w-[36rem] text-left text-sm">
         <thead className="border-b border-line text-muted">
           <tr>
             {head.map((title) => (
@@ -305,6 +305,9 @@ export function AdminOrderCard({
                         placeholder="Причина (без ПД)"
                         className={ADMIN_INPUT_CLASS}
                       />
+                      <span className="text-xs text-warn">
+                        Вся сумма платежа; статус заказа не меняется
+                      </span>
                     </ActionForm>
                   ) : null}
                 </Cell>

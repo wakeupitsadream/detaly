@@ -6,20 +6,16 @@
 import type { IsoDate, RecheckAlternative } from '@detaly/domain';
 import type { StaffActionCode, StaffActionView } from '@detaly/orders';
 import type { ReactNode } from 'react';
+import {
+  CONFIRM_FIELD,
+  CONFIRM_VALUE,
+  DESTRUCTIVE_ADMIN_ACTIONS,
+} from '@/server/admin/destructive';
 import { rub } from './format';
 
 const BUTTON =
   'rounded-md bg-accent px-3 py-2 text-sm font-semibold text-white hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-line disabled:text-muted';
 const INPUT = 'min-w-0 rounded-md border border-line px-2 py-1.5 text-sm';
-
-/** Actions that cannot be undone: the form asks for an explicit tick. */
-const DESTRUCTIVE: ReadonlySet<StaffActionCode> = new Set([
-  'refused',
-  'cancel',
-  'icancel',
-  'noshow',
-  'refund_payment',
-]);
 
 export function actionUrl(orderId: string): string {
   return `/api/admin/orders/${orderId}/actions`;
@@ -53,9 +49,9 @@ export function ActionForm({
       <input type="hidden" name="action" value={code} />
       {itemId ? <input type="hidden" name="itemId" value={itemId} /> : null}
       {children}
-      {DESTRUCTIVE.has(code) && enabled ? (
+      {DESTRUCTIVE_ADMIN_ACTIONS.has(code) && enabled ? (
         <label className="flex items-center gap-1 text-xs text-muted">
-          <input type="checkbox" name="confirm" required /> подтверждаю
+          <input type="checkbox" name={CONFIRM_FIELD} value={CONFIRM_VALUE} required /> подтверждаю
         </label>
       ) : null}
       <button type="submit" className={BUTTON} disabled={!enabled}>

@@ -1,7 +1,9 @@
 /**
  * POST /api/admin/orders/<id>/actions (docs/phase-1b-implementation.md 15.4): one form per
  * action of the order card. Order of checks: Basic auth (401/404, again after the proxy) ->
- * Origin (403) -> order id (404) -> body (400) -> action and its fields (400) ->
+ * Origin (403; `Origin: null` of a no-referrer page passes with Sec-Fetch-Site: same-origin,
+ * see isSameOrigin) -> order id (404) -> body (400) -> action and its fields, the «подтверждаю»
+ * tick of an irreversible action included (400) ->
  * performStaffAction as the owner (decision Б19: actor staff 'admin', via 'admin').
  * Done: 303 back to the card with `?done=<message>`. Refused by the engine (for example
  * «Выдал» without a succeeded receipt): 409 with the engine's text and a link back.
@@ -22,6 +24,7 @@ import { ADMIN_CHALLENGE, ADMIN_RESPONSE_HEADERS, checkAdminAuth } from '../admi
 import { readBoundedText } from '../body';
 import { errorInfo } from '../errors';
 import { isSameOrigin } from '../request-guards';
+import { CONFIRM_FIELD, CONFIRM_VALUE, DESTRUCTIVE_ADMIN_ACTIONS } from './destructive';
 import { isUuid, latestRecheckItems } from './queries';
 
 /** A card form is a handful of short fields. */
@@ -154,6 +157,9 @@ async function buildAction(
   form: Form,
 ): Promise<Built> {
   const db = deps.engine.db;
+  if (DESTRUCTIVE_ADMIN_ACTIONS.has(action) && form.get(CONFIRM_FIELD) !== CONFIRM_VALUE) {
+    return { ok: false, message: 'Поставьте галочку «подтверждаю»: это действие не отменить' };
+  }
   const input: StaffActionInput = {};
   const note = field(form, 'note');
   if (note !== '') input.note = note;

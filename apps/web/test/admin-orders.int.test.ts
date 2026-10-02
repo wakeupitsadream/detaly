@@ -15,6 +15,8 @@ import {
   payments,
   receipts,
   refunds,
+  stockItems,
+  supplierReturns,
   users,
   type Db,
 } from '@detaly/db';
@@ -527,6 +529,88 @@ describe('POST /api/admin/orders/<id>/actions', () => {
     // Logs: number, action and outcome; no phone.
     expect(JSON.stringify(logged)).toContain(order.number);
     expect(JSON.stringify(logged)).not.toContain(order.phone);
+  });
+
+  it('accepts the browser form of the no-referrer card (Origin: null, Sec-Fetch-Site)', async () => {
+    // Referrer-Policy: no-referrer on /admin makes Chromium post `Origin: null`.
+    const order = await seed({ status: 'ordered_at_supplier', itemState: 'ordered' });
+    const [first] = order.itemIds as [string, string];
+    const crossSite = await handleAdminAction(
+      form({ action: 'iarr', itemId: first }, { Origin: 'null', 'Sec-Fetch-Site': 'cross-site' }),
+      order.id,
+      deps(),
+    );
+    expect(crossSite.status).toBe(403);
+    expect(await itemStates(order.id)).toEqual(['ordered', 'ordered']);
+    const browser = await handleAdminAction(
+      form({ action: 'iarr', itemId: first }, { Origin: 'null', 'Sec-Fetch-Site': 'same-origin' }),
+      order.id,
+      deps(),
+    );
+    expect(browser.status).toBe(303);
+    expect(await itemStates(order.id)).toEqual(['arrived', 'ordered']);
+  });
+
+  it('refuses an irreversible action without the «подтверждаю» tick', async () => {
+    const order = await seed({ status: 'ordered_at_supplier', itemState: 'ordered' });
+    const [first] = order.itemIds as [string, string];
+    const unconfirmed: Record<string, string>[] = [
+      { action: 'refused' },
+      { action: 'icancel', itemId: first },
+      { action: 'refund_payment', paymentId: order.paymentId as string, reason: 'дубль' },
+      { action: 'refused', confirm: 'yes' },
+    ];
+    for (const fields of unconfirmed) {
+      const response = await handleAdminAction(form(fields), order.id, deps());
+      expect(response.status, fields.action).toBe(400);
+      expect(plain(await response.text())).toContain('подтверждаю');
+    }
+    expect((await orderRow(order.id)).status).toBe('ordered_at_supplier');
+    expect(await itemStates(order.id)).toEqual(['ordered', 'ordered']);
+    const refundRows = await db.select().from(refunds).where(eq(refunds.orderId, order.id));
+    expect(refundRows).toEqual([]);
+    // With the tick the engine decides (here: refused goes to its own rules, not to the form check).
+    const confirmed = await handleAdminAction(
+      form({ action: 'refused', confirm: 'on' }),
+      order.id,
+      deps(),
+    );
+    expect(confirmed.status).not.toBe(400);
+  });
+
+  it('«Rossko не принял возврат»: the return is rejected and the part goes to stock', async () => {
+    const order = await seed({ status: 'handed', itemState: 'handed' });
+    const [first] = order.itemIds as [string, string];
+    const [ret] = await db
+      .insert(supplierReturns)
+      .values({
+        orderItemId: first,
+        kind: 'return',
+        status: 'requested',
+        amountExpectedKop: 40_000,
+      })
+      .returning();
+    const response = await handleAdminAction(
+      form({ action: 'supplier_return_reject', supplierReturnId: ret?.id as string, note: 'брак' }),
+      order.id,
+      deps(),
+    );
+    expect(response.status).toBe(303);
+    const [updated] = await db
+      .select()
+      .from(supplierReturns)
+      .where(eq(supplierReturns.id, ret?.id as string));
+    expect(updated?.status).toBe('rejected');
+    const stock = await db.select().from(stockItems).where(eq(stockItems.orderItemId, first));
+    expect(stock).toHaveLength(1);
+    expect(stock[0]?.costKop).toBe(40_000);
+    // A second decision on the same return is refused by the engine.
+    const again = await handleAdminAction(
+      form({ action: 'supplier_return_accept', supplierReturnId: ret?.id as string }),
+      order.id,
+      deps(),
+    );
+    expect(again.status).toBe(409);
   });
 
   it('«Выдал» without a succeeded receipt: 409 with the reason, nothing changes', async () => {

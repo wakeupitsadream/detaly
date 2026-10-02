@@ -20,3 +20,7 @@ export type * from './recheck-types';
 export * from './recheck';
 export * from './timers';
 export * from './journal';
+// storefront: "when will the car be ready" (docs/design.md, section 4)
+export * from './work-hours';
+export * from './install-window';
+export * from './install-load-demo';

@@ -10,7 +10,9 @@
 //
 // The row lock is held while the jobs are added, so two worker processes never add the same
 // rows concurrently. A Redis failure only bumps `attempts` and `last_error`; the row stays
-// pending and goes out on a later pass. If the commit fails after an add, the next pass adds the
+// pending and goes out on a later pass. A row BullMQ rejects for another reason stays pending
+// too, with `available_at` pushed back (2 s doubling up to 5 min) so it neither floods the log
+// nor holds the head of the batch. If the commit fails after an add, the next pass adds the
 // same jobId again: BullMQ ignores a duplicate id while the job is kept, and every processor
 // re-reads its database row first anyway (Б3).
 //
@@ -27,6 +29,18 @@ export const OUTBOX_BATCH_SIZE = 100;
 
 /** Longest wait for one queue.add: an unreachable Redis must not hold the row locks for long. */
 export const OUTBOX_ADD_TIMEOUT_MS = 5_000;
+
+/** Longest pause of a row that BullMQ rejects for a reason other than the connection. */
+export const OUTBOX_REJECT_BACKOFF_MAX_S = 300;
+
+/**
+ * Pause (seconds) before the next try of a row rejected for a non-connection reason, after its
+ * `attempts`-th failure: 2, 4, 8 ... 300 s. Such a row would otherwise be retried (and logged)
+ * on every 2-second pass and, with 100 of them at the head, starve the rows behind it.
+ */
+export function rejectBackoffSeconds(attempts: number): number {
+  return Math.min(OUTBOX_REJECT_BACKOFF_MAX_S, 2 ** Math.min(Math.max(attempts, 1), 9));
+}
 
 export interface OutboxPassResult {
   /** Rows moved to BullMQ in this pass. */
@@ -140,9 +154,19 @@ export function createOutboxDispatcher(options: OutboxDispatcherOptions): Outbox
         } catch (error) {
           failed += 1;
           const message = safeErrorMessage(error);
+          const connection = isConnectionError(error);
+          // Redis down: the row stays due and goes out as soon as Redis is back. Any other
+          // rejection: the row stays pending too, but backs off.
+          const backoffS = connection ? 0 : rejectBackoffSeconds(row.attempts + 1);
           await tx
             .update(outbox)
-            .set({ attempts: sql`${outbox.attempts} + 1`, lastError: message })
+            .set({
+              attempts: sql`${outbox.attempts} + 1`,
+              lastError: message,
+              ...(backoffS > 0
+                ? { availableAt: sql`now() + make_interval(secs => ${backoffS})` }
+                : {}),
+            })
             .where(eq(outbox.id, row.id));
           logger.warn(
             {
@@ -150,11 +174,12 @@ export function createOutboxDispatcher(options: OutboxDispatcherOptions): Outbox
               queue: row.queue,
               jobName: row.name,
               attempts: row.attempts + 1,
+              retryInS: backoffS,
               err: message,
             },
             'outbox dispatch failed',
           );
-          if (isConnectionError(error)) break;
+          if (connection) break;
         }
       }
       if (dispatched.length > 0) {

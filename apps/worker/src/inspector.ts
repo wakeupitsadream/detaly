@@ -1,6 +1,6 @@
 // QueueInspector for /queues in the seller bot (decision Б30): job counts per queue, the latest
 // dead-letter entries and «Повторить», which puts a parked job back into its queue.
-import { QUEUE, QUEUE_NAMES, type Logger } from '@detaly/config';
+import { bullJobId, QUEUE, QUEUE_NAMES, type Logger } from '@detaly/config';
 import type { Job } from 'bullmq';
 import { isOutboxQueue, type DeadLetterData } from './dead-letter';
 import type { DeadLetterView, QueueInspector, QueueStats } from './deps';
@@ -77,9 +77,19 @@ export function createQueueInspector({
       if (!isOutboxQueue(entry.queue) || typeof entry.name !== 'string') return false;
       const target = queues[entry.queue];
       const data = entry.data ?? {};
-      const jobId = typeof entry.jobId === 'string' ? entry.jobId : null;
+      // Scheduler runs have generated ids: the retry gets one derived from the entry, so a
+      // double «Повторить» still adds a single job.
+      const jobId = typeof entry.jobId === 'string' ? entry.jobId : bullJobId(`${id}|retry`);
 
-      if (jobId !== null) {
+      // The entry goes first: a job that fails again at once parks under the same id, which
+      // would be a no-op while the old entry is still there (and the old entry would then be
+      // removed, losing the new failure). A second call then finds no entry.
+      try {
+        await parked.remove();
+      } catch {
+        return false;
+      }
+      try {
         const original = await target.getJob(jobId);
         if (original) {
           const state = await original.getState();
@@ -90,11 +100,11 @@ export function createQueueInspector({
         }
         // add() with the id of a job that still waits or runs returns that job: no duplicate.
         await target.add(entry.name, data, { ...jobPolicy(entry.queue, entry.name), jobId });
-      } else {
-        // Scheduler runs have generated ids: run the job once more under a fresh id.
-        await target.add(entry.name, data, jobPolicy(entry.queue, entry.name));
+      } catch (error) {
+        // Put the entry back so the owner can retry later; the add error goes to the caller.
+        await deadLetter.add(parked.name, parked.data, { jobId: id }).catch(() => undefined);
+        throw error;
       }
-      await parked.remove();
       logger?.info(
         { deadLetterId: id, queue: entry.queue, jobName: entry.name },
         'dead-letter retried',

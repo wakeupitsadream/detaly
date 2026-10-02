@@ -195,6 +195,40 @@ describe.skipIf(!hasTestDatabase)('outbox dispatcher', () => {
     expect(await queues.payments.getJob(bullJobId(key))).toBeDefined();
   });
 
+  it('backs off a row BullMQ rejects (not a connection error) and keeps the rest moving', async () => {
+    const badKey = `notify:${randomUUID()}:rejected`;
+    const goodKey = `notify:${randomUUID()}:accepted`;
+    await enqueue({ queue: 'notify', name: 'order', key: badKey });
+    await enqueue({ queue: 'notify', name: 'order', key: goodKey });
+    const rejecting = {
+      ...queues,
+      notify: {
+        add: (name: string, data: Record<string, unknown>, opts: { jobId: string }) =>
+          opts.jobId === bullJobId(badKey)
+            ? Promise.reject(new Error('Custom Id cannot be integers'))
+            : queues.notify.add(name, data, opts),
+      },
+    } as unknown as Queues;
+
+    // The rejection skips only its row; the next row still goes out in the same pass.
+    expect(await dispatcher(rejecting).runOnce()).toMatchObject({ dispatched: 1, failed: 1 });
+    expect((await row(goodKey))?.dispatchedAt).toBeInstanceOf(Date);
+    const bad = await row(badKey);
+    expect(bad?.dispatchedAt).toBeNull();
+    expect(bad?.attempts).toBe(1);
+    expect(bad?.lastError).toBe('Custom Id cannot be integers');
+    const [{ waitS } = { waitS: 0 }] = await db
+      .select({ waitS: sql<number>`extract(epoch from ${outbox.availableAt} - now())::float8` })
+      .from(outbox)
+      .where(eq(outbox.jobId, badKey));
+    expect(waitS).toBeGreaterThan(1);
+    expect(waitS).toBeLessThanOrEqual(2);
+
+    // Not due again on the next pass.
+    expect(await dispatcher(rejecting).runOnce()).toMatchObject({ selected: 0, failed: 0 });
+    await db.delete(outbox).where(eq(outbox.jobId, badKey));
+  });
+
   it('wakes up on the engine nudge (PUBLISH) in under a second', async () => {
     const channel = `${prefix}outbox`;
     const env = parseEnv(

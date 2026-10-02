@@ -11,6 +11,9 @@ import {
   safeErrorMessage,
   SAFE_ERROR_MAX,
 } from '../src/dead-letter';
+import { createQueueInspector } from '../src/inspector';
+import { rejectBackoffSeconds } from '../src/outbox/dispatcher';
+import type { Queues } from '../src/queues';
 
 describe('isFinalFailure', () => {
   const job = (attemptsMade: number, attempts?: number, finishedOn?: number) =>
@@ -69,6 +72,27 @@ describe('safeErrorMessage', () => {
     expect(safeErrorMessage(new TypeError('RosskoRateLimitError not_implemented'))).toBe(
       'TypeError: RosskoRateLimitError not_implemented',
     );
+  });
+
+  it('keeps long identifiers readable but masks random tokens and order links', () => {
+    expect(redactText('CheckoutDisabledError: ROSSKO_ALLOW_CHECKOUT is false')).toBe(
+      'CheckoutDisabledError: ROSSKO_ALLOW_CHECKOUT is false',
+    );
+    expect(redactText('violates orders_supplier_order_sending_unique')).toBe(
+      'violates orders_supplier_order_sending_unique',
+    );
+    // Letters only, but random: a 128-bit token may well look like this.
+    expect(redactText('token QWErtyUIOPasdfGHJKLzxcvb')).toBe('token [redacted]');
+    expect(redactText('GET https://shop.example/o/abc-DEF_123 failed')).toBe(
+      'GET https://shop.example/o/[token] failed',
+    );
+  });
+
+  it('is linear on long words (no catastrophic backtracking)', () => {
+    const started = Date.now();
+    redactText(`${'a'.repeat(5000)}!`, 10_000);
+    redactText(`${'Ab'.repeat(5000)}1`, 10_000);
+    expect(Date.now() - started).toBeLessThan(500);
   });
 
   it('caps the length and accepts non-errors', () => {
@@ -152,5 +176,72 @@ describe('moveToDeadLetter', () => {
     ).toBe(
       'Задача не выполнена: payments / webhook\nПопыток: 5\nОшибка: boom\nПовторить — /queues',
     );
+  });
+});
+
+describe('outbox reject backoff', () => {
+  it('doubles from 2 s and stops at 5 min', () => {
+    expect([1, 2, 3, 8, 9, 10, 50].map(rejectBackoffSeconds)).toEqual([
+      2, 4, 8, 256, 300, 300, 300,
+    ]);
+    expect(rejectBackoffSeconds(0)).toBe(2);
+  });
+});
+
+describe('retryDeadLetter (fake queues)', () => {
+  function fakeQueues(entry: Record<string, unknown> | null, addFails = false) {
+    const calls: string[] = [];
+    const parked = entry && {
+      name: 'dead',
+      data: entry,
+      remove: vi.fn(async () => {
+        calls.push('dead.remove');
+      }),
+    };
+    const queues = {
+      'dead-letter': {
+        getJob: vi.fn(async () => parked ?? undefined),
+        add: vi.fn(async (_name: string, _data: unknown, opts: { jobId: string }) => {
+          calls.push(`dead.add:${opts.jobId}`);
+        }),
+      },
+      housekeeping: {
+        getJob: vi.fn(async () => undefined),
+        add: vi.fn(async (_name: string, _data: unknown, opts: { jobId?: string }) => {
+          calls.push(`housekeeping.add:${opts.jobId}`);
+          if (addFails) throw new Error('Connection is closed');
+        }),
+      },
+    } as unknown as Queues;
+    return { queues, calls };
+  }
+
+  const schedulerEntry = {
+    queue: 'housekeeping',
+    name: 'timers',
+    jobId: null,
+    data: {},
+    error: 'x',
+    failedAt: '2026-10-02T09:00:00.000Z',
+    attemptsMade: 1,
+  };
+  const deadId = 'housekeeping|timers|2026-10-02T09';
+
+  it('removes the entry before re-adding; a scheduler run gets an id derived from it', async () => {
+    const { queues, calls } = fakeQueues(schedulerEntry);
+    expect(await createQueueInspector({ queues }).retryDeadLetter(deadId)).toBe(true);
+    expect(calls).toEqual(['dead.remove', `housekeeping.add:${deadId}|retry`]);
+  });
+
+  it('puts the entry back when the add fails', async () => {
+    const { queues, calls } = fakeQueues(schedulerEntry, true);
+    await expect(createQueueInspector({ queues }).retryDeadLetter(deadId)).rejects.toThrow(
+      'Connection is closed',
+    );
+    expect(calls).toEqual([
+      'dead.remove',
+      `housekeeping.add:${deadId}|retry`,
+      `dead.add:${deadId}`,
+    ]);
   });
 });

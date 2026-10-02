@@ -253,9 +253,10 @@ Stage занимает ≈1,4 ГБ памяти. Держите его подн�
 
 ## 9. Проверка реального IP клиента за Docker NAT
 
-Лимиты поиска считаются по IP из `X-Real-IP`, который ставит Caddy (`{remote_host}`). Если Docker
-подменяет адрес клиента на адрес шлюза (`172.x.0.1`), все клиенты получат один общий лимит, и
-21-й запрос в минуту от всех вместе получит 429.
+Лимиты поиска (а с фазы 1A и лимиты корзины, оформления и отмены, раздел 11.6) считаются по IP
+из `X-Real-IP`, который ставит Caddy (`{remote_host}`). Если Docker подменяет адрес клиента на
+адрес шлюза (`172.x.0.1`), все клиенты получат один общий лимит, и 21-й запрос в минуту от всех
+вместе получит 429, а 11-е оформление в час — тоже 429.
 
 Проверка после первого деплоя и после обновления Docker:
 1. С **внешнего** устройства (телефон в мобильной сети) откройте `https://$SITE_DOMAIN/`.
@@ -302,3 +303,288 @@ worker не поднимается), работаем руками. Каждое
    Ручные чеки сверить с `receipts`.
 
 **Связь с клиентом:** телефон — в админке. В мессенджерах номер и адрес клиента не пишем.
+
+## 11. Оформление заказов (фаза 1A)
+
+Фаза 1A добавила корзину (`/cart`), оформление (`/checkout`), страницу заказа (`/o/<token>`) и
+отмену заказа клиентом. Оплаты, подтверждения pay_on_handover и уведомлений продавцу и клиенту в
+1A **нет**. Заказ только создаётся в статусе `awaiting_payment` (предоплата) или
+`awaiting_confirmation` (оплата при получении) и остаётся в базе. Подробности —
+`docs/phase-1a-implementation.md`.
+
+### 11.1. Не включать оформление в проде до фазы 1B
+
+> **Не задавайте `RKN_NOTICE_NUMBER` в продовом `.env`, пока не выкатится фаза 1B.** В 1A
+> новый заказ никто не увидит: нет сообщения в чат продавцов, нет оплаты, нет подтверждения, нет
+> кнопок в боте. Клиент оформит заказ и будет ждать, а деталь никто не закажет. Кроме того,
+> форма начнёт собирать персональные данные (телефон, имя), а по PLAN формы сбора ПД
+> публикуются только после уведомления РКН и получения номера записи.
+
+До 1B оформление проверяется только локально, в CI (e2e) и на stage силами команды (stage
+закрыт basic auth, раздел 8). Пока номера нет, `/cart` вместо кнопки «Оформить заказ», а
+`/checkout` вместо формы показывают текст «Онлайн-оформление откроется после регистрации
+оператора персональных данных. Пока заказать можно по телефону …» (телефон из `PICKUP_PHONE`,
+иначе `SELLER_REQUISITES_PHONE`). Полей ПД на странице нет, `POST /api/checkout` отвечает
+`403 checkout_closed`. Корзина при этом работает: персональных данных в ней нет.
+
+### 11.2. Как включается оформление
+
+Оформление открыто, только когда выполнены **все** условия (`apps/web/src/server/checkout-gate.ts`):
+
+1. `RKN_NOTICE_NUMBER` — номер записи в реестре операторов ПД (заявка №11 в
+   `docs/external.md`). Формат не проверяется: любой непустой текст открывает форму. Поэтому в
+   прод вписывается только настоящий номер.
+2. Есть тексты оферты (`offer`), политики (`privacy`) и согласия на обработку ПД
+   (`consent_pd`). При `NODE_ENV=production` (в compose так всегда, и на stage тоже) это должны
+   быть **опубликованные** версии: заданы `LEGAL_OFFER_VERSION`, `LEGAL_PRIVACY_VERSION`,
+   `LEGAL_CONSENT_PD_VERSION`, и сид их опубликовал. Согласие на черновик ничего не доказывает.
+   Вне production допускаются черновики: в `consents` пишутся их версия и sha256.
+3. Чекбокс «Хочу получать предложения и скидки» показывается, только если опубликован
+   `consent_marketing` (`LEGAL_CONSENT_MARKETING_VERSION`). Без него оформление работает, просто
+   без маркетингового согласия.
+4. `APP_BASE_URL` точно совпадает с публичным origin сайта: схема, хост и порт, например
+   `https://example.ru` (без `www`, если сайт открывается без `www`). Все изменяющие запросы
+   (корзина, оформление, отмена) сравнивают заголовок `Origin` с
+   `new URL(APP_BASE_URL).origin`. Без `Origin` запрос проходит только с
+   `Sec-Fetch-Site: same-origin`. При несовпадении корзина и оформление отвечают 403
+   `forbidden_origin`, клиент видит «Запрос отклонён: откройте страницу … на сайте». Если сайт
+   доступен и с `www`, и без него, второй адрес должен перенаправлять на первый.
+5. `TRUSTED_IP_HEADER=x-real-ip` у web (compose задаёт его сам, проверка ниже). Иначе все
+   клиенты попадают в один общий бакет лимитов: **10 оформлений в час на весь сайт**, а также 5
+   отмен и 120 изменений корзины на всех. Кроме того, в `consents.ip` тогда пишется `null`, и
+   доказательство согласия становится слабее.
+
+Порядок включения (после выкатки 1B):
+
+```sh
+cd /opt/detaly
+# 1. Тексты вычитаны юристом (заявка №13), версии лежат файлами content/legal/<kind>/<version>.md.
+#    Опубликованную версию менять нельзя: сид упадёт. Новый текст — новый файл и новая версия.
+# 2. В .env: LEGAL_OFFER_VERSION, LEGAL_PRIVACY_VERSION, LEGAL_CONSENT_PD_VERSION
+#    (+ LEGAL_CONSENT_MARKETING_VERSION, LEGAL_RETURN_MEMO_VERSION); проверить APP_BASE_URL.
+infra/deploy.sh "$(cat .deploy/current_tag)"   # тот же образ: миграции + сид опубликуют версии
+dc exec postgres psql -U detaly -d detaly -c \
+  "select kind, version, published_at from document_versions where published_at is not null order by kind"
+dc exec web printenv APP_BASE_URL TRUSTED_IP_HEADER   # https://<домен> и x-real-ip
+# 3. Только теперь: RKN_NOTICE_NUMBER=<номер записи> в .env
+dc up -d web          # web пересоздаётся с новым .env
+```
+
+Проверка: в корзине с позицией есть кнопка «Оформить заказ», на `/checkout` — форма с
+телефоном и чекбоксами. Если вместо формы написано «Оформление временно недоступно», смотрите
+11.5. Проверка Origin снаружи:
+`curl -s -X POST -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{}' https://$SITE_DOMAIN/api/checkout`
+→ 403 `forbidden_origin`. Реальный IP клиента — раздел 9.
+
+Выключить оформление: убрать `RKN_NOTICE_NUMBER` из `.env` и выполнить `dc up -d web`. Уже
+созданные заказы и страницы `/o/<token>` продолжают работать.
+
+### 11.3. Новые заказы и согласия в базе (без выгрузки ПД)
+
+До 1B нет ни мини-админки, ни карточек в боте, поэтому заказы смотрят через `psql` на VPS:
+
+```sh
+dc exec postgres psql -U detaly -d detaly
+```
+
+Правила:
+
+- результаты не сохраняются в файлы (`\o`, `\copy`, `> file`), не копируются в мессенджеры, чаты
+  и задачи, не фотографируются. В переписке — только номер заказа, статус, бренд и артикул;
+- телефон и имя запрашиваются отдельным запросом и только когда без них никак (звонок клиенту,
+  выдача). Заказ ищите по номеру: телефон в условии запроса останется в истории `psql`;
+- `ip` и `user_agent` из `consents` выводятся только для ответа на запрос РКН или в споре.
+
+Последние заказы — номер, статус, схема, сумма, без ПД:
+
+```sql
+select o.number, o.status, o.payment_scheme as scheme,
+       (o.total_kop / 100.0)::numeric(12, 2) as total_rub,
+       o.promised_date,
+       to_char(o.created_at at time zone 'Asia/Yekaterinburg', 'DD.MM HH24:MI') as created,
+       (select count(*) from order_items i where i.order_id = o.id) as lines
+from orders o
+where o.created_at > now() - interval '7 days'
+order by o.created_at desc
+limit 50;
+```
+
+Сводка по статусам:
+
+```sql
+select status, payment_scheme, count(*), sum(total_kop) / 100 as total_rub
+from orders group by 1, 2 order by 1, 2;
+```
+
+Позиции заказа (бренд, артикул, склад, цены):
+
+```sql
+select i.brand, i.article, i.name, i.qty, i.stock_id, i.is_local,
+       (i.price_client_kop / 100.0)::numeric(12, 2) as price_rub,
+       (i.price_supplier_at_order_kop / 100.0)::numeric(12, 2) as supplier_rub,
+       i.eta_date
+from order_items i join orders o on o.id = i.order_id
+where o.number = 'DT-000123'
+order by i.brand, i.article;
+```
+
+Журнал заказа (`payload` без ПД: часть корзины, схема, число позиций, отложенные эффекты):
+
+```sql
+select to_char(e.created_at at time zone 'Asia/Yekaterinburg', 'DD.MM HH24:MI:SS') as at,
+       e.type, e.from_status, e.to_status, e.actor_type, e.payload
+from order_events e join orders o on o.id = e.order_id
+where o.number = 'DT-000123'
+order by e.created_at, e.id;
+```
+
+Согласия заказа: какой документ, опубликован ли он, совпадает ли хэш. IP не выводится, только
+признак, что он записан:
+
+```sql
+select c.kind, d.kind as document, d.version, d.published_at is not null as published,
+       c.text_sha256 = d.sha256 as hash_ok,
+       to_char(c.given_at at time zone 'Asia/Yekaterinburg', 'DD.MM.YYYY HH24:MI') as given,
+       c.ip is not null as has_ip, c.revoked_at
+from consents c
+join orders o on o.id = c.order_id
+join document_versions d on d.id = c.document_version_id
+where o.number = 'DT-000123'
+order by c.kind;
+```
+
+Контроль: заказы без согласия `pd`. Результат должен быть пустым, иначе это ошибка кода, и её
+надо разбирать:
+
+```sql
+select o.number, o.status from orders o
+where o.status <> 'draft'
+  and not exists (select 1 from consents c where c.order_id = o.id and c.kind = 'pd');
+```
+
+Телефон и имя — только при необходимости и только по номеру заказа:
+
+```sql
+select u.phone, u.name from orders o join users u on u.id = o.user_id where o.number = 'DT-000123';
+```
+
+Если клиент не помнит номер, спросите последние 4 цифры телефона и примерную дату заказа:
+
+```sql
+select o.number, o.status, o.created_at from orders o join users u on u.id = o.user_id
+where right(u.phone, 4) = '4567' and o.created_at > now() - interval '3 days';
+```
+
+Код выдачи (`orders.pickup_code`) создаётся при оформлении, но клиенту показывается только со
+статуса `ready`. В 1A этот статус не наступает, код никому не называйте.
+
+### 11.4. Отмена по звонку клиента (до 1B)
+
+Клиент может отменить заказ сам на странице `/o/<token>`: кнопка «Отменить заказ» и последние 4
+цифры телефона. Кнопка есть в статусах `awaiting_payment` и `awaiting_confirmation`. Если клиент
+звонит и просит отменить заказ, проще всего попросить его открыть ссылку и нажать кнопку. Если
+это не получается (ссылка потеряна, 5 попыток ввода цифр исчерпаны), есть два пути:
+
+- подождать 1B: там появится кнопка отмены у продавца. Заказ без оплаты в 1A ничего не стоит,
+  но клиент будет видеть его действующим на странице заказа;
+- отменить вручную в базе, как описано ниже.
+
+Ручная отмена — это обход машины состояний. Она допустима только для этих двух статусов и
+только пока нет оплаты. У перехода `client_cancelled` из этих статусов нет ни действий, ни
+уведомлений (`packages/domain`), поэтому SQL повторяет ровно то, что делает кнопка клиента:
+статус, `cancelled_at`, `expires_at = null` и одна строка `order_events`. Событие записывается
+как `client_cancelled` (по просьбе клиента), но с `actor_type = 'staff'` и id сотрудника. На
+странице заказа клиент увидит «Отменён», а в ленте — «Вы отменили заказ».
+
+```sql
+-- 1. Кто отменяет: id сотрудника.
+select id, name, role from staff where is_active order by name;
+-- 2. Заказ и платежи: статус awaiting_payment или awaiting_confirmation, платежей нет (в 1A их не бывает).
+select o.number, o.status, o.payment_scheme,
+       (select string_agg(p.status::text, ', ') from payments p where p.order_id = o.id) as payments
+from orders o where o.number = 'DT-000123';
+-- 3. Отмена одной транзакцией. Подставьте номер заказа и id сотрудника.
+begin;
+with prev as (
+  select o.id, o.status
+  from orders o
+  where o.number = 'DT-000123'
+    and o.status in ('awaiting_payment', 'awaiting_confirmation')
+    and not exists (
+      select 1 from payments p
+      where p.order_id = o.id and p.status in ('succeeded', 'waiting_for_capture')
+    )
+  for update
+), upd as (
+  update orders o
+  set status = 'cancelled', cancelled_at = now(), expires_at = null, updated_at = now()
+  from prev
+  where o.id = prev.id
+  returning o.id, prev.status as from_status
+)
+insert into order_events (id, order_id, type, from_status, to_status, actor_type, actor_id, payload)
+select gen_random_uuid(), upd.id, 'client_cancelled', upd.from_status, 'cancelled', 'staff',
+       '<id сотрудника>', '{"via": "phone", "manual": true}'::jsonb
+from upd
+returning order_id, from_status, to_status;
+-- Вернулась ровно одна строка → commit; ноль строк (статус уже другой или есть оплата) → rollback.
+commit;
+```
+
+`gen_random_uuid()` даёт uuid v4, приложение пишет v7. Для ручной записи это допустимо: лента
+сортируется по `created_at`. Позиции заказа в корзину клиента не возвращаются. Если в статусе
+`awaiting_payment` по заказу уже есть оплата (это возможно с 1B), вручную не отменяйте: нужен
+возврат денег, а он делается только через машину состояний (раздел 10, ЮKassa).
+
+### 11.5. Что значат ответы и сообщения в логах
+
+Логи web — `dc logs --since 1h web`, коды ответов — в журнале Caddy
+(`dc logs --since 1h caddy | grep -E '"status":(403|409|429|503)'`). ПД в логи не пишутся: о
+заказе логируются номер, схема и число позиций, об ошибках — коды.
+
+| Где | Что значит | Что делать |
+|---|---|---|
+| `POST /api/checkout` → 409, в логе web `checkout stale` (с числом изменений) | Цена, остаток или наличие у Rossko изменились между открытием `/checkout` и отправкой, либо сумма и хэш позиций от клиента устарели. Заказ **не** создан, корзина пересчитана, клиент видит «Корзина изменилась — проверьте состав и сумму» и отправляет форму ещё раз | Изредка — норма. Если 409 получает каждое оформление, значит, цены «прыгают» между вызовами Rossko или хэш считается по-разному: сверить R14 в `docs/external.md` и разобрать с разработчиком |
+| `checkout stale: cart changed meanwhile` | Корзину изменили в другой вкладке во время оформления | Норма |
+| `POST /api/orders/<token>/cancel` → 409 `not_cancellable` | Заказ уже нельзя отменить на сайте: статус не `awaiting_*` (например, уже отменён) или по заказу есть успешная оплата. Клиент видит «Этот заказ уже нельзя отменить на сайте — позвоните нам» | Если клиент звонит, посмотреть статус (11.3) |
+| На `/cart` и `/checkout` надпись «Оформление временно недоступно», в логе web `checkout closed: legal documents are not published` с полем `missing` | `RKN_NOTICE_NUMBER` задан, но нужных документов нет или (в production) они не опубликованы. `missing` перечисляет виды: `offer`, `privacy`, `consent_pd` | Задать `LEGAL_*_VERSION` и прогнать сид (11.2). Если это прод до 1B — убрать `RKN_NOTICE_NUMBER` (11.1) |
+| `checkout supplier unavailable`, ответ 503 `supplier_unavailable` | Перепроверка цен у Rossko мимо кэша не удалась: ошибка API, лимитер не дал окно за 5 с или недоступен Redis. Заказ не создан, клиент видит «Не удалось проверить цены у поставщика — попробуйте через минуту» | Разделы 6 (квота) и 5 (Redis) |
+| `checkout honeypot`, ответ 400 | Заполнено скрытое поле формы — это бот | Ничего. Если таких много — смотреть 429 и подсети в журнале Caddy |
+| `checkout failed`, ответ 500 | Ошибка базы или кода, транзакция заказа откатилась | Смотреть ошибку в логе, разбирать |
+| `order created` | Заказ создан: номер, схема, число позиций, часть корзины | — |
+| `order cancelled by client` / `order cancel: wrong digits` | Клиент отменил заказ / ввёл неверные цифры | — |
+| `order cancel: attempt counter unavailable`, ответ 503 | Redis недоступен, и отмена закрыта (fail closed), чтобы нельзя было перебирать цифры | Раздел 5 |
+| `rate limit unavailable, failing open` | Redis недоступен, лимиты на IP не считаются | Раздел 5 |
+| 403 `forbidden_origin` на `/api/cart/*`, `/api/checkout` или отмене | `Origin` не совпадает с `APP_BASE_URL` | Проверить `APP_BASE_URL` (11.2, п. 4). Единичные 403 с чужим `Origin` — чужие сайты или боты, это норма |
+| 429 `rate_limited` | Превышен лимит (11.6) | Если 429 получают многие разные клиенты, проверить `TRUSTED_IP_HEADER` и раздел 9 |
+
+### 11.6. Лимиты 1A
+
+Лимиты считаются в `apps/web/src/proxy.ts` по бакету IP: ключ — `HMAC(SESSION_SECRET, IP)`,
+IPv6 группируется по /64, сам IP в Redis не попадает. Значения — константы в коде
+(`apps/web/src/server/rate-limit.ts`), через `.env` они не настраиваются.
+
+| Что | Лимит | Если Redis недоступен |
+|---|---|---|
+| Оформление `POST /api/checkout` | 10 в час | не считается (fail open) |
+| Отмена `POST /api/orders/<token>/cancel` | 5 в час | не считается |
+| Изменение корзины `POST/PATCH/DELETE /api/cart/**` | 120 в час | не считается |
+| Неверные 4 цифры при отмене | 5 в час **на заказ** (`rl:cancel-fail:<order id>`) | отмена закрыта, 503 |
+| Поиск (фаза 0) | 20 в минуту и 300 в сутки | поиск отвечает 503 |
+
+Превышение — ответ 429 с `Retry-After`: JSON для `fetch` и короткая HTML-страница для обычной
+формы (корзина без JavaScript). Запросы с чужим `Origin` в лимит не засчитываются, чтобы другой
+сайт не мог израсходовать лимит посетителя. Сбрасывать счётчики вручную не нужно: окна
+скользящие и освобождаются сами.
+
+Пределы корзины (это не лимиты запросов): до 20 строк; количество от 1 до 99, кратное
+кратности и не больше остатка; до 10 разных артикулов запроса, потому что каждый при оформлении
+— отдельный вызов GetSearch.
+
+### 11.7. Корзины
+
+Cookie `cart` хранит только случайный токен, а цены и количества лежат в `carts` и
+`cart_items`. Срок cookie — `CART_TTL_DAYS` (по умолчанию 30 дней). Строки в базе по этому
+сроку не удаляются: очистка брошенных корзин — задача housekeeping фазы 1B. Персональных данных
+в корзине нет, `user_id` проставляется только у оформленной (`converted`) корзины. Размер
+таблицы: `select status, count(*) from carts group by 1;`.

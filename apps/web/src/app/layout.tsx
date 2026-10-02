@@ -1,17 +1,19 @@
-import type { Metadata } from 'next';
+import type { Viewport } from 'next';
 import type { ReactNode } from 'react';
 import './globals.css';
 
-export const metadata: Metadata = {
-  robots: { index: false, follow: false },
+// Brand-dependent metadata (title, robots) is set at request time in (site)/layout.tsx:
+// this root layout must not read env, it is also used by build-time pages (404).
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#fafaf9',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ru">
-      <body className="min-h-screen bg-white font-sans text-neutral-900 antialiased">
-        {children}
-      </body>
+      <body className="min-h-screen bg-paper font-sans text-ink antialiased">{children}</body>
     </html>
   );
 }

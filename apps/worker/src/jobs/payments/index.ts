@@ -214,6 +214,10 @@ export async function processRefundCreate(
 ): Promise<RefundOutcome> {
   const refundId = uuidField(job, 'refundId');
   const outcome = await submitRefund(deps, refundId, 'housekeeping');
+  if (outcome.outcome === 'skipped' && outcome.reason === 'idempotence_key_expired') {
+    // Parked in dead-letter with an alert: only the owner can tell whether the money went.
+    throw new UnrecoverableError('refund POST not repeated: Idempotence-Key may have expired');
+  }
   const log = { refundId, ...outcome };
   if (outcome.outcome === 'rejected') deps.logger.error(log, 'refund rejected by the provider');
   else deps.logger.info(log, 'refund submitted');

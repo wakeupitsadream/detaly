@@ -286,7 +286,7 @@ function line(d: Discrepancy): string {
     case 'missing_in_db':
       return `• Платёж ${d.providerPaymentId} (${rub(d.amountKop)}, ${d.providerStatus}) есть в ЮKassa, но не найден в базе.`;
     case 'unrecorded':
-      return `• ${d.orderNumber}: платёж ${d.providerPaymentId} (${d.providerStatus}) не записан в базе — запись восстановит сверка.`;
+      return `• ${d.orderNumber}: платёж ${d.providerPaymentId} (${d.providerStatus}) не записан в базе: ответ ЮKassa на создание потерян. Сверка запишет его, только пока заказ ждёт эту оплату, иначе проверьте в ЛК.`;
     case 'status':
       return `• ${d.orderNumber}: в ЮKassa статус ${d.providerStatus}, в базе ${d.dbStatus}.`;
     case 'amount':

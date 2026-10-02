@@ -126,6 +126,33 @@ describe('reconciliation/sweep: pending payments (Verification 4)', () => {
     expect(mock.requests).toEqual([]);
   });
 
+  it('rows that stay pending for good never starve fresh ones out of the batch', async () => {
+    // A payment row whose POST never happened, of an order that moved on: skipped on every pass.
+    const stuck = await seedOrder(t.deps.db);
+    const prepared = await preparePayment(t.deps.engine, {
+      orderId: stuck.orderId,
+      kind: 'prepayment',
+      confirmation: 'redirect',
+      returnUrl: 'https://detaly.test/o/token?paid=1',
+    });
+    expect(prepared.kind).toBe('create');
+    await forceState(t.deps.db, stuck.orderId, { status: 'cancelled' });
+    // A newer payment, paid without a webhook.
+    const fresh = await seedOrder(t.deps.db);
+    const pf = await createOnlinePayment(t, fresh.orderId);
+    mock.setPaymentStatus(pf.providerPaymentId, 'succeeded');
+
+    clock.advance(11 * MINUTE);
+    const scope = { orderIds: [stuck.orderId, fresh.orderId], limit: 1 };
+    expect((await runSweep(t.deps, scope)).payments).toEqual({ applied: 1 });
+    expect((await orderRow(t.deps.db, fresh.orderId)).status).toBe('confirmed');
+    expect((await runSweep(t.deps, scope)).payments).toEqual({ skipped_order_status: 1 });
+
+    // Past the Idempotence-Key lifetime the row can never be repeated: it is not even read.
+    clock.advance(24 * 60 * MINUTE);
+    expect(await runSweep(t.deps, scope)).toEqual({ payments: {}, refunds: {} });
+  });
+
   it('provider errors are logged and counted; the pass goes on and is never retried', async () => {
     const a = await seedOrder(t.deps.db);
     const b = await seedOrder(t.deps.db);

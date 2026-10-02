@@ -3,12 +3,12 @@
 // (source 'reconciliation') — this closes a webhook that never came; one without a provider id
 // gets its lost POST repeated with the same Idempotence-Key (decision Б7). Refunds the same way.
 // Errors are logged and the row waits for the next pass: the job itself is never retried.
-import { and, asc, eq, inArray, lt, payments, refunds } from '@detaly/db';
+import { and, desc, eq, gt, inArray, isNotNull, lt, or, payments, refunds } from '@detaly/db';
 import { TIMERS } from '@detaly/domain';
 import type { PaymentRow } from '@detaly/orders';
 import { PaymentProviderError } from '@detaly/payments';
 import type { WorkerDeps } from '../../deps';
-import { recheckPayment, submitRefund } from '../payments/money';
+import { IDEMPOTENCE_KEY_TTL_MS, recheckPayment, submitRefund } from '../payments/money';
 
 /** Rows per pass and kind; the rest waits for the next pass. */
 export const SWEEP_BATCH = 100;
@@ -41,6 +41,7 @@ export async function runSweep(deps: WorkerDeps, options: SweepOptions = {}): Pr
   const report: SweepReport = { payments: {}, refunds: {} };
   if (deps.payments === null) return { ...report, skipped: 'payments_disabled' };
   const cutoff = new Date(deps.now().getTime() - TIMERS.reconcilePendingAgeMs);
+  const keyCutoff = new Date(deps.now().getTime() - IDEMPOTENCE_KEY_TTL_MS);
   const limit = options.limit ?? SWEEP_BATCH;
   const scope = options.orderIds;
   if (scope !== undefined && scope.length === 0) return report;
@@ -53,10 +54,15 @@ export async function runSweep(deps: WorkerDeps, options: SweepOptions = {}): Pr
         inArray(payments.status, ['pending', 'waiting_for_capture']),
         eq(payments.provider, 'yookassa'),
         lt(payments.createdAt, cutoff),
+        // A row without provider id past the Idempotence-Key lifetime is never repeated
+        // (repeatPaymentPost): it would only take a place of the batch on every pass.
+        or(isNotNull(payments.providerPaymentId), gt(payments.createdAt, keyCutoff)),
         scope ? inArray(payments.orderId, [...scope]) : undefined,
       ),
     )
-    .orderBy(asc(payments.createdAt))
+    // Newest first: rows that stay pending for good (an order that moved on, a payment the
+    // provider does not know) must not starve fresh ones out of the batch.
+    .orderBy(desc(payments.createdAt))
     .limit(limit);
   for (const row of pendingPayments) {
     try {
@@ -95,7 +101,7 @@ export async function runSweep(deps: WorkerDeps, options: SweepOptions = {}): Pr
         scope ? inArray(refunds.orderId, [...scope]) : undefined,
       ),
     )
-    .orderBy(asc(refunds.createdAt))
+    .orderBy(desc(refunds.createdAt))
     .limit(limit);
   for (const row of pendingRefunds) {
     try {

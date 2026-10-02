@@ -64,20 +64,44 @@ export const MINUTE = 60_000;
  * injected `fetch` (msw `getResponse`), not through setupServer: msw 3 intercepts every
  * socket in the process, which breaks the PostgreSQL and Redis connections of these tests.
  */
-export function yooKassa(clock?: () => TestClock): { mock: YooKassaMock; fetch: typeof fetch } {
+export function yooKassa(clock?: () => TestClock): {
+  mock: YooKassaMock;
+  fetch: typeof fetch;
+  /**
+   * The next request to `METHOD /path` (e.g. `POST /refunds`) is processed by the emulation,
+   * but its 200 answer is unreadable (a proxy page): the adapter reports `bad_response`.
+   */
+  garbleNext(path: string): void;
+} {
   const mock = createYooKassaMock({
     ...SHOP,
     now: clock ? () => clock().now : undefined,
   });
+  const garbled: string[] = [];
   const mockFetch: typeof fetch = async (input, init) => {
     const request = new Request(input, init);
+    const key = `${request.method} ${new URL(request.url).pathname.replace(/^\/v3/u, '')}`;
     const response = await getResponse(mock.handlers, request);
     if (response === undefined) throw new Error(`unhandled YooKassa request ${request.url}`);
     // HttpResponse.error(): a connection failure, as fetch reports it.
     if (response.type === 'error') throw new TypeError('fetch failed');
+    const index = garbled.indexOf(key);
+    if (index !== -1 && response.ok) {
+      garbled.splice(index, 1);
+      return new Response('<html>502 Bad Gateway</html>', {
+        status: 200,
+        headers: { 'Content-Type': 'text/html' },
+      });
+    }
     return response;
   };
-  return { mock, fetch: mockFetch };
+  return {
+    mock,
+    fetch: mockFetch,
+    garbleNext(path) {
+      garbled.push(path);
+    },
+  };
 }
 
 export interface PaymentTestDeps extends TestDeps {

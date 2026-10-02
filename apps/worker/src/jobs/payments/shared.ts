@@ -40,22 +40,31 @@ export function requireReceipts(deps: Pick<WorkerDeps, 'receipts'>): ReceiptProv
  * How a failed provider call is treated:
  * - `retry`: network, timeout, 5xx, 429, HTTP 202 `processing` — the same request with the same
  *   Idempotence-Key may still succeed;
- * - `final`: 4xx and requests rejected locally (receipt lines, limits) — repeating the same
- *   body never helps;
+ * - `final`: 4xx, an unreadable answer and requests rejected locally (receipt lines, limits) —
+ *   repeating the same request now never helps;
  * - anything else (database, programming errors) is rethrown by the caller.
+ *
+ * `rejected` tells whether a final failure proves the operation did NOT happen: the provider
+ * answered with an HTTP error, or the request was refused before it was sent. An unreadable
+ * 2xx answer (`bad_response`) is final but not a rejection — the provider may have created the
+ * object, so a POST must never be written off (a new Idempotence-Key would duplicate a receipt
+ * or a refund).
  */
 export type ProviderFailure = {
   kind: 'retry' | 'final';
   code: string | null;
   status: number | null;
+  rejected: boolean;
 };
 
 export function classifyProviderError(error: unknown): ProviderFailure | null {
   if (error instanceof PaymentProviderError) {
+    const { retryable, code, status } = error.details;
     return {
-      kind: error.details.retryable ? 'retry' : 'final',
-      code: error.details.code,
-      status: error.details.status,
+      kind: retryable ? 'retry' : 'final',
+      code,
+      status,
+      rejected: !retryable && status !== null && status >= 400 && status < 500,
     };
   }
   if (
@@ -63,9 +72,14 @@ export function classifyProviderError(error: unknown): ProviderFailure | null {
     error instanceof ReceiptLinesError ||
     error instanceof RefundPlanError
   ) {
-    return { kind: 'final', code: error.name, status: null };
+    return { kind: 'final', code: error.name, status: null, rejected: true };
   }
   return null;
+}
+
+/** A final failure that proves the provider did not perform the operation (see above). */
+export function isRejection(failure: ProviderFailure | null): failure is ProviderFailure {
+  return failure !== null && failure.kind === 'final' && failure.rejected;
 }
 
 /** HTTP 404 of a GET: the object does not exist at the provider. */
@@ -81,7 +95,9 @@ export function failureText(failure: ProviderFailure): string {
 
 /** The message part of a receipt error (`<code>: <message>` in receipts.error). */
 export function failureMessage(failure: ProviderFailure): string {
-  return failure.status === null ? 'no answer' : `HTTP ${failure.status}`;
+  if (failure.status !== null) return `HTTP ${failure.status}`;
+  if (failure.code === 'bad_response') return 'unreadable answer';
+  return failure.rejected ? 'refused before sending' : 'no answer';
 }
 
 /**

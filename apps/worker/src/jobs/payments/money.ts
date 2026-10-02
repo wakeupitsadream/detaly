@@ -27,6 +27,7 @@ import {
   classifyProviderError,
   enqueueStaffNotify,
   failureText,
+  isRejection,
   nudgeOutbox,
   type ProviderFailure,
   requirePayments,
@@ -34,7 +35,7 @@ import {
 } from './shared';
 
 /**
- * VERIFY: Ю11 — how long YooKassa keeps an Idempotence-Key (24 hours in the API reference). A
+ * VERIFY: Ю17 — how long YooKassa keeps an Idempotence-Key (24 hours in the API reference). A
  * lost POST older than that is never repeated: the same key would create a second payment.
  */
 export const IDEMPOTENCE_KEY_TTL_MS = 24 * 60 * 60 * 1000;
@@ -177,10 +178,20 @@ export async function submitRefund(
     if (row.request === null) {
       throw new UnrecoverableError('refund has no stored request');
     }
+    if (deps.now().getTime() - row.createdAt.getTime() >= IDEMPOTENCE_KEY_TTL_MS) {
+      // The key may have expired at the provider: a repeated POST of a refund whose first
+      // answer was lost would refund the money twice. The owner checks the account by hand.
+      return { outcome: 'skipped', reason: 'idempotence_key_expired' };
+    }
     const request = row.request as CreateRefundRequest;
     const answer = await call(() => provider.createRefund(request));
     if (!answer.ok) {
       const error = failureText(answer.failure);
+      if (!isRejection(answer.failure)) {
+        // An unreadable answer: the refund may exist. Never written off — the row stays pending
+        // and the sweep repeats the POST with the same key.
+        throw new UnrecoverableError(`refund answer unreadable: ${error}`);
+      }
       await rejectRefund(deps, row.id, error);
       return { outcome: 'rejected', error };
     }

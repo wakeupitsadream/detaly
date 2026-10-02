@@ -88,6 +88,7 @@
 | Ю14 [ф1B] | VERIFY: `GET /receipts?payment_id=` / `refund_id=` — формат списка `{type:'list', items, next_cursor}`, `limit` ≤ 100, `settlements[].type` у чека платежа (предполагаем `cashless`), поле `registered_at` | | |
 | Ю15 [ф1B] | VERIFY: `GET /payments` — фильтры `created_at.gte`/`created_at.lt`, `limit`, `cursor`, порядок сортировки (предполагаем «новые первыми»); `captured_at` как время оплаты; парсер строгий — позиция в другой валюте роняет всю страницу сверки с `bad_response` | | |
 | Ю16 [ф1B] | VERIFY: `cancellation_details.reason`/`party` у возвратов; хранит ли ЮKassa ответы 4xx под `Idempotence-Key` и отвечает ли 400 на повтор ключа с другим телом | | |
+| Ю17 [ф1B] | VERIFY: срок жизни `Idempotence-Key` (по документации 24 ч): воркер не повторяет потерянный `POST /payments` и `POST /refunds` старше 24 ч от создания строки — возврат уходит в dead-letter владельцу (`apps/worker/src/jobs/payments/money.ts`). Ответ 2xx с нечитаемым телом считается «объект мог создаться»: чек зачёта и возврат не списываются в ошибку, повтор — с тем же ключом. Подтвердить: QR-платёж (`confirmation_data`, Ю9) и полноту `GET /payments` для ночной сверки (Ю15, Б29) | | |
 | Ю11 [ф1B, лимиты] | VERIFY: лимиты `metadata` — 16 ключей, ключ до 32 и значение до 512 символов; `description` до 128 символов (`packages/payments/src/yookassa.ts`, `packages/orders/src/rows.ts`) | | |
 
 ## 4. Маркировка «Честный знак» (результат проверки, гейт фазы 0)

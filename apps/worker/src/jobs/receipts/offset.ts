@@ -12,6 +12,7 @@ import {
   classifyProviderError,
   failureMessage,
   failureText,
+  isRejection,
   requireReceipts,
   uuidField,
   type ProviderFailure,
@@ -51,6 +52,7 @@ export async function processOffsetReceipt(
 
   let answer: ProviderReceipt | null = null;
   let failure: ProviderFailure | null = null;
+  const posting = row.providerReceiptId === null;
   try {
     if (row.providerReceiptId === null) {
       if (row.request === null) throw new UnrecoverableError('offset receipt has no request');
@@ -61,13 +63,13 @@ export async function processOffsetReceipt(
   } catch (error) {
     failure = classifyProviderError(error);
     if (failure === null) throw error;
-    // A GET of a known receipt that answers 404 is not final: the receipt id stays, polls go on.
-    if (row.providerReceiptId !== null && failure.kind === 'final' && failure.status === 404) {
-      failure = { ...failure, kind: 'retry' };
-    }
   }
 
-  if (failure !== null && failure.kind === 'final') {
+  // Only a POST the provider refused proves the receipt does not exist. A failed GET of a known
+  // receipt (404, 401, an unreadable answer) and an unreadable answer to the POST say nothing
+  // about it: the receipt stays pending and the same Idempotence-Key is used again, since a
+  // "rejected" receipt lets «Повторить чек» take a new key and could fiscalise it twice.
+  if (posting && isRejection(failure)) {
     // The provider rejected the receipt (e.g. a wrong tax_system_code): it is never created.
     const text = failureText(failure);
     await applyReceiptObject(deps.engine, row.id, {
@@ -99,7 +101,8 @@ export async function processOffsetReceipt(
       return { status: 'canceled', alerted };
     }
   } else if (failure !== null) {
-    // Network, 5xx, 202: the same request is repeated on the next poll.
+    // Network, 5xx, 202, an unreadable answer, a failed GET: the next poll repeats the same
+    // request (the POST with the same Idempotence-Key).
     await applyReceiptObject(deps.engine, row.id, {
       error: { code: failure.code, message: failureMessage(failure), final: false },
     });

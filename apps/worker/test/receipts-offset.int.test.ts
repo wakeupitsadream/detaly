@@ -23,7 +23,7 @@ import {
 } from './payments-helpers';
 
 let clock = testClock();
-const { mock, fetch } = yooKassa(() => clock);
+const { mock, fetch, garbleNext } = yooKassa(() => clock);
 let t: PaymentTestDeps;
 
 beforeEach(async () => {
@@ -230,6 +230,60 @@ describe('receipts/offset: failures (Verification 13)', () => {
     expect(done?.status).toBe('succeeded');
     expect(done?.alertedAt).toBeNull();
     expect((await handed(order.orderId))?.enabled).toBe(true);
+  });
+
+  it('an unreadable answer to POST /receipts is not a rejection: same key next poll, one receipt', async () => {
+    const order = await clientCame();
+    // Registered at once; only the answer is lost.
+    mock.configure({ receiptStatus: 'succeeded' });
+    garbleNext('POST /receipts');
+    const [first] = await runOutbox(t, order.orderId, { queue: 'receipts', name: 'offset' });
+    // The receipt may exist at the provider: pending, no receipt_failed, no alert, no new key.
+    expect(first).toMatchObject({ status: 'pending' });
+    const row = await offsetRow(order.orderId);
+    expect(row?.status).toBe('pending');
+    expect(row?.error).toBe('bad_response: unreadable answer');
+    expect(row?.alertedAt).toBeNull();
+    const failed = (await eventsOf(t.deps.db, order.orderId)).filter(
+      (e) => e.type === 'receipt_failed',
+    );
+    expect(failed).toEqual([]);
+
+    clock.advance(2 * MINUTE);
+    expect(await runOutbox(t, order.orderId, { queue: 'receipts', name: 'offset-poll' })).toEqual([
+      { status: 'succeeded' },
+    ]);
+    const posts = receiptPosts();
+    expect(posts).toHaveLength(2);
+    expect(new Set(posts.map((p) => p.idempotenceKey)).size).toBe(1);
+    // One offset receipt at the provider (plus the prepayment one).
+    expect(mock.receipts.size).toBe(2);
+  });
+
+  it('a failed GET of a known receipt (401, 404) never cancels it: polling goes on', async () => {
+    const order = await clientCame();
+    await runOutbox(t, order.orderId, { queue: 'receipts', name: 'offset' });
+    const row = await offsetRow(order.orderId);
+    const providerReceiptId = row?.providerReceiptId as string;
+    expect(providerReceiptId).not.toBeNull();
+
+    for (const status of [401, 404]) {
+      mock.failNext(`GET /receipts/${providerReceiptId}`, status);
+      clock.advance(2 * MINUTE);
+      const [poll] = await runOutbox(t, order.orderId, { queue: 'receipts', name: 'offset-poll' });
+      expect(poll).toMatchObject({ status: 'pending' });
+      expect((await offsetRow(order.orderId))?.status).toBe('pending');
+    }
+    expect(
+      (await eventsOf(t.deps.db, order.orderId)).filter((e) => e.type === 'receipt_failed'),
+    ).toEqual([]);
+
+    mock.setReceiptStatus(providerReceiptId, 'succeeded');
+    clock.advance(2 * MINUTE);
+    expect(await runOutbox(t, order.orderId, { queue: 'receipts', name: 'offset-poll' })).toEqual([
+      { status: 'succeeded' },
+    ]);
+    expect(receiptPosts()).toHaveLength(1);
   });
 
   it('bad job data and an unknown job name fail without retries', async () => {

@@ -5,6 +5,7 @@ import { and, eq, receipts, refunds, users } from '@detaly/db';
 import { applyTransition, performStaffAction } from '@detaly/orders';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { processPayments } from '../src/jobs/payments';
+import { runSweep } from '../src/jobs/reconciliation/sweep';
 import {
   eventsOf,
   expectNoPhone,
@@ -15,13 +16,14 @@ import {
   paidPrepayOrder,
   paymentTestDeps,
   runOutbox,
+  MINUTE,
   testClock,
   yooKassa,
   type PaymentTestDeps,
 } from './payments-helpers';
 
 let clock = testClock();
-const { mock, fetch } = yooKassa(() => clock);
+const { mock, fetch, garbleNext } = yooKassa(() => clock);
 let t: PaymentTestDeps;
 
 beforeEach(async () => {
@@ -165,6 +167,61 @@ describe('payments/refund-create: the whole order (Verification 11)', () => {
     // Run again: nothing happens (the refund is settled as failed, the owner refunds by hand).
     const again = await processPayments(job('refund-create', { refundId: refund?.id }), t.deps);
     expect(again).toEqual({ outcome: 'skipped', reason: 'settled' });
+  });
+});
+
+describe('payments/refund-create: the money may have moved', () => {
+  it('an unreadable answer to POST /refunds is never written off: pending, then the same key', async () => {
+    const paid = await paidPrepayOrder(t, mock);
+    await performStaffAction(t.deps.engine, {
+      staff: OWNER,
+      action: 'refused',
+      targetId: paid.orderId,
+    });
+    garbleNext('POST /refunds');
+    await expect(
+      runOutbox(t, paid.orderId, { queue: 'payments', name: 'refund-create' }),
+    ).rejects.toMatchObject({ name: 'UnrecoverableError' });
+    // YooKassa did refund: no refund_failed, no «refund failed» alert to the owner.
+    expect(mock.refunds.size).toBe(1);
+    const [refund] = await refundsOf(paid.orderId);
+    expect(refund?.status).toBe('pending');
+    expect(refund?.alertedAt).toBeNull();
+    expect((await eventsOf(t.deps.db, paid.orderId)).map((e) => e.type)).not.toContain(
+      'refund_failed',
+    );
+    expect(
+      (await outboxOf(t.deps.db, paid.orderId)).filter(
+        (o) => o.data.template === 'staff_refund_failed',
+      ),
+    ).toEqual([]);
+
+    clock.advance(11 * MINUTE);
+    expect((await runSweep(t.deps, { orderIds: [paid.orderId] })).refunds).toEqual({ applied: 1 });
+    expect(mock.refunds.size).toBe(1);
+    const posts = mock.requests.filter((r) => r.method === 'POST' && r.path === '/refunds');
+    expect(posts).toHaveLength(2);
+    expect(new Set(posts.map((p) => p.idempotenceKey)).size).toBe(1);
+    expect((await orderRow(t.deps.db, paid.orderId)).status).toBe('refunded');
+  });
+
+  it('no provider id past the Idempotence-Key lifetime: no second POST, dead-letter instead', async () => {
+    const paid = await paidPrepayOrder(t, mock);
+    await performStaffAction(t.deps.engine, {
+      staff: OWNER,
+      action: 'refused',
+      targetId: paid.orderId,
+    });
+    const [refund] = await refundsOf(paid.orderId);
+    clock.advance(25 * 60 * MINUTE);
+    await expect(
+      processPayments(job('refund-create', { refundId: refund?.id }), t.deps),
+    ).rejects.toMatchObject({ name: 'UnrecoverableError' });
+    expect((await runSweep(t.deps, { orderIds: [paid.orderId] })).refunds).toEqual({
+      skipped_idempotence_key_expired: 1,
+    });
+    expect(mock.requests.filter((r) => r.method === 'POST' && r.path === '/refunds')).toEqual([]);
+    expect((await refundsOf(paid.orderId))[0]?.status).toBe('pending');
   });
 });
 

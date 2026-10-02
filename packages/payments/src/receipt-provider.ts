@@ -16,6 +16,14 @@ export interface ReceiptProvider {
   createOffsetReceipt(request: CreateOffsetReceiptRequest): Promise<ProviderReceipt>;
   /** Polled until `succeeded` (every 2 min up to 15 min, then alert). */
   getReceipt(id: string): Promise<ProviderReceipt>;
+  /**
+   * Receipts registered for a payment, including the one sent inside the payment (decision
+   * Б23: read when payment.receipt_registration is still pending). VERIFY: GET
+   * /receipts?payment_id= and its list format.
+   */
+  listPaymentReceipts(paymentId: string): Promise<ProviderReceipt[]>;
+  /** Receipts registered for a refund (GET /receipts?refund_id=, VERIFY). */
+  listRefundReceipts(refundId: string): Promise<ProviderReceipt[]>;
   /** Only if the provider supports correction receipts (to verify with YooKassa). */
   createCorrectionReceipt?(request: CreateCorrectionReceiptRequest): Promise<ProviderReceipt>;
 }

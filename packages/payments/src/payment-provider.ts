@@ -5,7 +5,9 @@
 import type {
   CreatePaymentRequest,
   CreateRefundRequest,
+  ListPaymentsRequest,
   ProviderPayment,
+  ProviderPaymentPage,
   ProviderRefund,
   WebhookNotification,
 } from './types';
@@ -19,6 +21,11 @@ export interface PaymentProvider {
   /** POST /refunds with Idempotence-Key; partial refunds by line are allowed. */
   createRefund(request: CreateRefundRequest): Promise<ProviderRefund>;
   getRefund(id: string): Promise<ProviderRefund>;
+  /**
+   * One page of the shop's payments created in [createdGte, createdLt) for the nightly
+   * reconciliation (decision Б29). VERIFY: GET /payments list format and filters.
+   */
+  listPayments(request: ListPaymentsRequest): Promise<ProviderPaymentPage>;
   /** Parses a notification body; throws WebhookParseError on anything unexpected. */
   parseWebhook(body: unknown): WebhookNotification;
 }
@@ -39,6 +46,15 @@ export class PaymentProviderError extends Error {
   ) {
     super(message);
   }
+}
+
+/**
+ * A request rejected locally before any network call (description or metadata over the
+ * provider limits, redirect without return_url). A programming or configuration error: never
+ * retried, like ReceiptLinesError.
+ */
+export class PaymentRequestError extends RangeError {
+  override name = 'PaymentRequestError';
 }
 
 export class WebhookParseError extends Error {

@@ -4,6 +4,7 @@ export {
   createRosskoCaller,
   createRosskoClient,
   ORDERS_BATCH_SIZE,
+  RECENT_ORDERS_SINCE_SLACK_MS,
   searchFailure,
   UNSUPPORTED_CODE,
   type RosskoCallerConfig,

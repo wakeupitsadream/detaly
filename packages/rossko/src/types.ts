@@ -186,9 +186,10 @@ export interface RosskoOrder {
 
 export interface RecentOrdersOptions {
   /**
-   * Keep orders created at or after this instant (a date-only createdAt is compared by the
-   * Moscow calendar day). Orders whose createdAt is missing or not understood are kept: the
-   * comment, not the time, identifies an order. Omit to keep everything the API lists.
+   * Keep orders created at or after this instant, less RECENT_ORDERS_SINCE_SLACK_MS (minute
+   * precision of Rossko timestamps, clock skew); a date-only createdAt is compared by the Moscow
+   * calendar day. Orders whose createdAt is missing or not understood are kept: the comment, not
+   * the time, identifies an order. Omit to keep everything the API lists.
    */
   since?: Date;
 }

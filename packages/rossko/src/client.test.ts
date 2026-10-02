@@ -3,6 +3,7 @@ import { SEARCH_ERROR_CACHE_TTL_SEC, type CachedSearch, type SearchCache } from 
 import {
   createRosskoClient,
   createRosskoCaller,
+  RECENT_ORDERS_SINCE_SLACK_MS,
   searchFailure,
   UNSUPPORTED_CODE,
   type RosskoClientOptions,
@@ -405,6 +406,31 @@ describe('createRosskoClient.recentOrders (GetOrders list mode, VERIFY)', () => 
       '70000010',
     ]);
     await expect(instance.recentOrders({ since: new Date('nope') })).rejects.toThrow(RangeError);
+  });
+
+  it('since tolerates minute-precision timestamps and clock skew (slack)', async () => {
+    const caller: RosskoCaller = {
+      call: () =>
+        Promise.resolve({
+          OrdersResult: {
+            success: true,
+            message: '',
+            OrdersList: {
+              Order: [
+                // Created 30 s after called_at, but Rossko drops the seconds.
+                { id: '1', created: '02.10.2026 15:20', comment: 'DT-000777/1', parts: {} },
+                // Rossko's clock 2 min behind ours.
+                { id: '2', created: '2026-10-02T15:18:30+03:00', comment: 'DT-000777/2' },
+                { id: '3', created: '2026-10-02T15:00:00+03:00', comment: 'old' },
+              ],
+            },
+          },
+        }),
+    };
+    const since = new Date('2026-10-02T12:20:30Z'); // 15:20:30 Moscow
+    const { orders } = await client({ caller }).instance.recentOrders({ since });
+    expect(orders.map((o) => o.id)).toEqual(['1', '2']);
+    expect(RECENT_ORDERS_SINCE_SLACK_MS).toBe(15 * 60_000);
   });
 
   it('success=false -> RosskoCallError code unsupported, reported ok=false', async () => {

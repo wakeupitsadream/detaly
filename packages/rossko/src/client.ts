@@ -114,12 +114,20 @@ function isRefusal(error: unknown): boolean {
 /** Moscow calendar day: date-only Rossko timestamps are Moscow dates. */
 const SUPPLIER_TIME_ZONE = 'Europe/Moscow';
 
+/**
+ * `since` is widened by this much before comparing: Rossko timestamps may come without seconds
+ * ('02.10.2026 15:20') and its clock is not ours, so an order created right after `called_at`
+ * could otherwise look older and be dropped. The comment, not the time, identifies the order.
+ */
+export const RECENT_ORDERS_SINCE_SLACK_MS = 15 * 60_000;
+
 function createdSince(createdAt: string | null, since: Date): boolean {
   if (createdAt === null) return true;
   const parsed = parseSupplierTimestamp(createdAt);
   if (parsed === null) return true;
-  if (parsed.kind === 'instant') return parsed.instant.getTime() >= since.getTime();
-  return parsed.date >= localDate(since, SUPPLIER_TIME_ZONE);
+  const from = new Date(since.getTime() - RECENT_ORDERS_SINCE_SLACK_MS);
+  if (parsed.kind === 'instant') return parsed.instant.getTime() >= from.getTime();
+  return parsed.date >= localDate(from, SUPPLIER_TIME_ZONE);
 }
 
 function errorMessage(error: unknown): string {

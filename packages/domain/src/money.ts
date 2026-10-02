@@ -80,7 +80,8 @@ export function marginBp(clientKop: Kop, supplierKop: Kop): BasisPoints {
 
 /**
  * Relative change of a price, rounded up (conservative for tolerance checks):
- * ceil((next - prev) * 10000 / prev). 10000 -> 10301 gives 302 (3.01% rounds up past 3%).
+ * ceil((next - prev) * 10000 / prev). 10000 -> 10301 gives 301 (exact); 9999 -> 10299 gives
+ * 301 (300.03 rounds up past a 3% tolerance).
  */
 export function driftBp(prevKop: Kop, nextKop: Kop): BasisPoints {
   assertKop(prevKop, 'previous amount');

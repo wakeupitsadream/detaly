@@ -70,6 +70,13 @@ services:
       - caddy_config:/config
     depends_on:
       - web
+    healthcheck:
+      # Admin API (localhost-only inside the container): Caddy is up and has a loaded config.
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:2019/config/']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     mem_limit: 128m
 
   web:
@@ -292,6 +299,8 @@ services:
       - 96mb
       - --maxmemory-policy
       - noeviction
+    environment:
+      TZ: ${TZ:-Asia/Yekaterinburg}
     volumes:
       - redisdata_stage:/data
     healthcheck:

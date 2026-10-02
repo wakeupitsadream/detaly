@@ -61,16 +61,18 @@ fi
 
 if [[ "$status" == ok ]]; then
   if [[ "$prev_status" != ok ]]; then
-    tg_alert "${BRAND}: worker снова работает (${detail})."
+    tg_alert "${BRAND}: worker снова работает (${detail})." || true
   fi
   log "ok: $detail"
   printf '%s %s\n' ok 0 >"$STATE_FILE"
   exit 0
 fi
 
+# last_alert moves only when the message was delivered: a failed send is retried on the next run.
 if [[ "$prev_status" == ok || $((NOW_SEC - last_alert)) -ge $REPEAT_SEC ]]; then
-  tg_alert "${BRAND}: worker молчит: ${detail}. Очереди, бот продавца и напоминания стоят. Порядок действий: docs/runbook.md, раздел «Worker молчит»."
-  last_alert=$NOW_SEC
+  if tg_alert "${BRAND}: worker молчит: ${detail}. Очереди, бот продавца и напоминания стоят. Порядок действий: docs/runbook.md, раздел «Worker молчит»."; then
+    last_alert=$NOW_SEC
+  fi
 fi
 log "problem ($status): $detail"
 printf '%s %s\n' "$status" "$last_alert" >"$STATE_FILE"

@@ -89,7 +89,10 @@ jobs:
       - name: Shellcheck
         run: |
           shellcheck --version
-          shellcheck -x $(find infra -name '*.sh' -type f) scripts/*.sh
+          find infra scripts -name '*.sh' -type f -print0 | xargs -0 shellcheck -x
+
+      - name: deploy.sh scenarios (fake docker)
+        run: infra/test/deploy-test.sh
 
       - name: Compose config
         run: |
@@ -158,8 +161,8 @@ jobs:
         run: |
           PORT=3100 HOSTNAME=127.0.0.1 TRUSTED_IP_HEADER=x-real-ip \
             nohup node apps/web/.next/standalone/apps/web/server.js >web.log 2>&1 &
-          (cd apps/worker && TG_SELLER_BOT_TOKEN= nohup node --import tsx src/main.ts >../../worker.log 2>&1 &)
-          for i in $(seq 60); do
+          (cd apps/worker && TG_SELLER_BOT_TOKEN='' nohup node --import tsx src/main.ts >../../worker.log 2>&1 &)
+          for _ in $(seq 60); do
             curl -fsS -o /dev/null "$E2E_BASE_URL/api/health/live" && break
             sleep 1
           done

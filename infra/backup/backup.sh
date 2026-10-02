@@ -25,7 +25,7 @@ finish() {
   if [[ -n "$WORK" ]]; then rm -rf "$WORK"; fi
   if [[ $code -ne 0 ]]; then
     log "failed at step '$STEP' (exit $code)"
-    tg_alert "${BRAND_NAME:-Сервис}: ночной бэкап БД не выполнен (шаг: $STEP, хост: $(hostname)). Проверьте: docker compose logs backup"
+    tg_alert "${BRAND_NAME:-Сервис}: ночной бэкап БД не выполнен (шаг: $STEP, хост: $(hostname)). Проверьте: docker compose logs backup" || true
   fi
   exit "$code"
 }

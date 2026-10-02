@@ -2,8 +2,9 @@
 # Deploy by image tag on the VPS (images are built by CI and pulled from ghcr.io).
 #
 # Usage (from anywhere; works relative to the repository root):
-#   infra/deploy.sh <tag>          pull <tag>, migrate + seed, up -d, wait for /api/health;
-#                                  on failure bring the previous tag back and exit 1
+#   infra/deploy.sh <tag>          pull <tag>, migrate + seed, up -d, wait for a heartbeat of the
+#                                  new worker and /api/health; on failure bring the previous tag
+#                                  back and exit 1
 #   infra/deploy.sh rollback       up -d the tag from .deploy/prev_tag (no migrations)
 #   infra/deploy.sh stage <tag>    stage profile: own Postgres/Redis, .env.stage, migrate + seed
 #   infra/deploy.sh stage-down     stop and remove the stage containers (volumes are kept)
@@ -11,10 +12,13 @@
 # Environment:
 #   DRY_RUN=1          print the docker commands instead of running them
 #   ENV_FILE           default .env (stage: .env.stage for the containers, .env for compose)
-#   HEALTH_TIMEOUT     seconds to wait for /api/health, default 90
+#   HEALTH_TIMEOUT     seconds to wait for the worker heartbeat and /api/health, default 90
 #
 # Migrations must be expand/contract: a rollback runs the previous image against the new schema.
-# State: .deploy/current_tag, .deploy/prev_tag, .deploy/history.log
+# State: .deploy/current_tag, .deploy/prev_tag, .deploy/history.log.
+# The tag that is brought up is also written to the env file (IMAGE_TAG, GIT_SHA; for stage
+# STAGE_IMAGE_TAG), so a later manual `docker compose ... up -d web` keeps running that tag
+# instead of falling back to the IMAGE_TAG=latest of .env.example.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
@@ -28,6 +32,7 @@ DRY_RUN="${DRY_RUN:-0}"
 
 MIGRATE_CMD=(node --import tsx /app/packages/db/src/migrate.ts)
 SEED_CMD=(node --import tsx /app/packages/db/src/seed-cli.ts)
+HEARTBEAT_KEY="detaly:heartbeat:worker"
 HEALTH_JS="fetch('http://127.0.0.1:3000/api/health').then(async r=>{console.log(r.status, await r.text());process.exit(r.ok?0:1)},e=>{console.log(String(e));process.exit(1)})"
 
 log() { printf '[deploy] %s\n' "$*" >&2; }
@@ -63,6 +68,30 @@ env_value() {
   printf '%s' "$line"
 }
 
+# Sets KEY=VALUE in an env file in place (first assignment replaced, others dropped, appended
+# when missing). Rewrites the file contents, so its owner and mode (600) stay as they were.
+set_env_value() {
+  local file="$1" key="$2" value="$3" tmp
+  if [[ "$DRY_RUN" == "1" ]]; then
+    log "DRY_RUN: would set $key=$value in $file"
+    return
+  fi
+  tmp="$(mktemp)"
+  awk -v k="$key" -v v="$value" '
+    $0 ~ "^[[:space:]]*" k "=" { if (!done) print k "=" v; done = 1; next }
+    { print }
+    END { if (!done) print k "=" v }
+  ' "$file" >"$tmp"
+  cat "$tmp" >"$file"
+  rm -f "$tmp"
+}
+
+# Milliseconds since epoch (bash 5; EPOCHREALTIME may use a locale decimal comma).
+now_ms() {
+  local us="${EPOCHREALTIME//[!0-9]/}"
+  printf '%s\n' "$((us / 1000))"
+}
+
 # Problems that would break production; in DRY_RUN they are only reported.
 preflight() {
   local file="$1" problems=()
@@ -73,6 +102,9 @@ preflight() {
   pg_pass="$(env_value "$file" POSTGRES_PASSWORD)"
   if [[ -z "$pg_pass" || "$pg_pass" == "detaly" ]]; then
     problems+=("POSTGRES_PASSWORD is empty or default (openssl rand -hex 24)")
+  elif [[ ! "$pg_pass" =~ ^[A-Za-z0-9._~-]+$ ]]; then
+    # compose puts it into DATABASE_URL unescaped: @ : / ? # % would break the URL
+    problems+=("POSTGRES_PASSWORD must be URL-safe ([A-Za-z0-9._~-]; openssl rand -hex 24)")
   fi
   local secret
   secret="$(env_value "$file" SESSION_SECRET)"
@@ -81,6 +113,12 @@ preflight() {
   fi
   if [[ -z "$(env_value "$file" BACKUP_AGE_RECIPIENT)" && -z "$(env_value "$file" BACKUP_PASSPHRASE)" ]]; then
     problems+=("neither BACKUP_AGE_RECIPIENT nor BACKUP_PASSPHRASE is set: backups would fail")
+  fi
+  if [[ "$(env_value "$file" BACKUP_STORAGE)" != "local" ]]; then
+    local k
+    for k in S3_ENDPOINT S3_BUCKET S3_KEY S3_SECRET; do
+      [[ -n "$(env_value "$file" "$k")" ]] || problems+=("$k is empty: the nightly backup to S3 would fail")
+    done
   fi
   if [[ ! -f infra/certs/russian_trusted_root_ca.pem ]]; then
     log "warning: infra/certs/russian_trusted_root_ca.pem is missing (see infra/certs/README.md)"
@@ -118,22 +156,41 @@ history() {
   fi
 }
 
-# Waits until web answers 200 on /api/health (DB, Redis and the worker heartbeat are fine).
-wait_health() {
-  local service="$1"
+# Waits until the worker has written a heartbeat after <since_ms> (the containers were brought up
+# by then, so it comes from the new worker, not from the one just replaced: its last heartbeat
+# stays fresh for HEARTBEAT_STALE_SEC and would hide a crash-looping new worker), and then until
+# web answers 200 on /api/health (DB, Redis and the heartbeat are fine).
+# Usage: wait_ready <web service> <redis service> <since_ms>
+wait_ready() {
+  local web="$1" redis="$2" since_ms="$3"
   if [[ "$DRY_RUN" == "1" ]]; then
-    compose exec -T "$service" node -e "$HEALTH_JS"
+    compose exec -T "$redis" redis-cli --raw GET "$HEARTBEAT_KEY"
+    compose exec -T "$web" node -e "$HEALTH_JS"
     return 0
   fi
-  local deadline=$((SECONDS + HEALTH_TIMEOUT)) out=""
+  local deadline=$((SECONDS + HEALTH_TIMEOUT)) hb="" hb_ok=0 out="no answer yet"
   while ((SECONDS < deadline)); do
-    if out="$(compose exec -T "$service" node -e "$HEALTH_JS" 2>&1)"; then
-      log "health ok: $out"
-      return 0
+    if ((!hb_ok)); then
+      hb="$(compose exec -T "$redis" redis-cli --raw GET "$HEARTBEAT_KEY" 2>/dev/null || true)"
+      hb="${hb//[!0-9]/}"
+      if [[ -n "$hb" ]] && ((hb > since_ms)); then
+        hb_ok=1
+        log "worker heartbeat ok (new container)"
+      fi
+    fi
+    if ((hb_ok)); then
+      if out="$(compose exec -T "$web" node -e "$HEALTH_JS" 2>&1)"; then
+        log "health ok: $out"
+        return 0
+      fi
     fi
     sleep 5
   done
-  log "health check failed after ${HEALTH_TIMEOUT}s: $out"
+  if ((!hb_ok)); then
+    log "no worker heartbeat newer than the deploy after ${HEALTH_TIMEOUT}s (see: logs worker)"
+  else
+    log "health check failed after ${HEALTH_TIMEOUT}s: $out"
+  fi
   return 1
 }
 
@@ -141,11 +198,16 @@ validate_tag() {
   [[ "$1" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || die "invalid image tag: '$1'"
 }
 
-# Starts the app services with a given tag (no migrations).
+# Starts the app services with a given tag (no migrations) and records the tag in the env file.
+# Sets UP_SINCE: the time (ms) after which a heartbeat can only come from the started worker.
+UP_SINCE=0
 up_tag() {
   local tag="$1"
   export IMAGE_TAG="$tag" GIT_SHA="$tag"
+  set_env_value "$ENV_FILE" IMAGE_TAG "$tag"
+  set_env_value "$ENV_FILE" GIT_SHA "$tag"
   compose up -d web worker backup caddy
+  UP_SINCE="$(now_ms)"
 }
 
 deploy() {
@@ -165,7 +227,7 @@ deploy() {
   compose run --rm --no-deps worker "${SEED_CMD[@]}"
   up_tag "$tag"
 
-  if wait_health web; then
+  if wait_ready web redis "$UP_SINCE"; then
     if [[ -n "$current" && "$current" != "$tag" ]]; then save_state prev_tag "$current"; fi
     save_state current_tag "$tag"
     history "deploy $tag ok"
@@ -177,7 +239,7 @@ deploy() {
   if [[ -n "$current" && "$current" != "$tag" ]]; then
     log "rolling back to $current"
     up_tag "$current"
-    if wait_health web; then
+    if wait_ready web redis "$UP_SINCE"; then
       history "auto-rollback to $current ok"
     else
       history "auto-rollback to $current: health still failing"
@@ -197,7 +259,7 @@ rollback() {
   preflight "$ENV_FILE"
   log "rollback $current -> $prev (no migrations; schema stays expanded)"
   up_tag "$prev"
-  if wait_health web; then
+  if wait_ready web redis "$UP_SINCE"; then
     save_state current_tag "$prev"
     if [[ -n "$current" ]]; then save_state prev_tag "$current"; fi
     history "rollback to $prev ok"
@@ -227,8 +289,9 @@ stage_up() {
   compose --profile stage up -d --wait postgres-stage redis-stage
   compose --profile stage run --rm --no-deps worker-stage "${MIGRATE_CMD[@]}"
   compose --profile stage run --rm --no-deps worker-stage "${SEED_CMD[@]}"
+  set_env_value "$ENV_FILE" STAGE_IMAGE_TAG "$tag"
   compose --profile stage up -d web-stage worker-stage
-  wait_health web-stage
+  wait_ready web-stage redis-stage "$(now_ms)"
   history "stage $tag up"
 }
 
@@ -251,7 +314,7 @@ main() {
       stage_up "$2"
       ;;
     stage-down) stage_down ;;
-    -h | --help) sed -n '2,18p' "$0" ;;
+    -h | --help) sed -n '2,23p' "$0" ;;
     *) deploy "$1" ;;
   esac
 }

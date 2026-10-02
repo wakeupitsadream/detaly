@@ -19,23 +19,27 @@ require_env() {
   done
 }
 
-# Telegram message to the sellers' chat. Never prints the token; a failed alert only logs.
-# TG_API_BASE exists for local tests with a stub server.
+# Telegram message to the sellers' chat. Never prints the token (curl errors are discarded:
+# some curl versions include the URL). Returns 1 when delivery failed so that callers can retry
+# later; returns 0 when no bot is configured (nothing to retry). TG_API_BASE is for local tests.
 tg_alert() {
   local text="$1"
   if [[ -z "${TG_SELLER_BOT_TOKEN:-}" || -z "${TG_SELLER_CHAT_ID:-}" ]]; then
     log "alert not sent (TG_SELLER_BOT_TOKEN/TG_SELLER_CHAT_ID not set): $text"
     return 0
   fi
-  if curl -fsS -m 15 -o /dev/null \
+  local rc=0
+  curl -fs -m 15 -o /dev/null \
     --data-urlencode "chat_id=${TG_SELLER_CHAT_ID}" \
     --data-urlencode "text=${text}" \
     --data-urlencode "disable_web_page_preview=true" \
-    "${TG_API_BASE:-https://api.telegram.org}/bot${TG_SELLER_BOT_TOKEN}/sendMessage"; then
+    "${TG_API_BASE:-https://api.telegram.org}/bot${TG_SELLER_BOT_TOKEN}/sendMessage" 2>/dev/null || rc=$?
+  if ((rc == 0)); then
     log "alert sent"
-  else
-    log "alert delivery failed"
+    return 0
   fi
+  log "alert delivery failed (curl exit $rc)"
+  return 1
 }
 
 # Storage location for dumps: a local directory (STORAGE=local) or an rclone remote "s3:".

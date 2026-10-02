@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CachedSearch, SearchCache } from './cache';
 import { createRosskoClient, createRosskoCaller, type RosskoClientOptions } from './client';
-import { CheckoutDisabledError, QuotaBreakerError, RosskoCallError } from './errors';
+import {
+  CheckoutDisabledError,
+  checkoutMayHaveExecuted,
+  QuotaBreakerError,
+  RosskoCallError,
+  RosskoConfigError,
+  RosskoRateLimitError,
+} from './errors';
+import { RosskoResponseError } from './mapper';
 import { createFixtureCaller } from './fixture-caller';
 import { createUnlimitedLimiter } from './limiter';
 import type { RosskoCallEvent, RosskoCaller, RosskoLimiter } from './types';
@@ -225,13 +233,56 @@ describe('createRosskoClient.checkout', () => {
     expect(result.itemErrors).toHaveLength(1);
   });
 
-  it('rejects empty orders and bad counts', async () => {
+  it('rejects empty orders, bad counts and items without a stock', async () => {
     const { instance, calls } = client();
     await expect(instance.checkout({ items: [] })).rejects.toThrow(RangeError);
     await expect(
       instance.checkout({ items: [{ brand: 'B', article: 'A', stockId: 'S', count: 1.5 }] }),
     ).rejects.toThrow(RangeError);
+    await expect(
+      instance.checkout({ items: [{ brand: 'B', article: 'A', stockId: ' ', count: 1 }] }),
+    ).rejects.toThrow(RangeError);
     expect(calls).toHaveLength(0);
+  });
+
+  it.each([
+    ['delivery id', { deliveryId: null }],
+    ['payment id', { paymentId: '' }],
+  ])('refuses to order without a %s, before the limiter', async (_label, overrides) => {
+    const acquire = vi.fn(() => Promise.resolve({ waitedMs: 0, dailyCount: 1 }));
+    const { instance, calls } = client({
+      ...overrides,
+      limiter: { ...createUnlimitedLimiter(), acquire },
+    });
+    await expect(instance.checkout(request)).rejects.toBeInstanceOf(RosskoConfigError);
+    expect(acquire).not.toHaveBeenCalled();
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe('checkoutMayHaveExecuted', () => {
+  it('is false only for errors raised before the request left the process', () => {
+    expect(checkoutMayHaveExecuted(new CheckoutDisabledError())).toBe(false);
+    expect(checkoutMayHaveExecuted(new RosskoConfigError('x'))).toBe(false);
+    expect(checkoutMayHaveExecuted(new QuotaBreakerError())).toBe(false);
+    expect(checkoutMayHaveExecuted(new RosskoRateLimitError(1000))).toBe(false);
+    expect(checkoutMayHaveExecuted(new RangeError('bad count'))).toBe(false);
+    expect(checkoutMayHaveExecuted(new RosskoCallError('GetCheckout', 'x', { wsdl: true }))).toBe(
+      false,
+    );
+  });
+
+  it('is true for timeouts, resets after sending, SOAP faults and unparsable replies', () => {
+    expect(
+      checkoutMayHaveExecuted(new RosskoCallError('GetCheckout', 'x', { timeout: true })),
+    ).toBe(true);
+    expect(
+      checkoutMayHaveExecuted(
+        new RosskoCallError('GetCheckout', 'socket hang up', { code: 'ECONNRESET' }),
+      ),
+    ).toBe(true);
+    expect(checkoutMayHaveExecuted(new RosskoResponseError('GetCheckout', 'shape'))).toBe(true);
+    expect(checkoutMayHaveExecuted(new Error('unknown'))).toBe(true);
   });
 });
 

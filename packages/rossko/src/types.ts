@@ -194,7 +194,10 @@ export interface RosskoCallEvent {
   supplierSuccess: boolean | null;
   /** Masked error message when ok=false. */
   error: string | null;
-  /** The request timed out (GetCheckout may still have been executed). */
+  /**
+   * The request timed out. GetCheckout may have been executed after other failures too
+   * (see checkoutMayHaveExecuted).
+   */
   timeout: boolean;
 }
 
@@ -206,6 +209,10 @@ export interface RosskoClient {
   checkoutDetails(): Promise<CheckoutDetails>;
   /** Fetches orders by id; more than 20 ids are split into several calls. */
   orders(ids: readonly string[]): Promise<OrdersResult>;
-  /** Throws CheckoutDisabledError when allowCheckout is false. Never retried by the client. */
+  /**
+   * Throws CheckoutDisabledError when allowCheckout is false and RosskoConfigError without
+   * delivery/payment ids. Never retried by the client; on failure use checkoutMayHaveExecuted()
+   * to decide between a retry and a GetOrders lookup.
+   */
   checkout(request: CheckoutRequest): Promise<CheckoutResult>;
 }

@@ -91,7 +91,14 @@ async function main(): Promise<number> {
   const secrets = [key1, key2];
   const mask = (text: string) => maskSecrets(text, secrets);
   const wsdlBase = env('ROSSKO_WSDL_BASE') ?? 'https://api.rossko.ru/service/v2.1';
-  const timeoutMs = Number(env('ROSSKO_TIMEOUT_MS') ?? 15_000);
+  const timeoutRaw = env('ROSSKO_TIMEOUT_MS');
+  const timeoutMs = timeoutRaw === undefined ? 15_000 : Number(timeoutRaw);
+  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+    console.error(
+      `ROSSKO_TIMEOUT_MS должен быть положительным целым числом, получено «${timeoutRaw}»`,
+    );
+    return EXIT_USAGE;
+  }
   const deliveryId = env('ROSSKO_DELIVERY_ID');
   const addressId = env('ROSSKO_ADDRESS_ID');
   const localStockIds = list([env('ROSSKO_LOCAL_STOCK_IDS') ?? '']);

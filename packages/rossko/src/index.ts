@@ -16,8 +16,10 @@ export {
 } from './cache';
 export {
   CheckoutDisabledError,
+  checkoutMayHaveExecuted,
   QuotaBreakerError,
   RosskoCallError,
+  RosskoConfigError,
   RosskoRateLimitError,
   type QuotaBreakerReason,
 } from './errors';

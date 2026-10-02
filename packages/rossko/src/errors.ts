@@ -83,3 +83,32 @@ export class RosskoCallError extends Error {
     this.code = details.code ?? null;
   }
 }
+
+/** Client configuration does not allow the call (e.g. GetCheckout without delivery/payment id). */
+export class RosskoConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RosskoConfigError';
+  }
+}
+
+/**
+ * Whether a failed `checkout()` may still have created an order at Rossko. Only errors raised
+ * before the request left the process are definite: checkout disabled, bad request or config,
+ * quota and rate limits, WSDL load failures. Everything else (timeout, connection reset after
+ * sending, HTTP 5xx, SOAP fault, unparsable reply) is ambiguous: the worker must look the order
+ * up with GetOrders before any retry, otherwise a retry may order the parts twice.
+ */
+export function checkoutMayHaveExecuted(error: unknown): boolean {
+  if (
+    error instanceof CheckoutDisabledError ||
+    error instanceof RosskoConfigError ||
+    error instanceof QuotaBreakerError ||
+    error instanceof RosskoRateLimitError ||
+    error instanceof RangeError
+  ) {
+    return false;
+  }
+  if (error instanceof RosskoCallError) return !error.wsdl;
+  return true;
+}

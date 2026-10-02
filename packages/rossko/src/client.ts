@@ -6,7 +6,7 @@
  * repeated blindly: after a timeout the worker checks GetOrders first.
  */
 import type { RosskoMode } from '@detaly/domain/statuses';
-import { CheckoutDisabledError, RosskoCallError } from './errors';
+import { CheckoutDisabledError, RosskoCallError, RosskoConfigError } from './errors';
 import { createFixtureCaller } from './fixture-caller';
 import { maskSecrets } from './mask';
 import {
@@ -233,8 +233,18 @@ export function createRosskoClient(options: RosskoClientOptions): RosskoClient {
 
     async checkout(request: CheckoutRequest): Promise<CheckoutResult> {
       if (!options.allowCheckout) throw new CheckoutDisabledError();
+      // Without these ids Rossko would pick its own default delivery/payment: a real order to
+      // an unknown place. Fail before the limiter and the network.
+      if (!deliveryId || !paymentId) {
+        throw new RosskoConfigError(
+          'Rossko checkout needs ROSSKO_DELIVERY_ID and ROSSKO_PAYMENT_ID (see GetCheckoutDetails)',
+        );
+      }
       if (request.items.length === 0) throw new RangeError('checkout needs at least one item');
       for (const item of request.items) {
+        if (!item.brand.trim() || !item.article.trim() || !item.stockId.trim()) {
+          throw new RangeError('checkout item needs brand, article and stockId');
+        }
         if (!Number.isInteger(item.count) || item.count <= 0) {
           throw new RangeError(`invalid count ${item.count} for ${item.brand} ${item.article}`);
         }

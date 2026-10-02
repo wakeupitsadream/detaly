@@ -16,10 +16,13 @@ export function toArray<T = unknown>(value: T | readonly T[] | null | undefined)
   return Array.isArray(value) ? [...(value as readonly T[])] : [value as T];
 }
 
-/** Property by exact name, then case-insensitively (`PartsList` vs `partsList`). */
+/**
+ * Own property by exact name, then case-insensitively (`PartsList` vs `partsList`).
+ * Inherited properties (`constructor`, `toString`) are never returned.
+ */
 export function field(obj: unknown, name: string): unknown {
   if (!isObject(obj)) return undefined;
-  if (name in obj) return obj[name];
+  if (Object.hasOwn(obj, name)) return obj[name];
   const lower = name.toLowerCase();
   for (const key of Object.keys(obj)) {
     if (key.toLowerCase() === lower) return obj[key];

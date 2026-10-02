@@ -9,7 +9,7 @@ import {
   parseSearchResponse,
   RosskoResponseError,
 } from './mapper';
-import { toArray } from './raw';
+import { field, toArray } from './raw';
 
 const local = { localStockIds: ['ORB1'] };
 const fixture = (name: string): unknown => stripMeta(BUNDLED_FIXTURES[name]);
@@ -193,10 +193,33 @@ describe('mapSearchResult robustness', () => {
     ['zero count', { id: 'S', price: '1.00', count: 0, delivery: 1 }],
     ['missing count', { id: 'S', price: '1.00', delivery: 1 }],
     ['no delivery term', { id: 'S', price: '1.00', count: 1 }],
+    ['negative delivery term only', { id: 'S', price: '1.00', count: 1, delivery: '-1' }],
   ])('drops a stock with %s but keeps the response', (_label, stock) => {
     expect(
       mapSearchResult(part([stock, { id: 'OK', price: '2.00', count: 1, delivery: 1 }]), local),
     ).toHaveLength(1);
+  });
+
+  it('unwraps {$value} price nodes and ignores inherited property names', () => {
+    const offers = mapSearchResult(
+      part([
+        { id: 'S', price: { attributes: { cur: 'RUB' }, $value: '12,30' }, count: 1, delivery: 2 },
+      ]),
+      local,
+    );
+    expect(offers).toHaveLength(1);
+    expect(offers[0]?.priceSupplierKop).toBe(1230);
+    // inherited Object.prototype members are not fields
+    expect(field({}, 'toString')).toBeUndefined();
+    expect(field({ ToString: 'x' }, 'toString')).toBe('x');
+  });
+
+  it('keeps a stock with a negative delivery term when deliveryEnd is present', () => {
+    const [offer] = mapSearchResult(
+      part({ id: 'S', price: '1', count: 1, delivery: -1, deliveryEnd: '2026-10-08' }),
+      local,
+    );
+    expect(offer?.stock).toMatchObject({ deliveryDays: 0, deliveryEnd: '2026-10-08' });
   });
 
   it('uses deliveryEnd when delivery days are missing, Date values become ISO strings', () => {

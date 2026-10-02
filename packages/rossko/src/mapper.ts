@@ -49,11 +49,12 @@ function successOf(result: Record<string, unknown>, hasPayload: boolean): boolea
   return bool(field(result, 'success')) ?? hasPayload;
 }
 
-/** Kopecks or null for missing/invalid amounts. */
+/** Kopecks or null for missing/invalid amounts (`{$value: '1.00'}` nodes are unwrapped). */
 function kopOrNull(value: unknown): number | null {
-  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const amount = typeof value === 'number' ? value : str(value);
+  if (amount === null) return null;
   try {
-    return rubToKop(value);
+    return rubToKop(amount);
   } catch {
     return null;
   }
@@ -71,7 +72,9 @@ function mapStock(raw: unknown, localStockIds: ReadonlySet<string>) {
   if (priceKop === null || priceKop <= 0) return null;
   const count = int(field(raw, 'count'));
   if (count === null || count <= 0) return null;
-  const delivery = int(field(raw, 'delivery'));
+  // A negative term is not a real promise (e.g. -1 for "unknown"): treat it as missing.
+  const deliveryRaw = int(field(raw, 'delivery'));
+  const delivery = deliveryRaw !== null && deliveryRaw >= 0 ? deliveryRaw : null;
   const deliveryEnd = str(field(raw, 'deliveryEnd'));
   // Without any delivery term we cannot promise a date: skip the stock.
   if (delivery === null && deliveryEnd === null) return null;
@@ -82,7 +85,7 @@ function mapStock(raw: unknown, localStockIds: ReadonlySet<string>) {
     count,
     multiplicity: multiplicity === null || multiplicity < 1 ? 1 : multiplicity,
     type: str(field(raw, 'type')),
-    deliveryDays: Math.max(0, delivery ?? 0),
+    deliveryDays: delivery ?? 0,
     deliveryStart: str(field(raw, 'deliveryStart')),
     deliveryEnd,
     extra: str(field(raw, 'extra')),

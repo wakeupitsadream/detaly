@@ -68,6 +68,17 @@ describe('scripts/rossko-smoke.ts', () => {
     expect(result.code).toBe(64);
   }, 30_000);
 
+  it('rejects a malformed ROSSKO_TIMEOUT_MS before any request', async () => {
+    const result = await runSmoke(['--articles', 'OC90', '--out', join(outDir, 'bad-timeout')], {
+      ROSSKO_KEY1: KEY1,
+      ROSSKO_KEY2: KEY2,
+      ROSSKO_WSDL_BASE: stub.base,
+      ROSSKO_TIMEOUT_MS: '15s',
+    });
+    expect(result.code).toBe(64);
+    expect(result.stderr).toContain('ROSSKO_TIMEOUT_MS');
+  }, 30_000);
+
   it('with keys records masked JSON and XML for each call', async () => {
     const out = join(outDir, 'run');
     const result = await runSmoke(['--articles', 'OC90,w 914/2', '--out', out], {

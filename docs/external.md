@@ -302,6 +302,7 @@ msw-моках SMS-шлюзов: `api.yookassa.ru`, `api.rossko.ru`, SMS Aero и
 | `packages/payments/src/yookassa.ts`: 266; `packages/payments/src/types.ts`: 27, 31, 55; `packages/orders/src/rows.ts`: 167; `packages/payments/test/yookassa-1b.test.ts`: 145 | `metadata` — до 16 ключей, ключ до 32 и значение до 512 символов (`order_id`, `order_number`, `payment_row_id`); `description` платежа до 128 символов | Ю11 [ф1B], Ю11 [ф1B, лимиты] | Максим (тикет ЮKassa) | 1B |
 | `packages/payments/src/yookassa.ts`: 408; `packages/payments/src/receipt-provider.ts`: 21, 25; `packages/payments/src/testing/yookassa-handlers.ts`: 18 | `GET /receipts?payment_id=` и `?refund_id=` с постраничностью курсором; чек, отправленный в платеже, появляется в этом списке | Ю14 | Максим (тикет ЮKassa, stage шаг 1) | 1B |
 | `apps/worker/src/jobs/receipts/payment-receipt.ts`: 54, 81 | Если список чеков недоступен, а у платежа `receipt_registration = succeeded`, чек платежа считается пробитым (вместо id чека пишется id платежа); окончательная ошибка списка — «неизвестно», а не «чек не прошёл» | Ю19 | Максим (тикет ЮKassa) | 1B |
+| `apps/worker/src/jobs/receipts/refund-receipt.ts`: 4, 46, 57 | Чек возврата находится в `GET /receipts?refund_id=` (формат списка как у платежа) или по `receipt_registration` объекта возврата; окончательная ошибка списка — «неизвестно», а не «чек не прошёл» | Ю10 [ф1B], Ю14 | Максим (тикет ЮKassa, stage шаг 11) | 1B |
 | `packages/payments/src/yookassa.ts`: 466; `packages/payments/src/testing/yookassa-handlers.ts`: 12, 590 | Чек возврата передаётся в теле `POST /refunds` и повторяет строки и `payment_mode` исходного чека; у платежа с чеком возврат без чека отвергается; частичный возврат — только возвращаемые строки | Ю10 | Максим (тикет ЮKassa, stage шаги 6, 11) | 1B |
 | `packages/payments/src/yookassa.ts`: 488; `packages/payments/src/payment-provider.ts`: 26; `packages/payments/src/testing/yookassa-handlers.ts`: 553; `apps/worker/src/jobs/reconciliation/nightly.ts`: 78 | Список платежей `GET /payments` с фильтрами `created_at.gte`/`created_at.lt`, `limit`, `cursor`, новые первыми; в списке все платежи магазина — основа ночной сверки | Ю15 | Максим (тикет ЮKassa) | 1B |
 | `packages/payments/src/yookassa.ts`: 520 | Чек зачёта: `POST /receipts` с `settlements: [{type: 'prepayment'}]` по платежу предоплаты 100 % | Ю1 (гейт фазы 0) | Максим (тикет ЮKassa, stage шаг 9) | 1B |
@@ -346,3 +347,17 @@ done
 | Дата | sha образа | Шаг | Что ожидали | Что получили | Вопрос / решение |
 |---|---|---|---|---|---|
 | __.__.____ | | | | | |
+
+## 8. Фаза 1C: VERIFY
+
+Каркас раздела заведён на слиянии волны 1 фазы 1C (пакет `foundation`). Пакеты волн 2–3
+(`client-bot`, `vin-core`, `notify-1c` и другие) добавляют сюда свои строки в том же формате, что
+в разделе 7.2; итоговый grep всех `VERIFY:` 1C — на интеграции (`docs/phase-1c-implementation.md`,
+раздел 14, п. 11). Внешние API 1C (Telegram Bot API, S3 в РФ) из среды разработки недоступны:
+код проверен на подмене транспорта grammY и msw.
+
+| Файл: строки | Что предполагает код | Вопрос | Кто | Фаза |
+|---|---|---|---|---|
+| `packages/files/src/s3.ts`: 3; `packages/files/src/from-env.ts`: 6 | S3 провайдера в РФ (Timeweb / Yandex Object Storage) принимает адреса path-style (`https://endpoint/bucket/key`) и подпись SigV4 с `UNSIGNED-PAYLOAD`; регион при пустом `S3_REGION` — `ru-1` (`DEFAULT_S3_REGION`; у Yandex — `ru-central1`) | Регион, path-style или virtual-host, поддержка `UNSIGNED-PAYLOAD`, коды ошибок | Максим (документация провайдера, проверка на бакете при деплое) | 1C |
+| `apps/worker/test/helpers/test-deps.ts`: 99 | Фейк Telegram отвечает 429 «Too Many Requests» с `parameters.retry_after` (секунды); бот ждёт столько и повторяет | Лимиты Bot API (сообщений в секунду на чат и всего), формат 429 | Максим (живая проверка после деплоя, runbook) | 1C |
+| `packages/domain/src/install-params.ts`: 8, 11, 14 | Партнёрский сервис даёт 2 подъёмника одновременно, типовая замена — 120 минут, поставки доходят до сервиса к 12:00 дня выдачи | Числа окна установки | Лёша (партнёрский сервис) | 1C |

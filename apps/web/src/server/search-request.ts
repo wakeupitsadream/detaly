@@ -18,7 +18,7 @@ export const LIMITED_PATHS: ReadonlySet<string> = new Set(['/search', '/api/sear
 /** count: spend one hit; head: answer HEAD without the handler; pass: not a search. */
 export type SearchRequestKind = 'count' | 'head' | 'pass';
 
-interface HeaderSource {
+export interface HeaderSource {
   get(name: string): string | null;
 }
 

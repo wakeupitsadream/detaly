@@ -29,7 +29,6 @@ const securityHeaders = [
   { key: 'Content-Security-Policy', value: contentSecurityPolicy },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'X-Frame-Options', value: 'DENY' },
-  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   {
     key: 'Permissions-Policy',
     value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
@@ -64,6 +63,20 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: '/:path*', headers: securityHeaders },
+      // Referrer-Policy is split by path instead of being global: the order page /o/<token>
+      // carries its access token in the URL and must never leak it through Referer. When two
+      // rules set the same key the later one wins, and the proxy sets no-referrer on /o/* and
+      // /api/orders/* as well (its headers are applied after these), so neither can be
+      // overridden by a global value.
+      {
+        source: '/((?!o/).*)',
+        headers: [{ key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' }],
+      },
+      { source: '/o/:path*', headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] },
+      {
+        source: '/api/orders/:path*',
+        headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],
+      },
       {
         source: '/api/:path*',
         headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }],

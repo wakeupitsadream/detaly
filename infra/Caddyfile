@@ -1,0 +1,67 @@
+# Caddy is the only service with published ports (80, 443). It terminates TLS
+# (Let's Encrypt) and proxies to web:3000, which is not reachable from outside.
+#
+# Environment (passed by infra/docker-compose.yml):
+#   SITE_DOMAIN            production domain (default "localhost": local TLS, no ACME)
+#   STAGE_DOMAIN           stage domain (default "stage.localhost")
+#   ACME_EMAIL             Let's Encrypt account email (required in production)
+#   STAGE_BASIC_AUTH_USER  basic_auth user for stage
+#   STAGE_BASIC_AUTH_HASH  bcrypt hash from `caddy hash-password` (see docs/runbook.md)
+#
+# There is intentionally no rate_limit here: the stock caddy image has no such module.
+# Search/SMS limits live in the application (apps/web/src/proxy.ts, Redis sliding window).
+# Trust in X-Real-IP comes from the network layout: Caddy always overwrites it with the
+# TCP peer address, and web is not published, so clients cannot reach it directly.
+{
+	email {$ACME_EMAIL:admin@localhost}
+
+	servers {
+		# Caddy is the edge: no proxy sits in front of it, so it must NOT trust
+		# X-Forwarded-For from clients. Enable only if a CDN/LB is put in front:
+		# trusted_proxies static private_ranges
+	}
+}
+
+(common) {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+{$SITE_DOMAIN:localhost} {
+	import common
+
+	reverse_proxy web:3000 {
+		# The client IP as seen by Caddy (TCP peer). The app trusts only this header
+		# (TRUSTED_IP_HEADER=x-real-ip); any client-supplied X-Real-IP is replaced.
+		header_up X-Real-IP {remote_host}
+	}
+}
+
+{$STAGE_DOMAIN:stage.localhost} {
+	import common
+
+	header X-Robots-Tag "noindex, nofollow"
+
+	# Payment/messenger webhooks cannot do basic auth; they are verified by the app
+	# (YooKassa IP allowlist + re-reading the object via API, MAX secret header).
+	@protected not path /api/webhooks/*
+	basic_auth @protected {
+		{$STAGE_BASIC_AUTH_USER:stage} {$STAGE_BASIC_AUTH_HASH:disabled}
+	}
+
+	# web-stage exists only with `--profile stage`; otherwise Caddy answers 502.
+	reverse_proxy web-stage:3000 {
+		header_up X-Real-IP {remote_host}
+	}
+}

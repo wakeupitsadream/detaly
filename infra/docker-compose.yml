@@ -1,0 +1,320 @@
+# Production stack on one VPS (2 vCPU / 4 GB + 2 GB swap).
+#
+# Run from the repository root:
+#   docker compose -f infra/docker-compose.yml --env-file .env up -d
+#   docker compose -f infra/docker-compose.yml --env-file .env --profile stage up -d   # + stage
+# Normally via infra/deploy.sh (pull, migrations, seed, health wait, rollback).
+#
+# Interpolation (${...}) reads the --env-file; containers get the same file through env_file.
+# DATABASE_URL and REDIS_URL inside containers are built here from POSTGRES_* so that the
+# database password lives in exactly one place; the values in .env are only for host tools.
+# Memory limits sum to ~2.6 GB for production; the stage profile adds ~1.4 GB on demand.
+
+name: detaly
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+# Shared by every Node service (production and stage).
+x-app: &app
+  restart: always
+  logging: *logging
+  volumes:
+    # Russian Trusted Root CA (Mintsifry) for MAX/bank endpoints; mounted, not baked in.
+    # See infra/certs/README.md. A missing file only produces a Node warning.
+    - ./certs:/certs:ro
+
+x-app-env: &app-env
+  NODE_ENV: production
+  TZ: ${TZ:-Asia/Yekaterinburg}
+  NODE_EXTRA_CA_CERTS: /certs/russian_trusted_root_ca.pem
+  # deploy.sh exports GIT_SHA=<image tag>; shown in /ping and /api/health.
+  GIT_SHA: ${GIT_SHA:-dev}
+
+x-prod-db-env: &prod-db-env
+  DATABASE_URL: postgres://${POSTGRES_USER:-detaly}:${POSTGRES_PASSWORD:-detaly}@postgres:5432/${POSTGRES_DB:-detaly}
+  REDIS_URL: redis://redis:6379/0
+
+x-stage-env: &stage-env
+  DATABASE_URL: postgres://${POSTGRES_USER:-detaly}:${POSTGRES_PASSWORD:-detaly}@postgres-stage:5432/detaly_stage
+  REDIS_URL: redis://redis-stage:6379/0
+  # Stage never places real supplier orders and is never indexed.
+  ROSSKO_ALLOW_CHECKOUT: 'false'
+  NOINDEX_ALL: 'true'
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    logging: *logging
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      TZ: ${TZ:-Asia/Yekaterinburg}
+      # Never empty: an empty value would make the Caddyfile invalid (Caddy only
+      # applies {$VAR:default} when the variable is unset).
+      SITE_DOMAIN: ${SITE_DOMAIN:-localhost}
+      STAGE_DOMAIN: ${STAGE_DOMAIN:-stage.localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@localhost}
+      STAGE_BASIC_AUTH_USER: ${STAGE_BASIC_AUTH_USER:-stage}
+      # "disabled" is not a bcrypt hash: stage answers 401 until a real hash is set.
+      STAGE_BASIC_AUTH_HASH: ${STAGE_BASIC_AUTH_HASH:-disabled}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+    healthcheck:
+      # Admin API (localhost-only inside the container): Caddy is up and has a loaded config.
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:2019/config/']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: 128m
+
+  web:
+    <<: *app
+    image: ${IMAGE_REGISTRY:-ghcr.io/wakeupitsadream}/detaly-web:${IMAGE_TAG:-latest}
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      <<: [*app-env, *prod-db-env]
+      # web is reachable only through Caddy, which sets X-Real-IP from the TCP peer.
+      TRUSTED_IP_HEADER: x-real-ip
+      NODE_OPTIONS: --max-old-space-size=512
+    # Not published: only Caddy (same network) talks to it.
+    expose:
+      - '3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # Liveness only: a dead worker must not restart web (/api/health checks the worker).
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health/live').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    mem_limit: 768m
+
+  worker:
+    <<: *app
+    image: ${IMAGE_REGISTRY:-ghcr.io/wakeupitsadream}/detaly-worker:${IMAGE_TAG:-latest}
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      <<: [*app-env, *prod-db-env]
+      NODE_OPTIONS: --max-old-space-size=384
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # Runs in the image WORKDIR /app/apps/worker, where tsx resolves.
+      test: ['CMD', 'node', '--import', 'tsx', 'src/healthcheck.ts']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    # graceful shutdown inside the worker is capped at 25 s
+    stop_grace_period: 30s
+    mem_limit: 512m
+
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    logging: *logging
+    environment:
+      TZ: ${TZ:-Asia/Yekaterinburg}
+      POSTGRES_USER: ${POSTGRES_USER:-detaly}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-detaly}
+      POSTGRES_DB: ${POSTGRES_DB:-detaly}
+    command: ['postgres', '-c', 'shared_buffers=128MB', '-c', 'max_connections=50']
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    shm_size: 128m
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    mem_limit: 768m
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    logging: *logging
+    # noeviction is mandatory for BullMQ: evicted job keys mean lost or stuck jobs.
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - noeviction
+    environment:
+      TZ: ${TZ:-Asia/Yekaterinburg}
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: 320m
+
+  backup:
+    image: ${IMAGE_REGISTRY:-ghcr.io/wakeupitsadream}/detaly-backup:${IMAGE_TAG:-latest}
+    build:
+      context: ./backup
+    restart: always
+    logging: *logging
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      TZ: ${TZ:-Asia/Yekaterinburg}
+      <<: *prod-db-env
+      # s3 (rclone, S3_* from .env) or local (/backups volume; for checks only)
+      STORAGE: ${BACKUP_STORAGE:-s3}
+    volumes:
+      - backups_local:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'pgrep', 'crond']
+      interval: 60s
+      timeout: 5s
+      retries: 3
+    mem_limit: 128m
+
+  # --- stage (docker compose --profile stage ...): only while testing YooKassa ---
+
+  web-stage:
+    <<: *app
+    profiles: [stage]
+    image: ${IMAGE_REGISTRY:-ghcr.io/wakeupitsadream}/detaly-web:${STAGE_IMAGE_TAG:-${IMAGE_TAG:-latest}}
+    env_file:
+      - path: ../.env.stage
+        required: false
+    environment:
+      <<: [*app-env, *stage-env]
+      TRUSTED_IP_HEADER: x-real-ip
+      NODE_OPTIONS: --max-old-space-size=384
+    expose:
+      - '3000'
+    depends_on:
+      postgres-stage:
+        condition: service_healthy
+      redis-stage:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health/live').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    mem_limit: 512m
+
+  worker-stage:
+    <<: *app
+    profiles: [stage]
+    image: ${IMAGE_REGISTRY:-ghcr.io/wakeupitsadream}/detaly-worker:${STAGE_IMAGE_TAG:-${IMAGE_TAG:-latest}}
+    env_file:
+      - path: ../.env.stage
+        required: false
+    environment:
+      <<: [*app-env, *stage-env]
+      NODE_OPTIONS: --max-old-space-size=256
+    depends_on:
+      postgres-stage:
+        condition: service_healthy
+      redis-stage:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'node', '--import', 'tsx', 'src/healthcheck.ts']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    stop_grace_period: 30s
+    mem_limit: 384m
+
+  postgres-stage:
+    image: postgres:16-alpine
+    profiles: [stage]
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      TZ: ${TZ:-Asia/Yekaterinburg}
+      POSTGRES_USER: ${POSTGRES_USER:-detaly}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-detaly}
+      POSTGRES_DB: detaly_stage
+    command: ['postgres', '-c', 'shared_buffers=64MB', '-c', 'max_connections=30']
+    volumes:
+      - pgdata_stage:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    mem_limit: 384m
+
+  redis-stage:
+    image: redis:7-alpine
+    profiles: [stage]
+    restart: unless-stopped
+    logging: *logging
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --maxmemory
+      - 96mb
+      - --maxmemory-policy
+      - noeviction
+    environment:
+      TZ: ${TZ:-Asia/Yekaterinburg}
+    volumes:
+      - redisdata_stage:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: 128m
+
+volumes:
+  pgdata:
+  redisdata:
+  caddy_data:
+  caddy_config:
+  backups_local:
+  pgdata_stage:
+  redisdata_stage:

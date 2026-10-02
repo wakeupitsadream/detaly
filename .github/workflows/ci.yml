@@ -1,0 +1,241 @@
+# CI: checks on every push and PR; images to ghcr.io on main and v* tags.
+name: ci
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22.22'
+  # Services below listen on localhost; the role is a superuser of a throwaway CI database.
+  DATABASE_URL: postgres://detaly:detaly@localhost:5432/detaly
+  DATABASE_URL_TEST: postgres://detaly:detaly@localhost:5432/detaly_test
+  REDIS_URL: redis://localhost:6379/0
+  REDIS_URL_TEST: redis://localhost:6379/1
+  SESSION_SECRET: ci-session-secret-0123456789abcdef0123456789abcdef
+  ROSSKO_MODE: fixtures
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: detaly
+          POSTGRES_PASSWORD: detaly
+          POSTGRES_DB: detaly
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U detaly -d detaly"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format
+        run: pnpm format:check
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Drizzle migrations match the schema
+        run: pnpm --filter @detaly/db db:drift
+
+      - name: Tests (unit + integration against Postgres 16 and Redis 7)
+        run: pnpm test
+
+      - name: Migrate and seed twice (seed is idempotent)
+        run: |
+          pnpm db:migrate
+          pnpm db:seed
+          pnpm db:seed
+
+      - name: Build
+        run: pnpm build
+
+      - name: Shellcheck
+        run: |
+          shellcheck --version
+          find infra scripts -name '*.sh' -type f -print0 | xargs -0 shellcheck -x
+
+      - name: deploy.sh scenarios (fake docker)
+        run: infra/test/deploy-test.sh
+
+      - name: Compose config
+        run: |
+          docker compose -f infra/docker-compose.yml --env-file .env.example config -q
+          docker compose -f infra/docker-compose.yml --env-file .env.example --profile stage config -q
+
+      - name: Backup and restore selftest (age and gpg)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age postgresql-client-16
+          export PATH="/usr/lib/postgresql/16/bin:$PATH"
+          pg_dump --version
+          infra/backup/selftest.sh "$DATABASE_URL"
+
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: detaly
+          POSTGRES_PASSWORD: detaly
+          POSTGRES_DB: detaly
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U detaly -d detaly"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      E2E_BASE_URL: http://127.0.0.1:3100
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
+      - name: Playwright Chromium (version pinned by @playwright/test 1.56.1)
+        run: pnpm --filter @detaly/web exec playwright install --with-deps chromium
+
+      - name: Migrate and seed
+        run: |
+          pnpm db:migrate
+          pnpm db:seed
+
+      - name: Build web (standalone)
+        run: |
+          pnpm --filter @detaly/web build
+          node apps/web/scripts/prepare-standalone.mjs
+
+      - name: Start web and worker
+        run: |
+          PORT=3100 HOSTNAME=127.0.0.1 TRUSTED_IP_HEADER=x-real-ip \
+            nohup node apps/web/.next/standalone/apps/web/server.js >web.log 2>&1 &
+          (cd apps/worker && TG_SELLER_BOT_TOKEN='' nohup node --import tsx src/main.ts >../../worker.log 2>&1 &)
+          for _ in $(seq 60); do
+            curl -fsS -o /dev/null "$E2E_BASE_URL/api/health/live" && break
+            sleep 1
+          done
+          curl -fsS "$E2E_BASE_URL/api/health/live"
+
+      - name: E2E (mobile 375 and desktop 1280)
+        run: pnpm --filter @detaly/web e2e
+
+      - name: Screenshots and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-${{ github.sha }}
+          path: |
+            apps/web/test-results/
+            apps/web/playwright-report/
+            web.log
+            worker.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  images:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    needs: [check, e2e]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: web
+            context: .
+            file: infra/docker/web.Dockerfile
+          - name: worker
+            context: .
+            file: infra/docker/worker.Dockerfile
+          - name: backup
+            context: infra/backup
+            file: infra/backup/Dockerfile
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # Must match IMAGE_REGISTRY in infra/docker-compose.yml.
+          images: ghcr.io/wakeupitsadream/detaly-${{ matrix.name }}
+          tags: |
+            type=raw,value=${{ github.sha }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}

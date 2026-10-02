@@ -1,0 +1,7 @@
+# busybox crond, installed as /etc/crontabs/root. Times are local (TZ, Asia/Yekaterinburg).
+# Jobs do not inherit the container environment: entrypoint.sh saves it to /run/backup.env.
+# Output goes to PID 1 (crond) so that `docker compose logs backup` shows it.
+#
+# m  h  dom mon dow  command
+30   2  *   *   *    . /run/backup.env; /usr/local/bin/backup.sh >>/proc/1/fd/1 2>&1
+*/5  *  *   *   *    . /run/backup.env; /usr/local/bin/healthwatch.sh >>/proc/1/fd/1 2>&1

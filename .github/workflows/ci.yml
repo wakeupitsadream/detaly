@@ -129,6 +129,19 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       E2E_BASE_URL: http://127.0.0.1:3100
+      # Test seller requisites and pickup point: seeded into the legal drafts and rendered
+      # in the footer; screens.spec checks the exact INN via E2E_EXPECT_INN.
+      SELLER_REQUISITES_NAME: ИП Тестовый Продавец
+      SELLER_REQUISITES_INN: '561234567890'
+      SELLER_REQUISITES_OGRNIP: '312565800012345'
+      SELLER_REQUISITES_ADDRESS: г. Оренбург, ул. Тестовая, 1
+      SELLER_REQUISITES_EMAIL: seller@example.test
+      SELLER_REQUISITES_PHONE: '+7 900 000-00-00'
+      PICKUP_POINT_NAME: Тестовый пункт выдачи
+      PICKUP_ADDRESS: г. Оренбург, ул. Тестовая, 1
+      PICKUP_HOURS: Пн–Пт 10:00–19:00
+      PICKUP_PHONE: '+7 900 000-00-01'
+      E2E_EXPECT_INN: '561234567890'
     steps:
       - uses: actions/checkout@v5
 

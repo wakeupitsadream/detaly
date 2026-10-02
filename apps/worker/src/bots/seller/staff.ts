@@ -1,7 +1,7 @@
 // Who may talk to the seller bot: active rows of the `staff` table with a Telegram id.
 // The set is cached for 60 s, so deactivating someone in the admin takes effect within a minute.
 import type { Logger } from '@detaly/config';
-import { staff, type Database } from '@detaly/db';
+import type { Database } from '@detaly/db';
 
 export const STAFF_CACHE_TTL_MS = 60_000;
 /** After a failed reload the previous set is reused for this long before the next attempt. */
@@ -9,12 +9,16 @@ export const STAFF_RETRY_AFTER_FAILURE_MS = 10_000;
 
 export type IsStaff = (tgUserId: number) => Promise<boolean>;
 
-/** Telegram ids of active staff. The table is tiny, so it is read whole. */
-export async function loadStaffTgIds(db: Pick<Database, 'select'>): Promise<Set<number>> {
-  const rows = await db.select({ tgUserId: staff.tgUserId, isActive: staff.isActive }).from(staff);
+// Filtered in SQL; operators come from the relational-query callback (no drizzle-orm import here).
+/** Telegram ids of active staff. */
+export async function loadStaffTgIds(db: Pick<Database, 'query'>): Promise<Set<number>> {
+  const rows = await db.query.staff.findMany({
+    columns: { tgUserId: true },
+    where: (t, { and, eq, isNotNull }) => and(eq(t.isActive, true), isNotNull(t.tgUserId)),
+  });
   const ids = new Set<number>();
   for (const row of rows) {
-    if (row.isActive && row.tgUserId !== null) ids.add(row.tgUserId);
+    if (row.tgUserId !== null) ids.add(row.tgUserId);
   }
   return ids;
 }

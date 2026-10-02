@@ -33,6 +33,8 @@
 | 20 | Договор и ключи VIN-каталога (Laximo / acat / PartsAPI) | поставщик каталога | Максим | 3 | __.__.____ | — | __.__.____ | не начато | тариф до 5 тыс. ₽/мес |
 | 21 | Yandex SmartCaptcha: аккаунт и ключи | Yandex Cloud | Максим | 2 | __.__.____ | — | — | не начато | |
 | 22 | PAT GitHub `read:packages` для `docker login ghcr.io` на VPS | GitHub | Максим | 0 | __.__.____ | — | — | не начато | `docs/runbook.md`, раздел 1 |
+| 23 | Вопросы VERIFY фазы 1B: ЮKassa, Rossko, SMS-провайдер (раздел 7.1) | ЮKassa, менеджер Rossko, SMS-провайдер | Максим (Rossko — с Лёшей) | 1B | __.__.____ | — | __.__.____ | не начато | места в коде — раздел 7.2 |
+| 24 | Прогон Verification 1B на stage с тестовым магазином ЮKassa (шаги 1–23) | stage | Максим | 1B, до включения оформления в проде | __.__.____ | — | — | не начато | чек-лист — `docs/runbook.md`, раздел 12.3; расхождения — раздел 7.3 |
 
 ## 2. Вопросы менеджеру Rossko (письмом)
 
@@ -97,6 +99,8 @@
 | Ю11 [ф1B, лимиты] | VERIFY: лимиты `metadata` — 16 ключей, ключ до 32 и значение до 512 символов; `description` до 128 символов (`packages/payments/src/yookassa.ts`, `packages/orders/src/rows.ts`) | | |
 | Ю11 [ф1B, web-pay] | VERIFY: хост `confirmation_url` у платежа с `confirmation.type=redirect` — `yoomoney.ru` (CSP `form-action` в `apps/web/next.config.ts`: браузер применяет его к 303 после формы «Оплатить», чужой хост заблокирует переход); сохраняет ли ЮKassa query `?paid=1` в `return_url` (`apps/web/src/server/payments/pay-handler.ts`) | | |
 | Ю5 [ф1B, web-pay] | VERIFY: самое большое тело уведомления ЮKassa (платёж с чеком и `metadata`) укладывается в лимит 64 КБ (`MAX_WEBHOOK_BODY_BYTES`, `apps/web/src/server/payments/webhook-handler.ts`; больше — 413 и уведомление теряется до ночной сверки); график повторов уведомления после ответа 500 (сбой записи в `webhook_events`) — сколько попыток и как долго | | |
+| Ю20 [ф1B] | VERIFY: `captured_at` у succeeded-платежа с `capture=true` (время оплаты `payments.paid_at`) и `registered_at` у succeeded-чека (`packages/payments/src/yookassa.ts`, `types.ts`). Если полей нет, время оплаты и регистрации чека останутся пустыми — на переходы это не влияет | | |
+| Ю21 [ф1B] | Тестовый магазин: фискализирует ли он чеки (видны ли они в ЛК), проверяет ли `tax_system_code` и `vat_code` так же, как боевой (шаг 13 прогона, `docs/runbook.md` 12.3), приходят ли его уведомления на адрес stage; можно ли повторно отправить уведомление из ЛК | | |
 
 ## 4. Маркировка «Честный знак» (результат проверки, гейт фазы 0)
 
@@ -135,7 +139,7 @@
 В 1A код корзины и оформления написан и проверен на синтетических фикстурах Rossko (`fx:`):
 `api.rossko.ru` из среды разработки недоступен, ключей нет. Всё, что зависит от поведения
 живого API, помечено в коде комментарием `VERIFY:` и собрано здесь. Пока ответов нет, в проде
-оформление не включается (`docs/runbook.md`, раздел 11.1).
+оформление не включается (`docs/runbook.md`, разделы 11.1 и 12.11). VERIFY фазы 1B — раздел 7.
 
 ### 6.1. Сравнение цен 20–30 позиций (п. 16, Лёша)
 
@@ -222,3 +226,122 @@ IP-адрес клиента в открытом виде и user agent (реш�
 |---|---|---|
 | IP в `consents` в открытом виде, срок 5 лет | | |
 | Цель хэша IP: поиск → сайт (корзина, оформление, отмена) | | |
+
+## 7. Фаза 1B: VERIFY
+
+Код фазы 1B (оплата, чеки, возвраты, заказ у Rossko, SMS) написан и проверен на эмуляции ЮKassa
+(msw, `packages/payments/src/testing/yookassa-handlers.ts`), синтетических фикстурах Rossko и
+msw-моках SMS-шлюзов: `api.yookassa.ru`, `api.rossko.ru`, SMS Aero и smsc.ru из среды
+разработки недоступны, тестового магазина и ключей нет. Всё, что код предполагает о живом API,
+помечено комментарием `VERIFY:` и собрано здесь. Ответы вписывайте в строку вопроса
+(разделы 2, 3, 5), а здесь — только отметку «закрыто» и что поменяли в коде.
+
+Пока ответов нет:
+- оплата включается только на stage с тестовым магазином, прогон — `docs/runbook.md`, раздел
+  12.3; оформление в проде — по условиям раздела 12.11 runbook;
+- `ROSSKO_ALLOW_CHECKOUT=false`: заказ у Rossko делается вручную в ЛК и отмечается в админке
+  (runbook, 12.4);
+- SMS выключены (`SMS_PROVIDER=none`) до договора и ответов провайдера.
+
+### 7.1. Что спросить и у кого
+
+**ЮKassa (Максим, письменно в тикете или у менеджера; часть закрывается прогоном на stage):**
+
+| № | Вопрос | Где в журнале |
+|---|---|---|
+| 1 | Коды «без НДС» и «УСН доходы» для `vat_code` и `tax_system_code` | Ю4 |
+| 2 | Подсети уведомлений, график повторов после не-200, самый большой размер уведомления, приходят ли уведомления тестового магазина | Ю5, Ю5 [ф1B, web-pay] |
+| 3 | `receipt_registration` в объектах платежа и возврата: есть ли поле, значения `pending`/`succeeded`/`canceled`, что с ним при отмене платежа | Ю1/Ю10 [ф1B], Ю10 [ф1B] |
+| 4 | `GET /receipts?payment_id=` и `?refund_id=`: доступен ли в «Чеках от ЮKassa», формат списка, `settlements[].type` чека в платеже, `registered_at` | Ю14, Ю19 |
+| 5 | Список платежей `GET /payments`: фильтры `created_at.gte`/`created_at.lt`, `limit` ≤ 100, `cursor`, порядок, полнота для ночной сверки; `captured_at` у succeeded | Ю15, Ю20 |
+| 6 | QR и СБП для оплаты на точке: `confirmation.type = qr`, `confirmation_data` — ссылка; без `return_url`; срок жизни неоплаченного платежа | Ю9, Ю9 [ф1B], Ю18 |
+| 7 | Чек в теле `POST /refunds`, частичный возврат строками, `payment_mode` чека возврата после чека зачёта | Ю10, Ю1/Ю10 [ф1B] |
+| 8 | Формат `customer.phone`, лимиты `metadata` и `description`, только RUB, хост `confirmation_url` (CSP), сохраняется ли `?paid=1` в `return_url` | Ю11, Ю11 [ф1B], Ю11 [ф1B, лимиты], Ю11 [ф1B, web-pay] |
+| 9 | Тестовые карты: успех, отказ, 3-D Secure | Ю12 |
+| 10 | Максимальная сумма платежа и возврата (`MAX_ORDER_TOTAL_KOP` = 500 000 ₽) | Ю13 |
+| 11 | Повтор `Idempotence-Key` с другим телом, хранение ответов 4xx, срок жизни ключа | Ю16, Ю17 |
+| 12 | Тестовый магазин: фискализирует ли он чеки и проверяет ли `tax_system_code`/`vat_code` (шаг 13 прогона); можно ли повторно отправить уведомление из ЛК | Ю21 |
+
+**Rossko (Максим и Лёша, письмом менеджеру):**
+
+| № | Вопрос | Где в журнале |
+|---|---|---|
+| 1 | Песочница GetCheckout, отмена заказа через API или только ЛК, до какого момента | R6 |
+| 2 | Отгрузка до оплаты счёта (флаг `rossko.prepay_invoice`), оплата счёта за повторный заказ взамен брака | R7, R19 |
+| 3 | Поля позиции в ответе GetCheckout, комментарий `DT-000123/<попытка>`, частичный заказ, ответ с `OrderIDS` без списков | R10, R20 |
+| 4 | GetOrders без `order_ids` (список недавних заказов), период и постраничность, как Rossko отказывает, текст «заказы не найдены» | R11 |
+| 5 | Поле комментария в GetOrders и сохраняется ли он дословно; склад у позиций GetOrders; стоимость доставки | R16, R17 |
+| 6 | Номер и сумма счёта Rossko при `prepay_invoice`: номер заказа или отдельный номер счёта, сумма с доставкой | R19 |
+| 7 | (1A) `count` вида `">10"`, стабильность id склада, кроссы по исходному артикулу | R13, R14, R15, R18 |
+
+**SMS-провайдер (Максим, при заключении договора):** адрес и формат API SMS Aero и smsc.ru,
+обязательность подписи, коды ошибок, тариф за сообщение и за часть длинного сообщения (значение
+`SMS_PRICE_KOP`), счёт сегментов для кириллицы — раздел 5, строки «SMS [ф1B]», «SMS Aero [ф1B]»,
+«smsc.ru [ф1B]», «SMS-сегменты [ф1B]».
+
+### 7.2. Все места `VERIFY:` в коде
+
+Список снят `grep -rn 'VERIFY' packages apps --include=*.ts --include=*.tsx` на коммите
+`b1d3963` (87 строк в 36 файлах, вместе с местами 1A). Номера строк могут сдвинуться: ищите по
+файлу и слову `VERIFY`. «Кто» — кто получает ответ; правку кода после ответа делает разработчик.
+Новые `VERIFY:` добавляйте сюда той же строкой.
+
+| Файл: строки | Что предполагает код | Вопрос | Кто | Фаза |
+|---|---|---|---|---|
+| `packages/payments/src/yookassa.ts`: 7 | Адаптер ЮKassa написан по документации API v3 и эмуляции; каждое неподтверждённое поле помечено ниже | Ю1, Ю4, Ю5, Ю9–Ю11 | Максим (тикет ЮKassa, stage) | 1B |
+| `packages/payments/src/yookassa.ts`: 78 | Наименование позиции чека не длиннее 128 символов | Ю11 [ф1B, лимиты] | Максим (тикет ЮKassa) | 1B |
+| `packages/payments/src/yookassa.ts`: 83, 96 | `vat_code` «без НДС» = 1, `tax_system_code` «УСН доходы» = 2 (из `YOOKASSA_VAT_CODE`, `YOOKASSA_TAX_SYSTEM_CODE`) | Ю4 | Максим (тикет ЮKassa) | 1B |
+| `packages/payments/src/yookassa.ts`: 92; `packages/domain/src/receipts.ts`: 79 | `customer.phone` в чеке — цифры без `+` (`79991234567`) | Ю11 | Максим (тикет ЮKassa, stage шаг 1) | 1B |
+| `packages/payments/src/yookassa.ts`: 128; `packages/payments/src/types.ts`: 22, 77, 133 | Поле `receipt_registration` у платежа и возврата со значениями `pending`/`succeeded`/`canceled`; нет поля — `null` | Ю1/Ю10 [ф1B] | Максим (тикет ЮKassa, stage шаги 1, 11) | 1B |
+| `packages/orders/src/payments.ts`: 471 | Чек возврата считается пробитым по `receipt_registration` объекта возврата; иначе нужен опрос `GET /receipts?refund_id=` | Ю10 [ф1B] | Максим (тикет ЮKassa, stage шаг 11) | 1B |
+| `packages/payments/src/yookassa.ts`: 156, 435; `apps/worker/src/jobs/payments/index.ts`: 173; `apps/worker/src/bots/seller/cards.ts`: 89, 339 | QR на точке: платёж с `confirmation: {type: 'qr'}` без `return_url`, данные QR — ссылка в `confirmation.confirmation_data`; бот рисует из неё картинку и кнопку-ссылку | Ю9, Ю9 [ф1B] | Максим (тикет ЮKassa, stage шаг 10) | 1B |
+| `packages/payments/src/yookassa.ts`: 167; `packages/payments/src/types.ts`: 83 | Время оплаты — `captured_at` у succeeded-платежа с `capture=true` | Ю20 | Максим (stage шаг 1) | 1B |
+| `packages/payments/src/yookassa.ts`: 213; `packages/payments/src/testing/yookassa-handlers.ts`: 448; `apps/worker/src/jobs/receipts/payment-receipt.ts`: 39 | `settlements[].type` чека в составе онлайн-платежа — `cashless`, чека зачёта — `prepayment`; по ним воркер находит «свой» чек в списке | Ю1, Ю14 | Максим (тикет ЮKassa, stage шаги 1, 9) | 1B |
+| `packages/payments/src/yookassa.ts`: 218; `packages/payments/src/types.ts`: 171 | У succeeded-чека есть `registered_at` | Ю20 | Максим (stage шаг 9) | 1B |
+| `packages/payments/src/yookassa.ts`: 232, 249; `packages/payments/src/types.ts`: 99; `packages/payments/src/testing/yookassa-handlers.ts`: 374 | Списки ЮKassa — `{type: 'list', items, next_cursor}`, на последней странице `next_cursor` нет, `limit` не больше 100 | Ю14, Ю15 | Максим (тикет ЮKassa) | 1B |
+| `packages/payments/src/yookassa.ts`: 266; `packages/payments/src/types.ts`: 27, 31, 55; `packages/orders/src/rows.ts`: 167; `packages/payments/test/yookassa-1b.test.ts`: 145 | `metadata` — до 16 ключей, ключ до 32 и значение до 512 символов (`order_id`, `order_number`, `payment_row_id`); `description` платежа до 128 символов | Ю11 [ф1B], Ю11 [ф1B, лимиты] | Максим (тикет ЮKassa) | 1B |
+| `packages/payments/src/yookassa.ts`: 408; `packages/payments/src/receipt-provider.ts`: 21, 25; `packages/payments/src/testing/yookassa-handlers.ts`: 18 | `GET /receipts?payment_id=` и `?refund_id=` с постраничностью курсором; чек, отправленный в платеже, появляется в этом списке | Ю14 | Максим (тикет ЮKassa, stage шаг 1) | 1B |
+| `apps/worker/src/jobs/receipts/payment-receipt.ts`: 54, 81 | Если список чеков недоступен, а у платежа `receipt_registration = succeeded`, чек платежа считается пробитым (вместо id чека пишется id платежа); окончательная ошибка списка — «неизвестно», а не «чек не прошёл» | Ю19 | Максим (тикет ЮKassa) | 1B |
+| `packages/payments/src/yookassa.ts`: 466; `packages/payments/src/testing/yookassa-handlers.ts`: 12, 590 | Чек возврата передаётся в теле `POST /refunds` и повторяет строки и `payment_mode` исходного чека; у платежа с чеком возврат без чека отвергается; частичный возврат — только возвращаемые строки | Ю10 | Максим (тикет ЮKassa, stage шаги 6, 11) | 1B |
+| `packages/payments/src/yookassa.ts`: 488; `packages/payments/src/payment-provider.ts`: 26; `packages/payments/src/testing/yookassa-handlers.ts`: 553; `apps/worker/src/jobs/reconciliation/nightly.ts`: 78 | Список платежей `GET /payments` с фильтрами `created_at.gte`/`created_at.lt`, `limit`, `cursor`, новые первыми; в списке все платежи магазина — основа ночной сверки | Ю15 | Максим (тикет ЮKassa) | 1B |
+| `packages/payments/src/yookassa.ts`: 520 | Чек зачёта: `POST /receipts` с `settlements: [{type: 'prepayment'}]` по платежу предоплаты 100 % | Ю1 (гейт фазы 0) | Максим (тикет ЮKassa, stage шаг 9) | 1B |
+| `packages/payments/src/testing/yookassa-handlers.ts`: 9 | Повтор `Idempotence-Key` с тем же телом — тот же ответ, с другим телом — 400 (так ведёт себя эмуляция) | Ю16 | Максим (тикет ЮKassa) | 1B |
+| `packages/payments/src/webhook-ip.ts`: 12 | Список подсетей уведомлений ЮKassa (`YOOKASSA_DOCUMENTED_WEBHOOK_NETWORKS`, он же в `.env.example`) | Ю5 | Максим (документация ЮKassa) | 1B |
+| `apps/web/src/server/payments/webhook-handler.ts`: 34, 173 | Уведомление не больше 64 КБ (больше — 413); после ответа 500 ЮKassa повторяет уведомление | Ю5 [ф1B, web-pay] | Максим (тикет ЮKassa) | 1B |
+| `apps/web/src/server/payments/pay-handler.ts`: 14 | ЮKassa сохраняет query `?paid=1` в `return_url` | Ю11 [ф1B, web-pay] | Максим (stage шаг 1) | 1B |
+| `apps/web/next.config.ts`: 20 | Страница оплаты (`confirmation_url`) на `yoomoney.ru` или его поддомене: другой хост заблокирует CSP `form-action` после кнопки «Оплатить» | Ю11 [ф1B, web-pay] | Максим (stage шаг 1) | 1B |
+| `packages/orders/src/payments.ts`: 344 | Платежи только в RUB; другая валюта считается несовпадением суммы | Ю11 [ф1B] | Максим (тикет ЮKassa) | 1B |
+| `apps/worker/src/jobs/payments/money.ts`: 38 | `Idempotence-Key` живёт 24 часа: потерянный `POST /payments` или `POST /refunds` старше суток не повторяется | Ю17 | Максим (тикет ЮKassa) | 1B |
+| `apps/worker/src/jobs/housekeeping/timers.ts`: 39 | ЮKassa сама отменяет неоплаченный pending-платёж (`expired_on_confirmation`); до этого заказ остаётся «Ждёт оплаты» | Ю18 | Максим (тикет ЮKassa, stage шаг 4) | 1B |
+| `packages/domain/src/checkout.ts`: 121 | Лимит одного платежа магазина не ниже 500 000 ₽ (`MAX_ORDER_TOTAL_KOP`) | Ю13 | Максим (тикет ЮKassa) | 1A |
+| `packages/rossko/src/client.ts`: 89, 106, 325; `packages/rossko/src/types.ts`: 236; `packages/rossko/src/client.test.ts`: 388 | GetOrders без `order_ids` отдаёт список недавних заказов аккаунта (без фильтров, период применяется у нас); отказ (`success=false`, SOAP Fault, HTTP 500) = «режим не поддерживается»; текст «заказы не найдены» угадан | R11 | Максим и Лёша (письмо Rossko) | 1B |
+| `packages/rossko/src/mapper.ts`: 309; `packages/rossko/src/types.ts`: 181; `packages/rossko/src/checkout-match.ts`: 167; `apps/worker/src/jobs/rossko/checkout.ts`: 314 | Комментарий заказа в GetOrders лежит в `comment`/`note`/`description` и сохраняется дословно (`DT-000123/<попытка>`); по нему восстанавливается заказ после таймаута | R10, R11, R16 | Максим и Лёша (письмо Rossko) | 1B |
+| `packages/rossko/src/types.ts`: 166; `packages/rossko/src/mapper.test.ts`: 386; `packages/rossko/src/checkout-match.ts`: 191 | У позиций GetOrders может не быть склада; стоимость доставки GetOrders не отдаёт (`deliveryCostKop = null`) | R17 | Максим и Лёша (письмо Rossko) | 1B |
+| `packages/rossko/src/checkout-match.ts`: 7 | `ItemsList`/`ItemsErrorList` GetCheckout повторяют артикул, бренд, склад и количество в том виде, в каком мы их отправили; сопоставление строк по ним | R10 | Максим и Лёша (письмо Rossko) | 1B |
+| `apps/worker/src/jobs/rossko/checkout.ts`: 367 | Ответ с номером заказа без `ItemsList` и `ItemsErrorList` значит «заказаны все строки» | R20 | Максим и Лёша (письмо Rossko) | 1B |
+| `apps/worker/src/jobs/rossko/checkout.ts`: 409 | Номер счёта = номер заказа Rossko, сумма = строки + `DeliveryCost` (строка без цены — по нашей закупочной) | R19, R7 | Максим и Лёша (письмо Rossko) | 1B |
+| `packages/domain/src/state-machine/transitions.ts`: 619 | При `rossko.prepay_invoice` счёт за повторный заказ позиции (взамен брака) оплачивается в ЛК Rossko, заказ не возвращается в «ждёт оплаты счёта» | R7, R19 | Максим и Лёша (письмо Rossko) | 1B |
+| `packages/domain/src/recheck.ts`: 15 | Перепроверка перед заказом сопоставляет предложения по `offer_key` и ищет по исходному артикулу — те же допущения, что в корзине | R14, R15, R18 | Максим и Лёша (письмо Rossko, `scripts/rossko-smoke.ts`) | 1B |
+| `packages/rossko/src/mapper.ts`: 75 | Нечисловой остаток (`">10"`) отбрасывает предложение | R13 | Максим и Лёша (письмо Rossko) | 1A |
+| `packages/rossko/src/client.ts`: 75 | Текст «ничего не найдено» GetSearch взят из синтетической фикстуры | R15 | Максим (`scripts/rossko-smoke.ts`) | 1A |
+| `packages/domain/src/cart.ts`: 6; `apps/web/src/server/cart-store.ts`: 11; `apps/web/src/server/cart/cart-service.ts`: 15 | Стабильный id склада между вызовами GetSearch, кроссы по исходному артикулу | R13–R15 | Максим и Лёша (письмо Rossko) | 1A |
+| `packages/notify/src/drivers/sms.ts`: 10, 31; `packages/config/src/env.ts`: 227 | Адреса шлюзов (`https://gate.smsaero.ru/v2`, `https://smsc.ru/sys`) и форматы: SMS Aero — `GET /sms/send` с Basic `login:apiKey`, ответ `{success, data: {id, cost}}`; smsc — `GET /send.php` с `fmt=3`, ошибки `{error, error_code}` при HTTP 200 | раздел 5: «SMS Aero [ф1B]», «smsc.ru [ф1B]» | Максим (SMS-провайдер) | 1B |
+| `packages/notify/src/drivers/sms.ts`: 154, 168 | smsc: временные коды ошибок 4 и 9; `cost=2` отправляет и возвращает цену | раздел 5: «smsc.ru [ф1B]» | Максим (SMS-провайдер) | 1B |
+| `packages/notify/src/sms-text.ts`: 7 | Оба шлюза считают кириллицу по 70/67 символов, тариф за часть; шаблоны рассчитаны на 2 части | раздел 5: «SMS-сегменты [ф1B]» | Максим (SMS-провайдер) | 1B |
+| `packages/config/src/env.ts`: 230; `apps/worker/src/jobs/notify/sms.ts`: 10 | Цена одного SMS `SMS_PRICE_KOP` (по умолчанию 500 коп.) для месячного бюджета; неудачная отправка стоит 0 | раздел 5: «SMS [ф1B]» | Максим (SMS-провайдер) | 1B |
+
+Проверка полноты списка (в CI её нет, запускать вручную перед закрытием фазы):
+
+```sh
+for f in $(grep -rl 'VERIFY' packages apps --include=*.ts --include=*.tsx --exclude-dir=node_modules); do
+  grep -q "$f" docs/external.md || echo "нет в docs/external.md: $f"
+done
+```
+
+### 7.3. Итоги прогона Verification 1B на stage
+
+Порядок — `docs/runbook.md`, раздел 12.3. Сюда — только расхождения с ожиданием и решения.
+
+| Дата | sha образа | Шаг | Что ожидали | Что получили | Вопрос / решение |
+|---|---|---|---|---|---|
+| __.__.____ | | | | | |

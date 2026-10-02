@@ -6,7 +6,8 @@ export const dynamic = 'force-dynamic';
 
 export default function robots(): MetadataRoute.Robots {
   const env = serverEnv();
-  if (env.NOINDEX_ALL) {
+  // A demo (DEMO_MODE) is closed like a stage: fixture prices must not reach a search engine.
+  if (env.NOINDEX_ALL || env.DEMO_MODE) {
     return { rules: [{ userAgent: '*', disallow: '/' }] };
   }
   // /search, /cart, /checkout and /api/ are NOT disallowed: they carry X-Robots-Tag noindex

@@ -7,8 +7,10 @@ import {
   BULLMQ_PREFIX,
   createRedis,
   createWorkerRedis,
+  databaseUrl,
   HEARTBEAT_KEY,
   OUTBOX_CHANNEL,
+  redisUrl,
   type Env,
   type Logger,
   type Redis,
@@ -238,8 +240,10 @@ export function createWorkerDeps(options: CreateWorkerDepsOptions): WorkerResour
   const now = options.now ?? (() => new Date());
 
   // App commands and queues: RESP2. Workers: RESP2 + maxRetriesPerRequest: null.
-  const redis = createRedis(env.REDIS_URL);
-  const workerRedis = createWorkerRedis(env.REDIS_URL);
+  // The worker never runs in DEMO_MODE: both URLs are required (the helpers throw otherwise).
+  const redisAddress = redisUrl(env);
+  const redis = createRedis(redisAddress);
+  const workerRedis = createWorkerRedis(redisAddress);
   for (const [name, client] of [
     ['redis', redis],
     ['workerRedis', workerRedis],
@@ -248,7 +252,7 @@ export function createWorkerDeps(options: CreateWorkerDepsOptions): WorkerResour
       logger.error({ client: name, err: safeErrorMessage(error) }, 'redis error'),
     );
   }
-  const db = createDb(env.DATABASE_URL, { max: options.dbMax ?? 5 });
+  const db = createDb(databaseUrl(env), { max: options.dbMax ?? 5 });
 
   const queues = createQueues(redis, { prefix: bullPrefix });
   for (const [name, queue] of Object.entries(queues)) {
@@ -328,6 +332,6 @@ export function createWorkerDeps(options: CreateWorkerDepsOptions): WorkerResour
     deps,
     workerRedis,
     outboxChannel,
-    createSubscriber: () => createRedis(env.REDIS_URL),
+    createSubscriber: () => createRedis(redisAddress),
   };
 }

@@ -6,10 +6,12 @@
 import type { Env, Redis } from '@detaly/config';
 import type { Database } from '@detaly/db';
 import type { RosskoCaller, RosskoClient, RosskoLimiter } from '@detaly/rossko';
+import { createDemoSupplier } from './demo/supplier';
 import { serverEnv } from './env';
 import { getDb } from './db';
 import { singleton } from './globals';
 import { getLogger } from './logger';
+import { isDemoMode } from './mode';
 import { getRedis } from './redis';
 import { createWebRossko } from './rossko';
 import { createSettingsReader, type SettingsReader } from './settings';
@@ -65,8 +67,14 @@ export function logSupplierError(error: unknown, what: string): void {
   );
 }
 
-/** Process-wide supplier dependencies (lazy: nothing is read at import time). */
+/**
+ * Process-wide supplier dependencies (lazy: nothing is read at import time). DEMO_MODE: the
+ * fixtures behind the in-memory limiter and cache, settings from env (server/demo/supplier.ts).
+ */
 export function getSupplier(): Supplier {
+  if (isDemoMode()) {
+    return singleton('demo-supplier', () => createDemoSupplier({ env: serverEnv() }));
+  }
   return singleton('supplier', () =>
     createSupplierDeps({
       env: serverEnv(),

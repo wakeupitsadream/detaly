@@ -1,7 +1,8 @@
-import { createRedis, type Redis } from '@detaly/config';
+import { createRedis, redisUrl, type Redis } from '@detaly/config';
 import { serverEnv } from './env';
 import { singleton } from './globals';
 import { getLogger } from './logger';
+import { DemoModeError, isDemoMode } from './mode';
 
 /** Minimum pause between two "redis unavailable" log lines. */
 const ERROR_LOG_INTERVAL_MS = 30_000;
@@ -11,8 +12,9 @@ const ERROR_LOG_INTERVAL_MS = 30_000;
  * instead of queueing forever, so callers can fail open (rate limit) or answer 503 (search).
  */
 export function getRedis(): Redis {
+  if (isDemoMode()) throw new DemoModeError('redis');
   return singleton('redis', () => {
-    const redis = createRedis(serverEnv().REDIS_URL, {
+    const redis = createRedis(redisUrl(serverEnv()), {
       maxRetriesPerRequest: 1,
       connectTimeout: 2_000,
       retryStrategy: (times) => Math.min(times * 200, 2_000),

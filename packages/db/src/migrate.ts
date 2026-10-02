@@ -1,10 +1,10 @@
 // CLI: node --import tsx packages/db/src/migrate.ts (production: from the worker image).
-import { createLogger, getEnv } from '@detaly/config';
+import { createLogger, databaseUrl, getEnv } from '@detaly/config';
 import { createDb, migrateDb, MIGRATIONS_FOLDER } from './client';
 
 const env = getEnv();
 const log = createLogger('db-migrate', { level: env.LOG_LEVEL, base: { gitSha: env.GIT_SHA } });
-const db = createDb(env.DATABASE_URL, { max: 2 });
+const db = createDb(databaseUrl(env), { max: 2 });
 try {
   await migrateDb(db);
   log.info({ folder: MIGRATIONS_FOLDER }, 'migrations applied');

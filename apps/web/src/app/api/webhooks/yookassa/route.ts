@@ -3,10 +3,14 @@
 import { getEngineDeps } from '@/server/engine';
 import { getLogger } from '@/server/logger';
 import { handleYooKassaWebhook } from '@/server/payments/webhook-handler';
+import { demoNotFound } from '@/server/demo/responses';
+import { isDemoMode } from '@/server/mode';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request): Promise<Response> {
+  // DEMO_MODE: the route does not exist (the proxy answers 404 first).
+  if (isDemoMode()) return demoNotFound();
   const engine = getEngineDeps();
   return handleYooKassaWebhook(request, {
     db: engine.db,

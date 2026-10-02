@@ -10,10 +10,11 @@ export interface StartupLogger {
 }
 
 export type StartupWarning =
-  'untrusted_client_ip' | 'yookassa_webhooks_refused' | 'yookassa_allowlist_invalid';
+  'demo_mode' | 'untrusted_client_ip' | 'yookassa_webhooks_refused' | 'yookassa_allowlist_invalid';
 
 /** What the checks read; the payment keys are optional so callers may pass a partial env. */
 export type StartupEnv = Pick<Env, 'NODE_ENV' | 'TRUSTED_IP_HEADER'> &
+  Partial<Pick<Env, 'DEMO_MODE'>> &
   Partial<
     Pick<
       PaymentsEnv,
@@ -32,6 +33,8 @@ function allowlistValid(list: readonly string[]): boolean {
 
 export function startupWarnings(env: StartupEnv): StartupWarning[] {
   const warnings: StartupWarning[] = [];
+  // Logged in every environment: a demo must never be mistaken for the shop.
+  if (env.DEMO_MODE) warnings.push('demo_mode');
   if (env.NODE_ENV !== 'production') return warnings;
   // Without the trusted proxy header every client shares the 'local' rate-limit bucket and
   // consents.ip is stored empty (runbook section 9).
@@ -59,6 +62,8 @@ export function startupWarnings(env: StartupEnv): StartupWarning[] {
 }
 
 const MESSAGES: Record<StartupWarning, string> = {
+  demo_mode:
+    'DEMO_MODE=true: storefront demo without Postgres and Redis; search runs on fixtures, the cart lives in a cookie, checkout, orders, admin and webhooks are off',
   untrusted_client_ip:
     'TRUSTED_IP_HEADER=none in production: all clients share one rate-limit bucket and consent IPs are not recorded; set TRUSTED_IP_HEADER=x-real-ip behind the reverse proxy',
   yookassa_webhooks_refused:

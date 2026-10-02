@@ -68,6 +68,13 @@ export {
   type MapSearchOptions,
 } from './mapper';
 export { MASK, maskSecrets } from './mask';
+export {
+  createMemoryLimiter,
+  createMemorySearchCache,
+  MEMORY_CACHE_MAX_ENTRIES,
+  type MemoryLimiterOptions,
+  type MemorySearchCacheOptions,
+} from './memory';
 export { normalizeArticle, rubToKop } from './normalize';
 export { toArray } from './raw';
 export { createSoapCaller, type SoapCallerOptions } from './soap-caller';

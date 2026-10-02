@@ -9,7 +9,8 @@
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit -p tsconfig.json",
     "test": "vitest run --passWithNoTests",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "gen:legal": "node --import tsx scripts/gen-legal-bundle.ts"
   },
   "dependencies": {
     "@detaly/config": "workspace:*",

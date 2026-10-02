@@ -49,7 +49,8 @@ export function brandFromEnv(env: Env): Brand {
     },
     contactPhone: env.PICKUP_PHONE ?? env.SELLER_REQUISITES_PHONE ?? null,
     demoData: env.ROSSKO_MODE === 'fixtures',
-    noindexAll: env.NOINDEX_ALL,
+    // DEMO_MODE is never indexed either (fixture prices, nothing can be ordered).
+    noindexAll: env.NOINDEX_ALL || env.DEMO_MODE,
   };
 }
 

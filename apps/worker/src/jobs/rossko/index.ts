@@ -1,9 +1,29 @@
-// Processor of the `rossko` queue (decisions Б12–Б15): recheck, checkout, recover.
-// Wave 3 (worker-supplier) implements it.
+// Processor of the `rossko` queue (decisions Б12–Б15, docs/phase-1b-implementation.md
+// section 11): recheck before ordering, GetCheckout with double-submit protection, recovery
+// after an ambiguous GetCheckout failure.
+import { ROSSKO_JOBS } from '@detaly/config';
 import type { Job } from 'bullmq';
 import type { WorkerDeps } from '../../deps';
 import { notImplemented } from '../not-implemented';
+import { processCheckout, processRecover } from './checkout';
+import { processRecheck } from './recheck';
 
-export async function processRossko(_job: Job, _deps: WorkerDeps): Promise<unknown> {
-  notImplemented();
+export { processCheckout, processRecover, UNMATCHED_ITEM_ERROR } from './checkout';
+export type { CheckoutFailureReason, CheckoutJobResult, SettleResult } from './checkout';
+export { processRecheck, RECHECK_UNAVAILABLE_NOTE, SupplierSearchError } from './recheck';
+export type { RecheckJobResult } from './recheck';
+export { RECOVER_DELAY_MS, isFinalAttempt } from './shared';
+
+export async function processRossko(job: Job, deps: WorkerDeps): Promise<unknown> {
+  switch (job.name) {
+    case ROSSKO_JOBS.recheck:
+      return processRecheck(job, deps);
+    case ROSSKO_JOBS.checkout:
+      return processCheckout(job, deps);
+    case ROSSKO_JOBS.recover:
+      return processRecover(job, deps);
+    default:
+      // An unknown job name is never retried (UnrecoverableError 'not implemented').
+      return notImplemented();
+  }
 }

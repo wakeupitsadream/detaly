@@ -58,7 +58,11 @@ export function smsCapacity(encoding: SmsEncoding, segments: number): number {
 
 export const SMS_MAX_SEGMENTS = 2;
 
-/** Cuts `text` (by code points) so that its UCS-2 length is at most `max`, ending with '…'. */
+/**
+ * Cuts `text` (by code points) so that its UCS-2 length is at most `max`, ending with '…'.
+ * The cut falls on a word boundary when one is in the second half of the kept text, so a
+ * date or a number is dropped whole rather than shown half ('до 14:30 3 о…').
+ */
 function cut(text: string, max: number): string {
   if (text.length <= max) return text;
   if (max <= 1) return '';
@@ -66,6 +70,11 @@ function cut(text: string, max: number): string {
   for (const ch of text) {
     if (out.length + ch.length > max - 1) break;
     out += ch;
+  }
+  const next = text.slice(out.length, out.length + 1);
+  if (next !== '' && !/\s/.test(next)) {
+    const space = out.search(/\s\S*$/);
+    if (space > out.length / 2) out = out.slice(0, space);
   }
   return `${out.trimEnd()}…`;
 }

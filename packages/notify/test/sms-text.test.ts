@@ -43,9 +43,20 @@ describe('renderSmsText', () => {
   it('shortens the text to two segments and never cuts the link', () => {
     const long = 'Очень длинное сообщение о заказе. '.repeat(10);
     const sms = renderSmsText(message(long));
-    expect(smsSegments(sms)).toMatchObject({ encoding: 'ucs2', units: 134, segments: 2 });
+    expect(smsSegments(sms)).toMatchObject({ encoding: 'ucs2', segments: 2 });
+    expect(smsSegments(sms).units).toBeGreaterThan(120);
     expect(sms.endsWith(`…\n${URL}`)).toBe(true);
     expect(sms.startsWith('Очень длинное сообщение')).toBe(true);
+  });
+
+  it('cuts on a word boundary, not in the middle of a word', () => {
+    // 107 characters fit next to the link: 17 whole words and 'Слов' of the 18th.
+    const sms = renderSmsText(message('Слово '.repeat(30)));
+    const head = sms.split('\n')[0] ?? '';
+    expect(head).toBe(`${'Слово '.repeat(16)}Слово…`);
+    expect(sms.endsWith(`…\n${URL}`)).toBe(true);
+    // A single long word still gets a hard cut.
+    expect(renderSmsText(message('ж'.repeat(200)), { maxSegments: 1 })).toHaveLength(70);
   });
 
   it('maxSegments is configurable', () => {

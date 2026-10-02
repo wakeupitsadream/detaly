@@ -43,10 +43,12 @@ const what = (d: OrderTemplateData): string | null => {
   return text === '' ? null : text;
 };
 const refundPromise = 'Деньги вернутся в течение 10 дней.';
-const until = (d: OrderTemplateData): string => {
-  const at = formatReplyBy(d.replyBy);
+const until = (d: OrderTemplateData, compact = false): string => {
+  const at = formatReplyBy(d.replyBy, { compact });
   return at === null ? '' : ` до ${at}`;
 };
+/** SMS deadline: '14:30 03.10', so it fits next to a long order link. */
+const untilSms = (d: OrderTemplateData): string => until(d, true);
 
 /**
  * The storage phrase goes into the last ready reminder: at most one day of the offer's storage
@@ -76,7 +78,8 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
         [act(d, 'confirm', 'Подтверждаю')],
         [orderLink(d)],
       ),
-      `Заказ ${d.orderNumber}: подтвердите на странице${until(d)}.`,
+      // The deadline goes before the filler: renderSmsText cuts from the end.
+      `Подтвердите заказ ${d.orderNumber}${untilSms(d)} на странице.`,
     ),
   payment_link: (d) =>
     msg(lines(head(d), what(d), `Сумма к оплате: ${rub(d.totalKop)}. Оплатите заказ по ссылке.`), [
@@ -108,7 +111,7 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
         [act(d, 'approve', 'Согласен'), act(d, 'refund', 'Вернуть деньги')],
         [orderLink(d, 'Подробнее')],
       ),
-      `Нужно ваше решение по заказу ${d.orderNumber}${until(d)}.`,
+      `Нужно ваше решение по заказу ${d.orderNumber}${untilSms(d)}.`,
     ),
   refund_started: (d) => msg(lines(head(d), `Заказ отменён. ${refundPromise}`), [orderLink(d)]),
   order_cancelled: (d) =>
@@ -147,7 +150,7 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
         [orderLink(d, 'Код выдачи и запись на установку')],
       ),
       storageEnding(d)
-        ? `Заказ ${d.orderNumber} хранится по оферте ${d.storageDays} дн., затем ${
+        ? `Заказ ${d.orderNumber}: хранение по оферте ${d.storageDays} дн., затем ${
             d.scheme === 'prepay' ? 'возврат денег' : 'отмена'
           }.`
         : lines(

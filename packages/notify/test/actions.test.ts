@@ -161,7 +161,7 @@ describe('callback actions', () => {
     expect(isOwnerOnlyAction('invpaid')).toBe(true);
     expect(isOwnerOnlyAction('dlq')).toBe(true);
     expect(isOwnerOnlyAction('handed')).toBe(false);
-    expect([...CLIENT_ACTIONS]).toEqual(['confirm', 'approve', 'refund']);
+    expect([...CLIENT_ACTIONS]).toEqual(['confirm', 'approve', 'refund', 'refused']);
   });
 
   it('a:<code>:<uuid>:<nonce8> fits 64 bytes for every code (dlq: 36-char job id)', () => {

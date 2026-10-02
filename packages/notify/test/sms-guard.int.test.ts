@@ -51,6 +51,8 @@ describe('SMS guard on Redis', () => {
     // Another number is independent; formatting of the same number is not.
     expect(await g.check('+79120000000')).toEqual({ allowed: true });
     expect(await g.check('7 (912) 345-67-89')).toMatchObject({ allowed: false });
+    // The trunk prefix 8 is the same number.
+    expect(await g.check('8 (912) 345-67-89')).toMatchObject({ allowed: false });
     at(10);
     expect(await g.check(PHONE)).toEqual({ allowed: true });
   });

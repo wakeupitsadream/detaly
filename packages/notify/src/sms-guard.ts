@@ -59,9 +59,13 @@ function hmac(secret: string, value: string): string {
   return createHmac('sha256', secret).update(value).digest('base64url');
 }
 
-/** Digits only, so '+7 999 123-45-67' and '79991234567' share one key. */
+/**
+ * Digits only with the trunk prefix 8 read as 7, so '+7 999 123-45-67', '8 999 123-45-67' and
+ * '79991234567' share one key.
+ */
 function phoneKeyPart(phone: string): string {
-  return phone.replace(/\D/g, '');
+  const digits = phone.replace(/\D/g, '');
+  return digits.length === 11 && digits.startsWith('8') ? `7${digits.slice(1)}` : digits;
 }
 
 export function createSmsGuard(options: SmsGuardOptions): SmsGuard {

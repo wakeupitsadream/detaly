@@ -354,7 +354,7 @@ describe('guard and Notifier', () => {
       blocked: [],
     });
     expect((seen[0] as Seen).url.searchParams.get('text')).toBe(
-      `Нужно ваше решение по заказу DT-000123 до 14:30 3 октября.\n${URL_ORDER}`,
+      `Нужно ваше решение по заказу DT-000123 до 14:30 03.10.\n${URL_ORDER}`,
     );
   });
 

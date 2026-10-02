@@ -136,11 +136,15 @@ const ITEM_ACTIONS: ReadonlySet<string> = new Set<CallbackAction>([
 /** Codes only the owner may press (section 13.1): sellers get a refusal without changes. */
 export const OWNER_ONLY_ACTIONS = ['invpaid', 'dlq'] as const satisfies readonly CallbackAction[];
 
-/** Codes pressed by the client, never by staff. */
+/**
+ * Codes a client may press in a messenger (client bot, phase 1C). `refused` is shared with staff:
+ * the client's eta_changed message offers it («Вернуть деньги» / «Отказаться от заказа»).
+ */
 export const CLIENT_ACTIONS = [
   'confirm',
   'approve',
   'refund',
+  'refused',
 ] as const satisfies readonly EventAction[];
 
 export function isCallbackAction(value: string): value is CallbackAction {

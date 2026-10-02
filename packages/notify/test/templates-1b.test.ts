@@ -132,19 +132,19 @@ describe('SMS texts of allowlisted templates', () => {
   it('confirm_request: confirm on the page by the deadline, no buttons in SMS', () => {
     const message = renderTemplate('confirm_request', data({ scheme: 'pay_on_handover' }));
     expect(renderSmsText(message)).toBe(
-      `Заказ DT-000123: подтвердите на странице до 14:30 3 октября.\n${ORDER_URL}`,
+      `Подтвердите заказ DT-000123 до 14:30 03.10 на странице.\n${ORDER_URL}`,
     );
     expect(message.text).toContain('Подтвердите заказ до 14:30 3 октября.');
     expect(message.buttons[0]?.[0]).toMatchObject({ kind: 'action', action: 'confirm' });
     expect(
       renderSmsText(renderTemplate('confirm_request', data({ replyBy: null }))).split('\n')[0],
-    ).toBe('Заказ DT-000123: подтвердите на странице.');
+    ).toBe('Подтвердите заказ DT-000123 на странице.');
   });
 
   it('decision_needed: «Нужно ваше решение по заказу DT-… до <время>» + link', () => {
     const message = renderTemplate('decision_needed', data());
     expect(renderSmsText(message)).toBe(
-      `Нужно ваше решение по заказу DT-000123 до 14:30 3 октября.\n${ORDER_URL}`,
+      `Нужно ваше решение по заказу DT-000123 до 14:30 03.10.\n${ORDER_URL}`,
     );
     expect(message.text).toContain('Нужно ваше решение по заказу DT-000123 до 14:30 3 октября.');
     expect(message.text).toContain('Аналог MANN W 914/2');
@@ -155,11 +155,24 @@ describe('SMS texts of allowlisted templates', () => {
     ).toContain('до 00:05 4 октября');
   });
 
+  it('a long site address: the SMS deadline survives, the link stays whole', () => {
+    // 25-character domain: the URL alone takes 79 of the 134 characters of two UCS-2 parts.
+    const longUrl = `https://detaly-avtozapchasti56.ru/o/${'A1b2C3d4E5'.repeat(4)}xyz`;
+    for (const template of ['confirm_request', 'decision_needed'] as const) {
+      const sms = renderSmsText(
+        renderTemplate(template, data({ orderUrl: longUrl, scheme: 'pay_on_handover' })),
+      );
+      expect(smsSegments(sms).segments, template).toBeLessThanOrEqual(2);
+      expect(sms.endsWith(`\n${longUrl}`), template).toBe(true);
+      expect(sms, template).toContain('DT-000123 до 14:30 03.10');
+    }
+  });
+
   it('arrived on day 9: the offer storage phrase, prepay -> money back', () => {
     const prepay = renderTemplate('arrived', data({ readyDays: 9, storageDays: 10 }));
     expect(prepay.text).toContain('По оферте заказ хранится 10 дн., затем возврат денег.');
     expect(renderSmsText(prepay)).toBe(
-      `Заказ DT-000123 хранится по оферте 10 дн., затем возврат денег.\n${ORDER_URL}`,
+      `Заказ DT-000123: хранение по оферте 10 дн., затем возврат денег.\n${ORDER_URL}`,
     );
     const cod = renderTemplate(
       'arrived',
@@ -189,7 +202,12 @@ describe('SMS texts of allowlisted templates', () => {
       const sms = renderSmsText(renderTemplate(template, data({ orderUrl: longUrl })));
       expect(sms.endsWith(`…\n${longUrl}`), sms).toBe(true);
       expect(smsSegments(sms).segments).toBe(2);
-      expect(sms.startsWith('Заказ DT-000123') || sms.startsWith('Нужно ваше решение')).toBe(true);
+      expect(
+        ['Заказ DT-000123', 'Нужно ваше решение', 'Подтвердите заказ DT-000123'].some((start) =>
+          sms.startsWith(start),
+        ),
+        sms,
+      ).toBe(true);
     }
   });
 
@@ -239,6 +257,8 @@ describe('format helpers', () => {
     expect(formatReplyBy(new Date('2026-12-31T19:00:00Z'))).toBe('00:00 1 января');
     expect(formatReplyBy('not a date')).toBeNull();
     expect(formatReplyBy(null)).toBeNull();
+    expect(formatReplyBy('2026-10-03T09:30:00Z', { compact: true })).toBe('14:30 03.10');
+    expect(formatReplyBy(new Date('2026-12-31T19:00:00Z'), { compact: true })).toBe('00:00 01.01');
     expect(formatReplyBy(undefined)).toBeNull();
   });
 

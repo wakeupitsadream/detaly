@@ -43,15 +43,21 @@ const CLIENT_CLOCK = new Intl.DateTimeFormat('en-GB', {
 
 /**
  * An instant as the client's wall clock: '2026-10-03T09:30:00Z' -> '14:30 3 октября'
- * (Asia/Yekaterinburg). null for a missing or unparsable value.
+ * (Asia/Yekaterinburg), or '14:30 03.10' with `compact` (SMS: the deadline must survive the
+ * two-segment limit next to the order link). null for a missing or unparsable value.
  */
-export function formatReplyBy(value: Date | string | null | undefined): string | null {
+export function formatReplyBy(
+  value: Date | string | null | undefined,
+  { compact = false }: { compact?: boolean } = {},
+): string | null {
   if (value === null || value === undefined) return null;
   const instant = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(instant.getTime())) return null;
   const parts: Record<string, string> = {};
   for (const part of CLIENT_CLOCK.formatToParts(instant)) parts[part.type] = part.value;
-  return `${parts.hour}:${parts.minute} ${formatDayMonth(localDate(instant))}`;
+  const date = localDate(instant);
+  const day = compact ? `${date.slice(8, 10)}.${date.slice(5, 7)}` : formatDayMonth(date);
+  return `${parts.hour}:${parts.minute} ${day}`;
 }
 
 /** '2026-10-20' -> '20 октября'; anything else is returned as is, missing -> fallback. */

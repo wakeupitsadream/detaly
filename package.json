@@ -1,0 +1,39 @@
+{
+  "name": "detaly",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc -p tsconfig.json && pnpm -r --parallel typecheck",
+    "test": "vitest run",
+    "test:unit": "vitest run --exclude '**/*.int.test.ts'",
+    "build": "pnpm -r --if-present build",
+    "db:migrate": "pnpm --filter @detaly/db db:migrate",
+    "db:seed": "pnpm --filter @detaly/db db:seed",
+    "dev:web": "pnpm --filter @detaly/web dev",
+    "dev:worker": "pnpm --filter @detaly/worker dev"
+  },
+  "devDependencies": {
+    "@detaly/config": "workspace:*",
+    "@detaly/rossko": "workspace:*",
+    "@eslint/js": "10.0.1",
+    "@next/eslint-plugin-next": "16.3.8",
+    "@types/node": "22.20.5",
+    "eslint": "10.11.0",
+    "eslint-config-prettier": "10.1.8",
+    "globals": "17.13.0",
+    "prettier": "3.9.9",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.0",
+    "vite": "8.3.2",
+    "vitest": "5.0.3"
+  }
+}

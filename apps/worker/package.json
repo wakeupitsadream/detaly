@@ -1,0 +1,33 @@
+{
+  "name": "@detaly/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --import tsx --watch src/main.ts",
+    "start": "node --import tsx src/main.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@detaly/config": "workspace:*",
+    "@detaly/db": "workspace:*",
+    "@detaly/domain": "workspace:*",
+    "@detaly/notify": "workspace:*",
+    "@detaly/payments": "workspace:*",
+    "@detaly/rossko": "workspace:*",
+    "@detaly/vin": "workspace:*",
+    "@maxhub/max-bot-api": "1.0.1",
+    "bullmq": "6.3.11",
+    "grammy": "1.46.0",
+    "ioredis": "6.0.0",
+    "tsx": "4.23.15"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "msw": "3.0.1",
+    "typescript": "6.0.3",
+    "vite": "8.3.2",
+    "vitest": "5.0.3"
+  }
+}

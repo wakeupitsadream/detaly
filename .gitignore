@@ -1,0 +1,26 @@
+node_modules/
+.pnpm-store/
+.next/
+out/
+dist/
+coverage/
+.dev/
+.deploy/
+test-results/
+playwright-report/
+blob-report/
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+*.log
+
+# env files: only the example is committed
+.env
+.env.*
+!.env.example
+
+# local secrets and certs
+infra/certs/*.pem
+infra/certs/*.crt
+*.age
+*.key

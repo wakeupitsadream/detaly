@@ -1,0 +1,17 @@
+packages:
+  - apps/*
+  - packages/*
+
+# pnpm 10 blocks dependency lifecycle scripts by default; allow only what we need.
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+
+# msgpackr-extract is an optional native accelerator for bullmq/msgpackr; pure JS fallback is fine.
+ignoredBuiltDependencies:
+  - msgpackr-extract
+
+peerDependencyRules:
+  # @vitest/mocker declares an optional peer on msw 2 for browser mode; we use msw 3 in node only.
+  allowedVersions:
+    msw: '3'

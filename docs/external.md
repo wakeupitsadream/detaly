@@ -88,6 +88,7 @@
 | Ю14 [ф1B] | VERIFY: `GET /receipts?payment_id=` / `refund_id=` — формат списка `{type:'list', items, next_cursor}`, `limit` ≤ 100, `settlements[].type` у чека платежа (предполагаем `cashless`), поле `registered_at` | | |
 | Ю15 [ф1B] | VERIFY: `GET /payments` — фильтры `created_at.gte`/`created_at.lt`, `limit`, `cursor`, порядок сортировки (предполагаем «новые первыми»); `captured_at` как время оплаты; парсер строгий — позиция в другой валюте роняет всю страницу сверки с `bad_response` | | |
 | Ю16 [ф1B] | VERIFY: `cancellation_details.reason`/`party` у возвратов; хранит ли ЮKassa ответы 4xx под `Idempotence-Key` и отвечает ли 400 на повтор ключа с другим телом | | |
+| Ю17 [ф1B] | VERIFY: через сколько ЮKassa сама отменяет неоплаченный платёж в `pending` (`cancellation_details.reason = expired_on_confirmation`) для `redirect` и `qr`. Таймер `awaiting_payment` отменяет заказ только после подтверждённого `canceled` и до тех пор раз в 10 минут ставит `payments/payment-recheck` (`apps/worker/src/jobs/housekeeping/timers.ts`); если ЮKassa не отменяет такие платежи, заказ висит в «Ждёт оплаты» | | |
 | Ю11 [ф1B, лимиты] | VERIFY: лимиты `metadata` — 16 ключей, ключ до 32 и значение до 512 символов; `description` до 128 символов (`packages/payments/src/yookassa.ts`, `packages/orders/src/rows.ts`) | | |
 
 ## 4. Маркировка «Честный знак» (результат проверки, гейт фазы 0)

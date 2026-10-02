@@ -569,9 +569,10 @@ describe.skipIf(!inject('workerDatabaseUrl'))('housekeeping (worker-ops)', () =>
       expect(approval?.remindedAt?.toISOString()).toBe(
         new Date(base.getTime() + 12 * HOUR + MIN).toISOString(),
       );
-      expect((await eventsOf(db, waiting.orderId)).map((e) => e.type)).toEqual([
-        'approval_reminder',
-      ]);
+      const reminderEvents = await eventsOf(db, waiting.orderId);
+      expect(reminderEvents.map((e) => e.type)).toEqual(['approval_reminder']);
+      // notify/order checks that this approval is still open before sending the reminder.
+      expect(reminderEvents[0]?.payload).toMatchObject({ approvalId: approval?.id });
     });
 
     it('needs_attention and the Rossko invoice: every 4 hours, once per period', async () => {

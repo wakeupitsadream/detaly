@@ -34,7 +34,11 @@ import {
 import type { WorkerDeps } from '../../deps';
 import { BATCH, HOUR_MS, HOUSEKEEPING_ACTOR, MINUTE_MS, notAfter, nudge } from './common';
 
-/** A pending payment past the TTL is rechecked at most once per this period. */
+/**
+ * A pending payment past the TTL is rechecked at most once per this period.
+ * VERIFY (docs/external.md Ю17): YooKassa cancels an unpaid pending payment by itself
+ * (expired_on_confirmation); until it does, the order stays in awaiting_payment.
+ */
 export const PAYMENT_RECHECK_EVERY_MS = 10 * MINUTE_MS;
 
 export interface TimersResult {

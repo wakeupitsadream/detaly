@@ -107,6 +107,8 @@ export async function runReminders(deps: WorkerDeps): Promise<RemindersResult> {
         template: 'decision_needed',
         journal: 'approval_reminder',
         extras: { reminder: true },
+        // notify/order checks that this approval is still open before sending.
+        payload: { approvalId: approval.id },
         inTx: async (tx) => {
           await tx
             .update(clientApprovals)
@@ -223,10 +225,20 @@ export async function runReminders(deps: WorkerDeps): Promise<RemindersResult> {
     },
   ] as const;
   for (const spec of halfway) {
+    // Only orders inside the second half of their time (deadline in (now, now + ttl/2]): a
+    // backlog of other orders in the status cannot push due ones out of the batch.
+    const deadline = sql`coalesce(${orders.expiresAt}, ${orders.createdAt} + make_interval(secs => ${spec.ttlMs / 1000}::double precision))`;
     const rows = await deps.db
       .select({ id: orders.id, expiresAt: orders.expiresAt, createdAt: orders.createdAt })
       .from(orders)
-      .where(eq(orders.status, spec.status))
+      .where(
+        and(
+          eq(orders.status, spec.status),
+          sql`${deadline} > ${now.toISOString()}::timestamptz`,
+          sql`${deadline} <= ${new Date(nowMs + spec.ttlMs / 2).toISOString()}::timestamptz`,
+        ),
+      )
+      .orderBy(asc(deadline))
       .limit(BATCH);
     for (const order of rows) {
       // 1A orders have no expires_at: the deadline counts from created_at.

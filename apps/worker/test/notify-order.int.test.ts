@@ -589,6 +589,56 @@ describe.skipIf(!inject('workerDatabaseUrl'))('notify/order (worker-ops)', () =>
     ).toEqual({ status: 'skipped', fallbackReason: 'no_messenger:no_phone' });
   });
 
+  it('decision_needed after the client already decided: skipped, no SMS, no timer, no task', async () => {
+    clock.now = new Date(T0.getTime() + 35 * 24 * HOUR);
+    const order = await seedOrder(db, { status: 'needs_attention', paid: true });
+    expect(await proposeNewEta(t, order.orderId)).toMatchObject({ ok: true });
+    const [row] = (await outboxOf(db, order.orderId)).filter((r) => r.queue === 'notify');
+    const eventId = String(row!.data.orderEventId);
+    // The client answered on /o/<token> before the (retried) job got to send.
+    clock.now = new Date(clock.now.getTime() + 5 * MIN);
+    expect(
+      await applyTransition(t.deps.engine, {
+        orderId: order.orderId,
+        event: 'client_approved',
+        actor: { type: 'client', id: null },
+      }),
+    ).toMatchObject({ ok: true });
+    const before = gateway.calls.length;
+
+    expect(await processNotify(job(row!.data, 1), t.deps)).toEqual({
+      status: 'skipped',
+      fallbackReason: 'approval_closed',
+    });
+    // A late 12-hour reminder of the same (closed) approval is dropped the same way.
+    const reminder = await journalEvent(db, order.orderId);
+    expect(
+      await processNotify(
+        job({
+          orderEventId: reminder,
+          audience: 'client',
+          template: 'decision_needed',
+          reminder: true,
+        }),
+        t.deps,
+      ),
+    ).toEqual({ status: 'skipped', fallbackReason: 'approval_closed' });
+    expect(gateway.calls.length).toBe(before);
+    expect(await rowsOfEvent(db, eventId)).toMatchObject([
+      { status: 'skipped', fallbackReason: 'approval_closed', channel: 'sms' },
+    ]);
+    const [approval] = await db
+      .select()
+      .from(clientApprovals)
+      .where(eq(clientApprovals.orderId, order.orderId));
+    expect(approval).toMatchObject({ decision: 'approved', notifiedAt: null, expiresAt: null });
+    const types = (
+      await db.select().from(orderEvents).where(eq(orderEvents.orderId, order.orderId))
+    ).map((e) => e.type);
+    expect(types).not.toContain('approval_unreachable');
+    expect(types).not.toContain('approval_notified');
+  });
+
   it('owner: the AlertPort with the admin link, never the client phone in clear', async () => {
     clock.now = new Date(T0.getTime() + 31 * 24 * HOUR);
     const order = await seedOrder(db, { status: 'needs_attention', paid: true });

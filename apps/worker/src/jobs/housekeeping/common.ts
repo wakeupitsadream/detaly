@@ -50,6 +50,8 @@ export async function queueReminder(
     template: OrderNotifyTemplate;
     journal?: Extract<JournalEvent, 'reminder' | 'approval_reminder'>;
     extras?: NotifyExtras;
+    /** Extra journal payload without PD (e.g. the approval a reminder is about). */
+    payload?: Record<string, unknown>;
     inTx?: (tx: Tx) => Promise<void>;
   },
 ): Promise<boolean> {
@@ -68,6 +70,7 @@ export async function queueReminder(
       type: input.journal ?? 'reminder',
       actor: HOUSEKEEPING_ACTOR,
       payload: {
+        ...input.payload,
         kind: input.kind,
         n: String(input.n),
         audience: input.audience,

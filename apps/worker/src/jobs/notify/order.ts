@@ -298,6 +298,40 @@ async function notifySellers(ctx: NotifyContext): Promise<NotifyOrderOutcome> {
   return { status: 'sent', channel: 'telegram' };
 }
 
+/** fallback_reason of a decision_needed whose approval is no longer open. */
+export const APPROVAL_CLOSED = 'approval_closed';
+
+interface OpenApproval {
+  id: string;
+}
+
+/**
+ * The open approval a decision_needed job is about: the order still waits for the client and
+ * the approval named by the event (payload.approvalId of the engine event or of the reminder)
+ * is the open one. null -> the question is closed or replaced; nothing to send.
+ */
+async function currentApproval(
+  db: Executor,
+  orderId: string,
+  payload: Record<string, unknown>,
+): Promise<OpenApproval | null> {
+  const [open] = await db
+    .select({ id: clientApprovals.id })
+    .from(clientApprovals)
+    .innerJoin(orders, eq(orders.id, clientApprovals.orderId))
+    .where(
+      and(
+        eq(clientApprovals.orderId, orderId),
+        isNull(clientApprovals.decidedAt),
+        eq(orders.status, 'awaiting_client_approval'),
+      ),
+    )
+    .limit(1);
+  if (!open) return null;
+  const expected = isUuid(payload.approvalId) ? payload.approvalId : null;
+  return expected === null || expected === open.id ? open : null;
+}
+
 /** `select … for update` of a notifications row; its status (null when it is gone). */
 async function lockRow(tx: Executor, id: string): Promise<string | null> {
   const [locked] = await tx
@@ -394,6 +428,30 @@ async function notifyClient(ctx: NotifyContext): Promise<NotifyOrderOutcome> {
     const status = await lockRow(tx, row.id);
     if (status !== 'queued') return { kind: 'duplicate', status };
     const sendAt = deps.now();
+
+    // decision_needed asks the client to act: a job for an approval that was decided (or
+    // replaced) meanwhile — a retry after backoff, a late reminder — must not send «нужно ваше
+    // решение» about nothing.
+    let approval: OpenApproval | null = null;
+    if (data.template === 'decision_needed') {
+      approval = await currentApproval(tx, orderId, ctx.payload);
+      if (approval === null) {
+        await tx
+          .update(notifications)
+          .set({
+            status: 'skipped',
+            fallbackReason: APPROVAL_CLOSED,
+            attempts: sql`${notifications.attempts} + 1`,
+            updatedAt: sendAt,
+          })
+          .where(eq(notifications.id, row.id));
+        return {
+          kind: 'done',
+          result: { status: 'skipped', fallbackReason: APPROVAL_CLOSED, blocked: [] },
+        };
+      }
+    }
+
     const loaded = await templateData(ctx, sendAt);
     if (loaded === null) return { kind: 'missing' };
 
@@ -418,7 +476,13 @@ async function notifyClient(ctx: NotifyContext): Promise<NotifyOrderOutcome> {
           updatedAt: deps.now(),
         })
         .where(eq(notifications.id, row.id));
-      if (final) await afterDecisionNeeded(tx, ctx, { outcome: 'failed', reason: message, sendAt });
+      if (final) {
+        await afterDecisionNeeded(tx, ctx, approval, {
+          outcome: 'failed',
+          reason: message,
+          sendAt,
+        });
+      }
       return { kind: 'error', error, message, final, unrecoverable };
     }
 
@@ -467,6 +531,7 @@ async function notifyClient(ctx: NotifyContext): Promise<NotifyOrderOutcome> {
     await afterDecisionNeeded(
       tx,
       ctx,
+      approval,
       result.status === 'sent'
         ? { outcome: 'sent', channel: result.channel, sendAt }
         : { outcome: 'skipped', reason: result.fallbackReason, sendAt },
@@ -502,18 +567,20 @@ async function notifyClient(ctx: NotifyContext): Promise<NotifyOrderOutcome> {
 async function afterDecisionNeeded(
   tx: Executor,
   ctx: NotifyContext,
+  open: OpenApproval | null,
   result:
     | { outcome: 'sent'; channel: NotificationChannel; sendAt: Date }
     | { outcome: 'skipped' | 'failed'; reason: string; sendAt: Date },
 ): Promise<void> {
   const { deps, data, orderId, settings } = ctx;
-  if (data.template !== 'decision_needed' || data.reminder) return;
+  if (data.template !== 'decision_needed' || data.reminder || open === null) return;
   // recordJournalEvent expects the order row lock.
   await tx.select({ id: orders.id }).from(orders).where(eq(orders.id, orderId)).for('update');
+  // Re-read under the order lock: the approval the check before sending found.
   const [approval] = await tx
     .select({ id: clientApprovals.id, notifiedAt: clientApprovals.notifiedAt })
     .from(clientApprovals)
-    .where(and(eq(clientApprovals.orderId, orderId), isNull(clientApprovals.decidedAt)))
+    .where(and(eq(clientApprovals.id, open.id), isNull(clientApprovals.decidedAt)))
     .limit(1);
   if (!approval || approval.notifiedAt !== null) return;
   const at = deps.now();

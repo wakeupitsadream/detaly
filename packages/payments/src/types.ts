@@ -2,7 +2,7 @@
  * Provider-neutral payment and receipt shapes. Amounts are integer kopecks everywhere; the
  * YooKassa adapter converts them to '1280.00' strings at the boundary.
  */
-import type { PaymentStatus, ReceiptStatus } from '@detaly/domain/statuses';
+import type { PaymentMode, PaymentStatus, ReceiptStatus } from '@detaly/domain/statuses';
 import type { Kop, ReceiptCustomer, ReceiptData, ReceiptLine } from '@detaly/domain/types';
 
 // Receipt shapes moved to @detaly/domain in phase 1B (receipts are built there); this package
@@ -17,6 +17,20 @@ export type { ReceiptCustomer, ReceiptData, ReceiptLine } from '@detaly/domain/t
 
 export type ConfirmationKind = 'redirect' | 'qr';
 
+/**
+ * Registration state of a receipt sent inside a payment or refund (`receipt_registration`).
+ * VERIFY: field name and values (YooKassa API v3 reference, Ю1/Ю10); `null` when absent.
+ */
+export const RECEIPT_REGISTRATIONS = ['pending', 'succeeded', 'canceled'] as const;
+export type ReceiptRegistration = (typeof RECEIPT_REGISTRATIONS)[number];
+
+/** VERIFY Ю11: limits of `metadata` (16 keys, key 32 chars, value 512 chars). */
+export const PAYMENT_METADATA_MAX_KEYS = 16;
+export const PAYMENT_METADATA_KEY_MAX = 32;
+export const PAYMENT_METADATA_VALUE_MAX = 512;
+/** VERIFY Ю11: payment `description` is at most 128 characters. */
+export const PAYMENT_DESCRIPTION_MAX = 128;
+
 export interface CreatePaymentRequest {
   orderId: string;
   /** 'DT-000123', goes to the description shown to the client. */
@@ -25,12 +39,22 @@ export interface CreatePaymentRequest {
   amountKop: Kop;
   /** payments.idempotence_key; a new key only for an explicitly new payment. */
   idempotenceKey: string;
-  /** /o/<token> for redirect confirmation. */
-  returnUrl: string;
+  /**
+   * /o/<token>?paid=1 for redirect confirmation (required there). Ignored for `qr`: a QR payment
+   * has no return_url.
+   */
+  returnUrl?: string;
   /** redirect (online link) by default; qr for payment at the pickup point. */
   confirmation?: ConfirmationKind;
   /** Receipt sent within the payment (prepayment or full). Omitted in plan B (own KKT). */
   receipt?: ReceiptData | null;
+  /** Default 'Заказ DT-000123'; at most PAYMENT_DESCRIPTION_MAX characters. */
+  description?: string;
+  /**
+   * Extra metadata (decision Б7: payment_row_id). order_id and order_number are always set by
+   * the adapter and win over keys given here. Limits: PAYMENT_METADATA_* (VERIFY Ю11).
+   */
+  metadata?: Record<string, string>;
 }
 
 export interface ProviderPayment {
@@ -48,8 +72,38 @@ export interface ProviderPayment {
   method: string | null;
   metadata: Record<string, string>;
   test: boolean;
+  /** Always RUB: any other currency is rejected as `bad_response`. */
+  currency: 'RUB';
+  /** Status of the receipt sent with the payment; null when the field is absent (VERIFY). */
+  receiptRegistration: ReceiptRegistration | null;
+  /** cancellation_details.reason for `canceled` (insufficient_funds, expired_on_confirmation…). */
+  cancellationReason: string | null;
+  /** cancellation_details.party (yoo_money, payment_network, merchant). */
+  cancellationParty: string | null;
+  /** captured_at of a succeeded payment (VERIFY: present with capture=true). */
+  paidAt: string | null;
+  /** refunded_amount, 0 when absent. */
+  refundedAmountKop: Kop;
   /** Raw provider object for payments.raw. */
   raw: unknown;
+}
+
+/** Nightly reconciliation window (decision Б29): created_at in [createdGte, createdLt). */
+export interface ListPaymentsRequest {
+  /** ISO 8601 timestamp, inclusive. */
+  createdGte: string;
+  /** ISO 8601 timestamp, exclusive. */
+  createdLt: string;
+  /** next_cursor of the previous page. */
+  cursor?: string | null;
+  /** Page size, default 100 (VERIFY: maximum 100). */
+  limit?: number;
+}
+
+export interface ProviderPaymentPage {
+  items: ProviderPayment[];
+  /** null on the last page. */
+  nextCursor: string | null;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -76,6 +130,10 @@ export interface ProviderRefund {
   status: ProviderRefundStatus;
   amountKop: Kop;
   createdAt: string;
+  /** Status of the refund receipt sent in the refund body; null when absent (VERIFY Ю10). */
+  receiptRegistration: ReceiptRegistration | null;
+  /** cancellation_details.reason of a `canceled` refund. */
+  cancellationReason: string | null;
   raw: unknown;
 }
 
@@ -103,6 +161,15 @@ export interface ProviderReceipt {
   paymentId: string | null;
   refundId: string | null;
   fiscalDocumentNumber: string | null;
+  /**
+   * payment_mode shared by all items (full_prepayment for the prepayment receipt, full_payment
+   * for full and offset receipts); null when items are absent or mixed.
+   */
+  paymentMode: PaymentMode | null;
+  /** settlements[].type: 'prepayment' marks the offset receipt, 'cashless' a payment one. */
+  settlementTypes: string[];
+  /** registered_at when known (VERIFY). */
+  registeredAt: string | null;
   raw: unknown;
 }
 

@@ -11,17 +11,28 @@ import type { RateLimitDecision, RateLimitOptions } from '@/server/rate-limit';
 const state = vi.hoisted(() => ({
   env: null as unknown,
   hit: null as unknown as (options: unknown) => Promise<unknown>,
+  peek: null as unknown as (options: unknown) => Promise<unknown>,
   warn: null as unknown as (...args: unknown[]) => void,
 }));
 
-vi.mock('@/server/env', () => ({ serverEnv: () => state.env }));
+vi.mock('@/server/env', () => ({
+  serverEnv: () => {
+    // An Error stands for an env that fails validation.
+    if (state.env instanceof Error) throw state.env;
+    return state.env;
+  },
+}));
 vi.mock('@/server/redis', () => ({ getRedis: () => ({ fake: 'redis' }) }));
 vi.mock('@/server/logger', () => ({
   getLogger: () => ({ warn: (...args: unknown[]) => state.warn(...args) }),
 }));
 vi.mock('@/server/rate-limit', async (importOriginal) => {
   const actual = await importOriginal<typeof RateLimitModule>();
-  return { ...actual, hitRateLimit: (_redis: unknown, options: unknown) => state.hit(options) };
+  return {
+    ...actual,
+    hitRateLimit: (_redis: unknown, options: unknown) => state.hit(options),
+    peekRateLimit: (_redis: unknown, options: unknown) => state.peek(options),
+  };
 });
 
 const { proxy } = await import('@/proxy');
@@ -30,6 +41,7 @@ const ALLOWED: RateLimitDecision = { allowed: true, retryAfterSec: 0, window: nu
 const MIDDLEWARE_NEXT = 'x-middleware-next';
 
 let hits: RateLimitOptions[];
+let peeks: RateLimitOptions[];
 let warnings: unknown[][];
 
 function env(overrides: Record<string, string> = {}): Env {
@@ -46,9 +58,14 @@ function request(method: string, path: string, headers: Record<string, string> =
 beforeEach(() => {
   state.env = env();
   hits = [];
+  peeks = [];
   warnings = [];
   state.hit = (options) => {
     hits.push(options as RateLimitOptions);
+    return Promise.resolve(ALLOWED);
+  };
+  state.peek = (options) => {
+    peeks.push(options as RateLimitOptions);
     return Promise.resolve(ALLOWED);
   };
   state.warn = (...args) => {
@@ -239,5 +256,149 @@ describe('proxy: path headers', () => {
     state.env = env({ NOINDEX_ALL: 'true' });
     const response = await proxy(request('GET', '/about'));
     expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+  });
+});
+
+describe('proxy: phase 1B order API and webhook', () => {
+  const token = 'Zx9_aB-cd1234567890abcdefghijklmnopq';
+
+  it('counts pay and order actions on their own limits', async () => {
+    await proxy(request('POST', `/api/orders/${token}/pay`));
+    await proxy(request('POST', `/api/orders/${token}/actions`));
+    await proxy(request('GET', `/api/orders/${token}/pay`));
+    await proxy(request('POST', `/api/orders/${token}/pay`, { origin: 'https://evil.example' }));
+    expect(hits.map((hit) => hit.kind)).toEqual(['pay', 'order_action']);
+  });
+
+  it('sends a blocked pay form back to its order page', async () => {
+    rejectWith(600);
+    const response = await proxy(
+      request('POST', `/api/orders/${token}/pay`, { accept: 'text/html,*/*;q=0.8' }),
+    );
+    expect(response.status).toBe(429);
+    expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(await response.text()).toContain(`<a href="/o/${token}">Вернуться к заказу</a>`);
+    // Anything that is not a token never becomes a link.
+    const odd = await proxy(
+      request('POST', '/api/orders/%22%3E%3Cb%3E/actions', { accept: 'text/html' }),
+    );
+    expect(odd.status).toBe(429);
+    const oddHtml = await odd.text();
+    expect(oddHtml).toContain('<a href="/">На главную</a>');
+    expect(oddHtml).not.toContain('<b>');
+  });
+
+  it('does not limit the YooKassa webhook but keeps it out of caches', async () => {
+    rejectWith(3600);
+    const response = await proxy(request('POST', '/api/webhooks/yookassa'));
+    expect(response.headers.get(MIDDLEWARE_NEXT)).toBe('1');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(hits).toEqual([]);
+  });
+});
+
+describe('proxy: /admin Basic auth', () => {
+  const ADMIN = 'admin:correct horse battery staple';
+  const basic = (credentials: string) => ({
+    authorization: `Basic ${Buffer.from(credentials, 'utf8').toString('base64')}`,
+  });
+
+  beforeEach(() => {
+    state.env = env({ ADMIN_BASIC_AUTH: ADMIN });
+  });
+
+  function expectAdminHeaders(response: Response, label: string): void {
+    expect(response.headers.get('x-robots-tag'), label).toBe('noindex, nofollow');
+    expect(response.headers.get('cache-control'), label).toBe('no-store');
+    expect(response.headers.get('referrer-policy'), label).toBe('no-referrer');
+  }
+
+  it('answers 404 under /admin and /api/admin without ADMIN_BASIC_AUTH', async () => {
+    state.env = env();
+    for (const path of ['/admin', '/admin/orders/x', '/api/admin/orders/x/actions', '/%61dmin']) {
+      const response = await proxy(request('GET', path, basic(ADMIN)));
+      expect(response.status, path).toBe(404);
+      expect(response.headers.get(MIDDLEWARE_NEXT), path).toBeNull();
+      expectAdminHeaders(response, path);
+    }
+    expect(hits).toEqual([]);
+  });
+
+  it('answers 404 to the admin when the env is invalid, and passes the site', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    state.env = new Error('invalid env');
+    try {
+      const admin = await proxy(request('GET', '/admin', basic(ADMIN)));
+      expect(admin.status).toBe(404);
+      const site = await proxy(request('GET', '/about'));
+      expect(site.headers.get(MIDDLEWARE_NEXT)).toBe('1');
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it('challenges a request without credentials, without counting it', async () => {
+    for (const path of ['/admin', '/admin/', '/admin//orders/1', '/api/admin/orders/1/actions']) {
+      const response = await proxy(request('GET', path));
+      expect(response.status, path).toBe(401);
+      expect(response.headers.get('www-authenticate'), path).toBe(
+        'Basic realm="admin", charset="UTF-8"',
+      );
+      expect(response.headers.get(MIDDLEWARE_NEXT), path).toBeNull();
+      expectAdminHeaders(response, path);
+    }
+    expect(hits).toEqual([]);
+    expect(peeks).toEqual([]);
+  });
+
+  it('answers 401 to a wrong password and counts it in admin_auth', async () => {
+    for (const credentials of ['admin:wrong', 'root:correct horse battery staple', 'admin']) {
+      const response = await proxy(request('GET', '/admin', basic(credentials)));
+      expect(response.status, credentials).toBe(401);
+      expect(response.headers.get('www-authenticate')).toBe('Basic realm="admin", charset="UTF-8"');
+    }
+    const bearer = await proxy(request('GET', '/admin', { authorization: 'Bearer abc' }));
+    expect(bearer.status).toBe(401);
+    expect(hits.map((hit) => hit.kind)).toEqual(Array(4).fill('admin_auth'));
+    expect(hits.every((hit) => hit.ip === '203.0.113.7')).toBe(true);
+    // The log lines have neither the password nor the client ip.
+    expect(JSON.stringify(warnings)).not.toContain('wrong');
+    expect(JSON.stringify(warnings)).not.toContain('203.0.113.7');
+  });
+
+  it('lets the right password through with the private headers', async () => {
+    for (const path of ['/admin', '/admin/orders/0192d8a4-0000-7000-8000-000000000001']) {
+      const response = await proxy(request('GET', path, basic(ADMIN)));
+      expect(response.headers.get(MIDDLEWARE_NEXT), path).toBe('1');
+      expectAdminHeaders(response, path);
+    }
+    const post = await proxy(request('POST', '/api/admin/orders/x/actions', basic(ADMIN)));
+    expect(post.headers.get(MIDDLEWARE_NEXT)).toBe('1');
+    expect(peeks.map((peek) => peek.kind)).toEqual(['admin_auth', 'admin_auth', 'admin_auth']);
+    expect(hits).toEqual([]);
+  });
+
+  it('refuses even the right password while the wrong-password window is full', async () => {
+    rejectWith(1200);
+    state.peek = (options) => {
+      peeks.push(options as RateLimitOptions);
+      return Promise.resolve({ allowed: false, retryAfterSec: 1200, window: 'hour' });
+    };
+    const wrong = await proxy(request('GET', '/admin', basic('admin:guess')));
+    expect(wrong.status).toBe(429);
+    expect(wrong.headers.get('retry-after')).toBe('1200');
+    expectAdminHeaders(wrong, 'wrong');
+    const right = await proxy(request('GET', '/admin', basic(ADMIN)));
+    expect(right.status).toBe(429);
+    expect(right.headers.get(MIDDLEWARE_NEXT)).toBeNull();
+    expect(await right.text()).toContain('через 20 мин');
+  });
+
+  it('still checks the password when Redis is down (only the counter fails open)', async () => {
+    state.hit = () => Promise.reject(new Error('connect ECONNREFUSED'));
+    state.peek = () => Promise.reject(new Error('connect ECONNREFUSED'));
+    expect((await proxy(request('GET', '/admin', basic('admin:nope')))).status).toBe(401);
+    const right = await proxy(request('GET', '/admin', basic(ADMIN)));
+    expect(right.headers.get(MIDDLEWARE_NEXT)).toBe('1');
   });
 });

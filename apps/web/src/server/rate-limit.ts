@@ -3,7 +3,13 @@
  * - search: 20 requests per minute and 300 per 24 hours (protects the Rossko quota);
  * - checkout: 10 POST /api/checkout per hour (each one reprices the cart past the cache);
  * - cancel: 5 POST /api/orders/<token>/cancel per hour (brute force of the phone digits);
- * - cart: 120 writes to /api/cart/** per hour (adding a line may miss the search cache).
+ * - cart: 120 writes to /api/cart/** per hour (adding a line may miss the search cache);
+ * - pay: 10 POST /api/orders/<token>/pay per hour (each may create a YooKassa payment);
+ * - order_action: 20 POST /api/orders/<token>/actions per hour (client decisions, some of them
+ *   confirmed by the last 4 phone digits: brute force, docs/phase-1b-implementation.md 15);
+ * - admin_auth: 20 wrong /admin passwords per hour (Basic auth in src/proxy.ts). Only wrong
+ *   passwords are hit; while the window is full even the right one is refused (peekRateLimit),
+ *   otherwise a brute force would still learn the password from the one answer that differs.
  *
  * The bucket key is `rl:<kind>:<window>:<HMAC-SHA256(SESSION_SECRET, subject)>`, where the
  * subject is the IPv4 address or the IPv6 /64 prefix (rateLimitSubject): the IP itself never
@@ -13,7 +19,8 @@ import { createHmac } from 'node:crypto';
 import { slidingWindowHit, type Redis } from '@detaly/config';
 import { rateLimitSubject } from './client-ip';
 
-export type RateLimitKind = 'search' | 'checkout' | 'cancel' | 'cart';
+export type RateLimitKind =
+  'search' | 'checkout' | 'cancel' | 'cart' | 'pay' | 'order_action' | 'admin_auth';
 
 /** Name reported in decisions. */
 export type RateLimitWindowName = 'minute' | 'hour' | 'day';
@@ -42,6 +49,9 @@ export const RATE_LIMITS = {
   checkout: [{ window: 'hour', keySegment: 'hour', limit: 10, windowMs: HOUR_MS }],
   cancel: [{ window: 'hour', keySegment: 'hour', limit: 5, windowMs: HOUR_MS }],
   cart: [{ window: 'hour', keySegment: 'hour', limit: 120, windowMs: HOUR_MS }],
+  pay: [{ window: 'hour', keySegment: 'hour', limit: 10, windowMs: HOUR_MS }],
+  order_action: [{ window: 'hour', keySegment: 'hour', limit: 20, windowMs: HOUR_MS }],
+  admin_auth: [{ window: 'hour', keySegment: 'hour', limit: 20, windowMs: HOUR_MS }],
 } as const satisfies Record<RateLimitKind, readonly RateLimitRule[]>;
 
 /** Phase 0 shape of the search limits (kept for existing imports). */
@@ -95,6 +105,35 @@ export async function hitRateLimit(
       return {
         allowed: false,
         retryAfterSec: Math.max(1, Math.ceil(hit.retryAfterMs / 1000)),
+        window: rule.window,
+      };
+    }
+  }
+  return { allowed: true, retryAfterSec: 0, window: null };
+}
+
+/**
+ * Whether the client's bucket of `kind` is full right now, without recording a hit (the
+ * /admin gate: a right password is refused while the wrong-password window is full). Same
+ * keys and window semantics as slidingWindowHit: hits older than the window do not count.
+ */
+export async function peekRateLimit(
+  redis: Redis,
+  { kind, secret, ip, keyPrefix = '', now = Date.now() }: RateLimitOptions,
+): Promise<RateLimitDecision> {
+  const bucket = clientBucket(secret, rateLimitSubject(ip));
+  const rules: readonly RateLimitRule[] = RATE_LIMITS[kind];
+  for (const rule of rules) {
+    const key = `${keyPrefix}${rateLimitKey(kind, rule, bucket)}`;
+    const since = `(${now - rule.windowMs}`;
+    const count = await redis.zcount(key, since, '+inf');
+    if (count >= rule.limit) {
+      const oldest = await redis.zrangebyscore(key, since, '+inf', 'WITHSCORES', 'LIMIT', 0, 1);
+      const oldestAt = Number(oldest[1] ?? now);
+      const retryAfterMs = Math.max(1, oldestAt + rule.windowMs - now);
+      return {
+        allowed: false,
+        retryAfterSec: Math.max(1, Math.ceil(retryAfterMs / 1000)),
         window: rule.window,
       };
     }

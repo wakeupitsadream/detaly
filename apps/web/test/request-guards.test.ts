@@ -39,27 +39,26 @@ describe('isSameOrigin', () => {
     }
   });
 
+  it('treats Origin: null (a form on a no-referrer page) like a missing Origin', () => {
+    // Chromium and Firefox post `Origin: null` from /admin and /o/<token>
+    // (Referrer-Policy: no-referrer); only the browser-set Sec-Fetch-Site tells them apart.
+    expect(isSameOrigin(headers({ origin: 'null', 'sec-fetch-site': 'same-origin' }), BASE)).toBe(
+      true,
+    );
+    for (const site of ['cross-site', 'same-site', 'none']) {
+      expect(isSameOrigin(headers({ origin: 'null', 'sec-fetch-site': site }), BASE), site).toBe(
+        false,
+      );
+    }
+    expect(isSameOrigin(headers({ origin: 'null' }), BASE)).toBe(false);
+  });
+
   it('without Origin accepts only Sec-Fetch-Site: same-origin', () => {
     expect(isSameOrigin(headers({ 'sec-fetch-site': 'same-origin' }), BASE)).toBe(true);
     expect(isSameOrigin(headers({ 'sec-fetch-site': 'cross-site' }), BASE)).toBe(false);
     expect(isSameOrigin(headers({ 'sec-fetch-site': 'same-site' }), BASE)).toBe(false);
     expect(isSameOrigin(headers({ 'sec-fetch-site': 'none' }), BASE)).toBe(false);
     expect(isSameOrigin(headers({}), BASE)).toBe(false);
-  });
-
-  it('treats Origin: null (form post under Referrer-Policy: no-referrer) as a missing Origin', () => {
-    // Chromium sends `Origin: null` with `Sec-Fetch-Site: same-origin` for the «Оплатить» form
-    // of /o/<token> (the page has Referrer-Policy: no-referrer).
-    expect(isSameOrigin(headers({ origin: 'null', 'sec-fetch-site': 'same-origin' }), BASE)).toBe(
-      true,
-    );
-    expect(isSameOrigin(headers({ origin: 'null', 'sec-fetch-site': 'cross-site' }), BASE)).toBe(
-      false,
-    );
-    expect(isSameOrigin(headers({ origin: 'null', 'sec-fetch-site': 'same-site' }), BASE)).toBe(
-      false,
-    );
-    expect(isSameOrigin(headers({ origin: 'null' }), BASE)).toBe(false);
   });
 
   it('fails closed on a broken base URL', () => {

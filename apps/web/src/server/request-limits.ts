@@ -5,9 +5,15 @@
  *   by the proxy, only a genuine router prefetch is free).
  * - checkout: POST /api/checkout.
  * - cancel: POST /api/orders/<token>/cancel.
+ * - pay: POST /api/orders/<token>/pay (phase 1B).
+ * - order_action: POST /api/orders/<token>/actions (phase 1B).
  * - cart: POST, PATCH and DELETE on /api/cart and /api/cart/**.
  *
- * On the checkout, cancel and cart paths GET, HEAD and OPTIONS are never counted (they change
+ * Not limited here: the YooKassa webhook (/api/webhooks/yookassa, closed by the IP allowlist
+ * in its handler) and /admin with /api/admin (Basic auth in the proxy, which limits wrong
+ * passwords itself: admin_auth).
+ *
+ * On the checkout, cancel, pay, order action and cart paths GET, HEAD and OPTIONS are never counted (they change
  * nothing and are used by CORS preflights and link checkers). Any other method is counted, not
  * only the ones the handlers export: an unexported method costs a 405 and nothing more, and
  * counting it keeps the classifier from depending on what each handler happens to export.
@@ -73,13 +79,20 @@ export function canonicalPath(pathname: string): string {
   return `/${pathSegments(pathname).join('/')}`;
 }
 
+/** Limits of the order API by its last segment: /api/orders/<token>/<action>. */
+const ORDER_WRITE_KINDS: Readonly<Record<string, RateLimitKind>> = {
+  cancel: 'cancel',
+  pay: 'pay',
+  actions: 'order_action',
+};
+
 /** Write-path limit of a decoded path, or null. */
 function writeKind(segments: string[]): RateLimitKind | null {
   if (segments[0] !== 'api') return null;
   const [, area, token, action] = segments;
   if (area === 'checkout' && segments.length === 2) return 'checkout';
-  if (area === 'orders' && segments.length === 4 && token && action === 'cancel') {
-    return 'cancel';
+  if (area === 'orders' && segments.length === 4 && token && action !== undefined) {
+    return Object.hasOwn(ORDER_WRITE_KINDS, action) ? (ORDER_WRITE_KINDS[action] ?? null) : null;
   }
   if (area === 'cart') return 'cart';
   return null;
@@ -95,8 +108,9 @@ export function classifyLimitedRequest(request: LimitedRequestLike): LimitedRequ
 }
 
 /**
- * True for a checkout, cancel or cart write that carries an `Origin` other than APP_BASE_URL's
- * (`null` included). Browsers send `Origin` on every cross-site POST, and a cross-site PATCH or
+ * True for a checkout, cancel, pay, order action or cart write that carries an `Origin` other than APP_BASE_URL's
+ * (`null` included, unless `Sec-Fetch-Site: same-origin` marks it as a form on one of our
+ * no-referrer pages, see isSameOrigin). Browsers send `Origin` on every cross-site POST, and a cross-site PATCH or
  * DELETE never gets past the CORS preflight, so this is exactly the CSRF case: the handler
  * answers 403 (decision Д19) and the proxy does not spend the visitor's allowance on it.
  * Otherwise five hidden forms on any page would block cancellation for the visitor's whole

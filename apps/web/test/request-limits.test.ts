@@ -146,6 +146,36 @@ describe('classifyLimitedRequest: checkout, cancel, cart', () => {
   });
 });
 
+describe('classifyLimitedRequest: phase 1B pay, order actions, webhook, admin', () => {
+  const token = 'Zx9_aB-cd1234567890abcdefghijklmnopqrstuvw';
+
+  it('counts POST /api/orders/<token>/pay as pay and /actions as order_action', () => {
+    expect(classify('POST', `/api/orders/${token}/pay`)).toEqual(count('pay'));
+    expect(classify('POST', `/api/orders/${token}/actions`)).toEqual(count('order_action'));
+    expect(classify('POST', `/api/orders/${token}/%70ay`)).toEqual(count('pay'));
+    expect(classify('POST', `/api/orders//${token}/actions/`)).toEqual(count('order_action'));
+    expect(classify('PUT', `/api/orders/${token}/pay`)).toEqual(count('pay'));
+  });
+
+  it('never counts reads, other actions or prototype names', () => {
+    for (const method of ['GET', 'HEAD', 'OPTIONS']) {
+      expect(classify(method, `/api/orders/${token}/pay`), method).toEqual(PASS);
+      expect(classify(method, `/api/orders/${token}/actions`), method).toEqual(PASS);
+    }
+    expect(classify('POST', `/api/orders/${token}/refund`)).toEqual(PASS);
+    expect(classify('POST', `/api/orders/${token}/constructor`)).toEqual(PASS);
+    expect(classify('POST', `/api/orders/${token}/toString`)).toEqual(PASS);
+    expect(classify('POST', `/api/orders/${token}/pay/extra`)).toEqual(PASS);
+    expect(classify('POST', '/api/orders/pay')).toEqual(PASS);
+  });
+
+  it('does not limit the YooKassa webhook or the admin (gated by the proxy itself)', () => {
+    expect(classify('POST', '/api/webhooks/yookassa')).toEqual(PASS);
+    expect(classify('POST', '/api/admin/orders/x/actions')).toEqual(PASS);
+    expect(classify('GET', '/admin')).toEqual(PASS);
+  });
+});
+
 describe('pathSegments and canonicalPath', () => {
   it('normalizes slashes and dot segments and decodes each segment once', () => {
     expect(canonicalPath('/')).toBe('/');
@@ -172,8 +202,15 @@ describe('isForeignOriginWrite', () => {
   it('is true only for an Origin other than the shop origin', () => {
     expect(foreign({ origin: 'https://evil.example' })).toBe(true);
     expect(foreign({ origin: 'null' })).toBe(true);
+    expect(foreign({ origin: 'null', 'sec-fetch-site': 'cross-site' })).toBe(true);
     expect(foreign({ origin: 'http://detaly.example' })).toBe(true);
     expect(foreign({ origin: 'https://detaly.example' })).toBe(false);
+  });
+
+  it('counts a same-origin form post from a no-referrer page (Origin: null)', () => {
+    // /o/<token> forms (pay, order actions) post `Origin: null`; their handlers accept them,
+    // so the proxy must spend the visitor's allowance on them.
+    expect(foreign({ origin: 'null', 'sec-fetch-site': 'same-origin' })).toBe(false);
   });
 
   it('is false without Origin, so scripts and curl are still counted', () => {

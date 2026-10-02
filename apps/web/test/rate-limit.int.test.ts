@@ -15,6 +15,7 @@ import {
   clientBucket,
   hitRateLimit,
   hitSearchRateLimit,
+  peekRateLimit,
   RATE_LIMITS,
   type RateLimitKind,
 } from '@/server/rate-limit';
@@ -92,15 +93,18 @@ describe('hitSearchRateLimit', () => {
   });
 });
 
-describe('hitRateLimit: checkout, cancel, cart', () => {
+describe('hitRateLimit: checkout, cancel, cart, pay, order_action, admin_auth', () => {
   const HOUR_MS = 3_600_000;
   const cases: { kind: RateLimitKind; limit: number; ip: string }[] = [
     { kind: 'checkout', limit: 10, ip: '198.51.100.31' },
     { kind: 'cancel', limit: 5, ip: '198.51.100.32' },
     { kind: 'cart', limit: 120, ip: '198.51.100.33' },
+    { kind: 'pay', limit: 10, ip: '198.51.100.34' },
+    { kind: 'order_action', limit: 20, ip: '198.51.100.35' },
+    { kind: 'admin_auth', limit: 20, ip: '198.51.100.36' },
   ];
 
-  it('declares the hourly limits of section 8', () => {
+  it('declares the hourly limits of 1A section 8 and 1B section 15', () => {
     for (const { kind, limit } of cases) {
       expect(RATE_LIMITS[kind], kind).toEqual([
         { window: 'hour', keySegment: 'hour', limit, windowMs: HOUR_MS },
@@ -242,5 +246,98 @@ describe('proxy with the real limiter', () => {
     const json = await send('POST', '/api/cart/items', ip);
     expect(json.status).toBe(429);
     expect(json.headers.get('content-type')).toContain('application/json');
+  });
+
+  it('answers the 11th pay of an hour with a 429 that leads back to the order', async () => {
+    const ip = '192.0.2.131';
+    const token = 'PayToken_0123456789abcdef';
+    const form = { accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8' };
+    for (let i = 0; i < 10; i += 1) {
+      const response = await send('POST', `/api/orders/${token}/pay`, ip, form);
+      expect(response.headers.get('x-middleware-next'), `pay ${i + 1}`).toBe('1');
+    }
+    // Order actions have their own allowance.
+    const action = await send('POST', `/api/orders/${token}/actions`, ip);
+    expect(action.headers.get('x-middleware-next')).toBe('1');
+    const blocked = await send('POST', `/api/orders/${token}/pay`, ip, form);
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(await blocked.text()).toContain(`href="/o/${token}"`);
+  });
+});
+
+describe('peekRateLimit', () => {
+  it('reports a full window without recording a hit', async () => {
+    const start = Date.UTC(2026, 9, 5, 6, 0, 0);
+    const options = { kind: 'admin_auth' as const, secret: SECRET, ip: '198.51.100.70' };
+    const withPrefix = { ...options, keyPrefix: prefix };
+    expect(await peekRateLimit(redis, { ...withPrefix, now: start })).toEqual({
+      allowed: true,
+      retryAfterSec: 0,
+      window: null,
+    });
+    for (let i = 0; i < 20; i += 1) {
+      await hitRateLimit(redis, { ...withPrefix, now: start + i * 1_000 });
+    }
+    const key = `${prefix}rl:admin_auth:hour:${clientBucket(SECRET, options.ip)}`;
+    expect(await redis.zcard(key)).toBe(20);
+    const full = await peekRateLimit(redis, { ...withPrefix, now: start + 600_000 });
+    expect(full).toEqual({ allowed: false, retryAfterSec: 3000, window: 'hour' });
+    expect(await redis.zcard(key)).toBe(20);
+    // Once the first hit leaves the window there is room again.
+    const later = await peekRateLimit(redis, { ...withPrefix, now: start + 3_600_001 });
+    expect(later.allowed).toBe(true);
+  });
+});
+
+describe('proxy /admin gate with the real limiter', () => {
+  const ADMIN = 'admin:e2e-admin-password';
+  const basic = (credentials: string) => ({
+    authorization: `Basic ${Buffer.from(credentials, 'utf8').toString('base64')}`,
+  });
+
+  async function send(path: string, ip: string, headers: Record<string, string> = {}) {
+    const { proxy } = await import('@/proxy');
+    return proxy(
+      new NextRequest(new URL(path, 'http://localhost:3000'), {
+        method: 'GET',
+        headers: { 'x-real-ip': ip, ...headers },
+      }),
+    );
+  }
+
+  it('locks the bucket after 20 wrong passwords, the right one included', async () => {
+    const previous = proxyState.env;
+    proxyState.env = parseEnv(
+      minimalEnvSource({
+        SESSION_SECRET: SECRET,
+        TRUSTED_IP_HEADER: 'x-real-ip',
+        ADMIN_BASIC_AUTH: ADMIN,
+      }),
+    );
+    try {
+      const ip = '192.0.2.150';
+      // The browser's first request without credentials costs nothing.
+      for (let i = 0; i < 25; i += 1) expect((await send('/admin', ip)).status).toBe(401);
+      expect((await send('/admin', ip, basic(ADMIN))).headers.get('x-middleware-next')).toBe('1');
+      for (let i = 0; i < 20; i += 1) {
+        const response = await send('/admin', ip, basic(`admin:guess-${i}`));
+        expect(response.status, `guess ${i + 1}`).toBe(401);
+      }
+      const blocked = await send('/admin', ip, basic('admin:guess-21'));
+      expect(blocked.status).toBe(429);
+      expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(3500);
+      const right = await send('/admin', ip, basic(ADMIN));
+      expect(right.status).toBe(429);
+      expect(right.headers.get('cache-control')).toBe('no-store');
+      // Another client is not affected.
+      const other = await send('/admin', '192.0.2.151', basic(ADMIN));
+      expect(other.headers.get('x-middleware-next')).toBe('1');
+      const keys = await redis.keys(`${prefix}rl:admin_auth:hour:*`);
+      expect(keys).toContain(`${prefix}rl:admin_auth:hour:${clientBucket(SECRET, ip)}`);
+      expect(keys.some((key) => key.includes(ip))).toBe(false);
+    } finally {
+      proxyState.env = previous;
+    }
   });
 });

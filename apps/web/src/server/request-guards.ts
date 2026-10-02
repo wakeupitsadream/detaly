@@ -14,11 +14,11 @@ interface HeaderSource {
  * (older browsers on same-origin form posts) the request passes only with
  * `Sec-Fetch-Site: same-origin`; anything else is rejected (403 by the caller).
  *
- * `Origin: null` is treated as a missing `Origin`: browsers send it on a same-origin form
- * POST from a page with `Referrer-Policy: no-referrer` (Fetch, «serialize a request origin»),
- * which is exactly the «Оплатить N ₽» form on /o/<token>. `Sec-Fetch-Site` is set by the
- * browser itself, so a sandboxed frame or a data: URL elsewhere (also `Origin: null`) arrives
- * as cross-site and is still rejected.
+ * `Origin: null` is treated like a missing `Origin`: browsers send exactly `null` on a
+ * same-origin form POST from a page with `Referrer-Policy: no-referrer` (the Fetch standard,
+ * "append a request Origin header"), which is the policy of /admin and /o/<token>. The
+ * browser-set `Sec-Fetch-Site` still tells such a post from a cross-site one (sandboxed
+ * frames, cross-site redirects and foreign pages get `cross-site` / `none`).
  */
 export function isSameOrigin(headers: HeaderSource, appBaseUrl: string): boolean {
   let expected: string;

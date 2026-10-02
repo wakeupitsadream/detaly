@@ -12,6 +12,22 @@ export {
   type Tx,
 } from './client';
 export type { Executor } from './executor';
+// Query operators re-exported so apps (web) use this package's single drizzle-orm instance
+// instead of depending on drizzle-orm themselves (a second copy without the postgres peer).
+export {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 export * from './schema';
 export { isNoopSeed, seed, type SeedOptions, type SeedReport } from './seed';
 export { EXCLUDED_SEED } from './seed/excluded';

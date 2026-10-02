@@ -241,6 +241,19 @@ export const paymentConfirmedUnpaid = guard(
   (c) => c.providerPaymentStatus === 'canceled' || c.providerPaymentStatus === null,
 );
 
+/**
+ * Decision Д3 (phase 1A): the client may cancel an unpaid order while its latest payment is
+ * absent (null), pending or canceled. A missing field (undefined) and succeeded or
+ * waiting_for_capture payments fail.
+ */
+export const noPaymentSucceeded = guard(
+  'no_payment_succeeded',
+  (c) =>
+    c.providerPaymentStatus === null ||
+    c.providerPaymentStatus === 'pending' ||
+    c.providerPaymentStatus === 'canceled',
+);
+
 export const paymentSucceeded = guard(
   'payment_succeeded',
   (c) => c.providerPaymentStatus === 'succeeded',

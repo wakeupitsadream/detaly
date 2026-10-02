@@ -142,6 +142,16 @@ jobs:
       PICKUP_HOURS: Пн–Пт 10:00–19:00
       PICKUP_PHONE: '+7 900 000-00-01'
       E2E_EXPECT_INN: '561234567890'
+      # Phase 1A: the Origin check compares with APP_BASE_URL; checkout opens only with an
+      # RKN number and, in the production standalone server, published legal versions (the
+      # seed publishes the pinned versions in the CI database).
+      APP_BASE_URL: http://127.0.0.1:3100
+      RKN_NOTICE_NUMBER: E2E-TEST
+      LEGAL_OFFER_VERSION: 2026-10-d1
+      LEGAL_PRIVACY_VERSION: 2026-10-d1
+      LEGAL_CONSENT_PD_VERSION: 2026-10-d1
+      LEGAL_CONSENT_MARKETING_VERSION: 2026-10-d1
+      LEGAL_RETURN_MEMO_VERSION: 2026-10-d1
     steps:
       - uses: actions/checkout@v5
 

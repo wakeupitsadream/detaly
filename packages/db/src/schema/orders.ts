@@ -16,7 +16,15 @@ import {
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { createdAt, id, kop, kopCheck, namedCheck, tstz, updatedAt } from './columns';
-import { actorType, fulfillment, orderItemState, orderStatus, paymentScheme } from './enums';
+import { carts } from './carts';
+import {
+  actorType,
+  fulfillment,
+  notificationChannel,
+  orderItemState,
+  orderStatus,
+  paymentScheme,
+} from './enums';
 import { documentVersions, users } from './people';
 
 /**
@@ -66,6 +74,12 @@ export const orders = pgTable(
     pickupCode: text(),
     /** Offer (document_versions kind=offer) accepted with this order. */
     offerVersionId: uuid().references(() => documentVersions.id),
+    /** Status channel the client chose at checkout (a preference; binding comes later). */
+    preferredChannel: notificationChannel(),
+    /** Idempotency key of the checkout form (uuid v7 rendered into it): one order per submit. */
+    checkoutKey: uuid(),
+    /** Cart the order was checked out from (trace only). */
+    cartId: uuid().references(() => carts.id, { onDelete: 'set null' }),
     attentionReason: text(),
     confirmedAt: tstz(),
     paidAt: tstz(),
@@ -83,6 +97,8 @@ export const orders = pgTable(
   (t) => [
     unique('orders_number_unique').on(t.number),
     unique('orders_access_token_unique').on(t.accessToken),
+    unique('orders_checkout_key_unique').on(t.checkoutKey),
+    index('orders_cart_id_idx').on(t.cartId),
     index('orders_status_expires_at_idx').on(t.status, t.expiresAt),
     index('orders_user_id_idx').on(t.userId),
     kopCheck('orders', 'subtotal_kop', t.subtotalKop),
@@ -101,6 +117,10 @@ export const orderItems = pgTable(
     orderId: uuid()
       .notNull()
       .references(() => orders.id),
+    /** Same key as cart_items.offer_key. */
+    offerKey: text().notNull(),
+    /** Query article the offer was found by (the 1B recheck searches with it). */
+    searchArticleNorm: text().notNull(),
     brand: text().notNull(),
     article: text().notNull(),
     name: text().notNull(),
@@ -124,6 +144,11 @@ export const orderItems = pgTable(
   },
   (t) => [
     index('order_items_order_id_idx').on(t.orderId),
+    namedCheck(
+      'order_items',
+      'search_article_norm',
+      sql`${t.searchArticleNorm} ~ '^[A-Z0-9]{1,64}$'`,
+    ),
     namedCheck('order_items', 'qty', sql`${t.qty} > 0`),
     kopCheck('order_items', 'price_supplier_at_order_kop', t.priceSupplierAtOrderKop),
     kopCheck('order_items', 'price_client_kop', t.priceClientKop),

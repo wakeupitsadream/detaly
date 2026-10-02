@@ -1,5 +1,5 @@
 /**
- * Read-only view of `settings` and `excluded_groups` for search, cached in memory for a short
+ * Read-only view of `settings` and `excluded_groups` for search and checkout, cached in memory for a short
  * TTL (admin edits apply within a minute). Missing or malformed keys fall back to the env
  * defaults the seed would have written (settingsDefaultsFromEnv), and a database outage falls
  * back to those defaults plus DEFAULT_EXCLUDED_RULES, so search keeps working on cached
@@ -12,6 +12,7 @@ import {
   validateMarkupRules,
   type EtaSettings,
   type ExcludedRule,
+  type Kop,
   type MarkupRule,
   type SettingsValues,
 } from '@detaly/domain';
@@ -24,13 +25,40 @@ const SEARCH_KEYS = [
   'eta.supplier_invoice_lag_days',
   'rossko.prepay_invoice',
   'rossko.local_stock_ids',
+  // order thresholds (phase 1A: cart hints, checkout, payment scheme)
+  'pricing.min_order_total_kop',
+  'pricing.min_margin_kop',
+  'order.on_pickup_max_total_kop',
+  'order.on_pickup_confirm_ttl_h',
+  'no_show.limit',
+  'order.payment_ttl_min',
+  'courier.fee_kop',
 ] as const satisfies readonly (keyof SettingsValues)[];
+
+/** Order thresholds and terms (settings keys in comments; 0 kop thresholds = no minimum). */
+export interface OrderSettings {
+  /** pricing.min_order_total_kop */
+  minOrderTotalKop: Kop;
+  /** pricing.min_margin_kop */
+  minMarginKop: Kop;
+  /** order.on_pickup_max_total_kop */
+  onPickupMaxTotalKop: Kop;
+  /** order.on_pickup_confirm_ttl_h */
+  onPickupConfirmTtlH: number;
+  /** no_show.limit */
+  noShowLimit: number;
+  /** order.payment_ttl_min */
+  paymentTtlMin: number;
+  /** courier.fee_kop */
+  courierFeeKop: Kop;
+}
 
 export interface SearchSettings {
   markupRules: MarkupRule[];
   excludedRules: ExcludedRule[];
   eta: EtaSettings;
   localStockIds: string[];
+  order: OrderSettings;
   /** false when the values come from env fallbacks because the database failed. */
   fromDatabase: boolean;
 }
@@ -41,6 +69,10 @@ export interface SettingsReader {
 
 function isNonNegativeInt(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isPositiveInt(value: unknown): value is number {
+  return isNonNegativeInt(value) && value > 0;
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -80,6 +112,15 @@ export function resolveSearchSettings(
       prepayInvoice: pick('rossko.prepay_invoice', (value) => typeof value === 'boolean'),
     },
     localStockIds: pick('rossko.local_stock_ids', isStringArray),
+    order: {
+      minOrderTotalKop: pick('pricing.min_order_total_kop', isNonNegativeInt),
+      minMarginKop: pick('pricing.min_margin_kop', isNonNegativeInt),
+      onPickupMaxTotalKop: pick('order.on_pickup_max_total_kop', isNonNegativeInt),
+      onPickupConfirmTtlH: pick('order.on_pickup_confirm_ttl_h', isPositiveInt),
+      noShowLimit: pick('no_show.limit', isPositiveInt),
+      paymentTtlMin: pick('order.payment_ttl_min', isPositiveInt),
+      courierFeeKop: pick('courier.fee_kop', isNonNegativeInt),
+    },
   };
 }
 

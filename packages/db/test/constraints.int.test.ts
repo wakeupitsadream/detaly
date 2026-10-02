@@ -144,6 +144,8 @@ describe('orders', () => {
     const order = await insertOrder(db);
     const item = {
       orderId: order.id,
+      offerKey: 'W9142:MANN:ORB1',
+      searchArticleNorm: 'W9142',
       brand: 'MANN',
       article: 'W 914/2',
       name: 'Фильтр масляный',
@@ -344,6 +346,8 @@ describe('other constraints', () => {
       .where(eq(vinRequests.id, request!.id));
     await db.insert(cartItems).values({
       cartId: cart!.id,
+      offerKey: 'W9142:MANN:ORB1',
+      searchArticleNorm: 'W9142',
       brand: 'MANN',
       article: 'W 914/2',
       name: 'Фильтр масляный',

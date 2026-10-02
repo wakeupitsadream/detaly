@@ -196,6 +196,8 @@ const envShape = {
   REMINDER_DAYS: csvPositiveInts.default([3, 6, 9]),
   /** rubles */
   COURIER_FEE_RUB: int().default(0),
+  /** Max-Age of the `cart` cookie in days [ф1A]. */
+  CART_TTL_DAYS: int(1).default(30),
 
   // --- YooKassa [ф0 spike / ф1B] ---
   YOOKASSA_SHOP_ID: optionalString,

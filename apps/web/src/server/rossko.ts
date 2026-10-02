@@ -41,6 +41,11 @@ export interface WebRosskoOptions {
   keyPrefix?: string;
   /** Overrides the transport chosen by ROSSKO_MODE (tests). */
   caller?: RosskoCaller;
+  /**
+   * Longest wait for a limiter window slot for `critical` calls (checkout recheck). Web passes
+   * WEB_CRITICAL_MAX_WAIT_MS (server/supplier.ts); the client default (60 s) is for the worker.
+   */
+  criticalMaxWaitMs?: number;
   onError?: (error: unknown, what: string) => void;
 }
 
@@ -78,6 +83,7 @@ export function createWebRossko(options: WebRosskoOptions): WebRossko {
     limiter,
     cache: createSearchCache(redis, { keyPrefix }),
     allowCheckout: false,
+    criticalMaxWaitMs: options.criticalMaxWaitMs,
     onCall: live
       ? async (event) => {
           try {

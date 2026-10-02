@@ -105,7 +105,8 @@ http://127.0.0.1:3100` (иначе проверка Origin отклонит e2e)
 
 1. `normalizePhone(input: string): string | null` — E.164 только для +7 (Россия и Казахстан —
    единый план нумерации). Убирает пробелы, `()`, `-`, `.`. Принимает `+7XXXXXXXXXX`,
-   `8XXXXXXXXXX`, `7XXXXXXXXXX`, `XXXXXXXXXX` (10 цифр, первая 3, 4, 8 или 9 — коды ABC/DEF).
+   `8XXXXXXXXXX`, `7XXXXXXXXXX`, `XXXXXXXXXX` (10 цифр, первая 3, 4, 8 или 9 — коды ABC/DEF;
+   коды 88x и 89x не выделены и отклоняются: `8912345678` — это «8 9xx…» с пропущенной цифрой).
    Остальное → `null`.
 2. `phoneLast4(e164: string): string`.
 3. `maskPhone(e164: string): string` → `+7 ••• •••-45-67` (для карточек и логов 1B, без ПД).

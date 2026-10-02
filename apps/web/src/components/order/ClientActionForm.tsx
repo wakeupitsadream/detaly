@@ -2,6 +2,10 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { IconAlert } from '@/components/icons';
+import { buttonClass } from '@/components/ui/Button';
+import { cn } from '@/components/ui/cn';
+import { inputClass } from '@/components/ui/Input';
 
 /** Client actions of POST /api/orders/<token>/actions (decision Б24). */
 export type ClientActionCode =
@@ -42,8 +46,11 @@ export interface ClientActionFormProps {
   submitLabel: string;
   pendingLabel: string;
   doneText: string;
-  /** primary: the main decision of the page; secondary: an outlined button. */
-  tone?: 'primary' | 'secondary';
+  /**
+   * primary: the main decision of the page; secondary: an outlined button; danger: a
+   * refusal (red outline, red final button).
+   */
+  tone?: 'primary' | 'secondary' | 'danger';
   testId: string;
   contactPhone?: string | null;
 }
@@ -134,10 +141,14 @@ export function ClientActionForm({
     );
   }
 
-  const openClass =
-    tone === 'primary'
-      ? 'inline-flex min-h-11 max-w-full items-center justify-center rounded-xl bg-accent px-5 py-2 font-semibold text-white wrap-anywhere hover:bg-accent-strong'
-      : 'inline-flex min-h-11 max-w-full items-center justify-center rounded-xl border border-line px-5 py-2 text-left font-medium text-ink wrap-anywhere hover:border-accent hover:text-accent';
+  const openClass = cn(
+    buttonClass({ variant: tone, size: tone === 'primary' ? 'lg' : 'md' }),
+    'max-w-full py-2 text-left wrap-anywhere',
+  );
+  const submitClass =
+    tone === 'danger'
+      ? 'inline-flex min-h-11 items-center justify-center rounded bg-danger px-5 py-2 font-semibold text-card transition-colors hover:bg-danger/90 disabled:opacity-60'
+      : cn(buttonClass({ variant: 'primary' }), 'py-2');
 
   return (
     <div className="min-w-0" data-testid={testId}>
@@ -162,11 +173,15 @@ export function ClientActionForm({
           {openLabel}
         </button>
       ) : (
-        <form onSubmit={(event) => void onSubmit(event)} noValidate className="space-y-3">
+        <form
+          onSubmit={(event) => void onSubmit(event)}
+          noValidate
+          className="space-y-3 rounded-sm border border-dashed border-line-strong bg-paper p-4"
+        >
           <p className="wrap-anywhere">{confirmText}</p>
           {digits ? (
             <>
-              <label htmlFor={inputId} className="block font-medium">
+              <label htmlFor={inputId} className="block text-sm font-medium">
                 Для подтверждения введите последние 4 цифры телефона
               </label>
               <input
@@ -183,7 +198,10 @@ export function ClientActionForm({
                 onChange={(e) => setLast4(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 aria-invalid={error !== null}
                 aria-describedby={error !== null ? `${inputId}-error` : undefined}
-                className="block h-11 w-32 rounded-xl border border-line bg-card px-3 font-mono text-lg tracking-widest"
+                className={inputClass({
+                  mono: true,
+                  className: 'h-12 w-36 text-center text-lg tracking-[0.4em]',
+                })}
                 data-testid={`${testId}-last4`}
               />
             </>
@@ -191,11 +209,12 @@ export function ClientActionForm({
           {error !== null ? (
             <p
               id={`${inputId}-error`}
-              className="text-sm text-accent-strong"
+              className="flex items-start gap-1.5 text-sm text-danger"
               role="alert"
               data-testid={`${testId}-error`}
             >
-              {error}
+              <IconAlert size={16} className="mt-0.5 shrink-0" />
+              <span className="min-w-0">{error}</span>
             </p>
           ) : null}
           <div className="flex flex-wrap gap-2">
@@ -203,7 +222,7 @@ export function ClientActionForm({
               type="submit"
               ref={submitRef}
               disabled={pending}
-              className="inline-flex min-h-11 items-center rounded-xl bg-accent px-5 py-2 font-semibold text-white hover:bg-accent-strong disabled:opacity-60"
+              className={submitClass}
               data-testid={`${testId}-submit`}
             >
               {pending ? pendingLabel : submitLabel}
@@ -211,7 +230,7 @@ export function ClientActionForm({
             <button
               type="button"
               disabled={pending}
-              className="inline-flex min-h-11 items-center rounded-xl border border-line px-5 py-2 font-medium text-muted"
+              className={cn(buttonClass({ variant: 'ghost' }), 'text-muted')}
               onClick={() => {
                 focusNext.current = 'open';
                 setOpen(false);

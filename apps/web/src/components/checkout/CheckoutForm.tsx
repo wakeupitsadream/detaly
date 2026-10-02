@@ -2,8 +2,21 @@
 
 import type { LineChange, PaymentScheme } from '@detaly/domain';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import { DiffBanner } from '@/components/DiffBanner';
+import { IconAlert, IconArrowRight, IconCheck } from '@/components/icons';
+import { Notice } from '@/components/page/Notice';
+import { SheetTitle } from '@/components/page/SheetTitle';
+import { buttonClass } from '@/components/ui/Button';
+import { cn } from '@/components/ui/cn';
+import { inputClass } from '@/components/ui/Input';
 import { PAYMENT_SCHEME_TITLE } from './scheme-text';
 
 type Field = 'phone' | 'name' | 'channel' | 'acceptOffer' | 'consentPd';
@@ -55,9 +68,68 @@ interface ApiBody {
 function FieldError({ id, message }: { id: string; message: string | undefined }) {
   if (!message) return null;
   return (
-    <p id={id} className="text-sm text-accent-strong" role="alert">
-      {message}
+    <p id={id} className="mt-1.5 flex items-start gap-1.5 text-sm text-danger" role="alert">
+      <IconAlert size={16} className="mt-0.5 shrink-0" />
+      <span className="min-w-0">{message}</span>
     </p>
+  );
+}
+
+const LABEL = 'mb-1.5 block text-sm font-medium text-ink';
+const DOC_LINK =
+  'font-medium text-accent-ink underline decoration-1 underline-offset-4 hover:decoration-2';
+
+/** A sheet of the form: card on paper, 1px line, no shadow. */
+function Sheet({ className, children }: { className?: string; children: ReactNode }) {
+  return (
+    <section className={cn('min-w-0 rounded border border-line bg-card p-5 md:p-6', className)}>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * A consent checkbox: a 22px square, signal-orange fill with an ink tick when checked. The
+ * native input stays in place (keyboard, form data, the label as its name), only its look
+ * changes.
+ */
+function Consent({
+  name,
+  checked,
+  onChange,
+  describedBy,
+  children,
+}: {
+  name: string;
+  checked?: boolean;
+  onChange?: (checked: boolean) => void;
+  describedBy?: string;
+  children: ReactNode;
+}) {
+  const controlled = onChange
+    ? {
+        checked: checked ?? false,
+        onChange: (event: ChangeEvent<HTMLInputElement>) => onChange(event.target.checked),
+      }
+    : {};
+  return (
+    <label className="flex cursor-pointer items-start gap-3 leading-snug">
+      <span className="relative grid size-[22px] shrink-0 place-items-center">
+        <input
+          type="checkbox"
+          name={name}
+          className="peer size-[22px] cursor-pointer appearance-none rounded-sm border-[1.5px] border-line-strong bg-card transition-colors hover:border-muted checked:border-ink checked:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          aria-describedby={describedBy}
+          {...controlled}
+        />
+        <IconCheck
+          size={16}
+          strokeWidth={2.5}
+          className="pointer-events-none absolute hidden text-ink peer-checked:block"
+        />
+      </span>
+      <span className="min-w-0 pt-px">{children}</span>
+    </label>
   );
 }
 
@@ -184,11 +256,12 @@ export function CheckoutForm(props: CheckoutFormProps) {
     setFormError(body.message ?? GENERIC_ERROR);
   }
 
-  const inputClass =
-    'h-12 w-full min-w-0 rounded-xl border border-line bg-card px-3 text-base focus:border-ink';
-
   return (
-    <form className="space-y-5" onSubmit={(e) => void onSubmit(e)} data-testid="checkout-form">
+    <form
+      className="min-w-0 space-y-6"
+      onSubmit={(e) => void onSubmit(e)}
+      data-testid="checkout-form"
+    >
       {changes !== null || schemeNotice !== null ? (
         <div
           ref={changesRef}
@@ -200,27 +273,21 @@ export function CheckoutForm(props: CheckoutFormProps) {
             <DiffBanner changes={changes} cartChanged />
           ) : null}
           {promise !== null ? (
-            <p
-              className="rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn"
-              role="status"
-              data-testid="checkout-promise-changed"
-            >
+            <Notice tone="wait" role="status" data-testid="checkout-promise-changed">
               Срок получения изменился: {promise.text}
-            </p>
+            </Notice>
           ) : null}
           {schemeNotice !== null ? (
-            <div
-              className="space-y-1 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn"
+            <Notice
+              tone="wait"
               role="status"
               data-testid="checkout-scheme-changed"
+              title={`Способ оплаты: ${PAYMENT_SCHEME_TITLE[schemeNotice.scheme]}`}
             >
-              <p className="font-semibold">
-                Способ оплаты: {PAYMENT_SCHEME_TITLE[schemeNotice.scheme]}
-              </p>
               {schemeNotice.explanation.map((sentence) => (
                 <p key={sentence}>{sentence}</p>
               ))}
-            </div>
+            </Notice>
           ) : null}
           <p className="text-sm text-muted">
             {schemeNotice !== null && changes === null
@@ -230,119 +297,120 @@ export function CheckoutForm(props: CheckoutFormProps) {
         </div>
       ) : null}
 
-      <div className="space-y-1.5">
-        <label htmlFor="checkout-phone" className="block font-medium">
-          Телефон
-        </label>
-        <input
-          id="checkout-phone"
-          name="phone"
-          type="tel"
-          inputMode="tel"
-          autoComplete="tel"
-          required
-          maxLength={32}
-          placeholder="+7 912 345-67-89"
-          aria-invalid={fieldErrors.phone ? true : undefined}
-          aria-describedby="checkout-phone-hint checkout-phone-error"
-          className={inputClass}
-        />
-        <p id="checkout-phone-hint" className="text-xs text-muted">
-          Мобильный номер: +7 или 8 и 10 цифр. По нему вы получите заказ.
-        </p>
-        <FieldError id="checkout-phone-error" message={fieldErrors.phone} />
-      </div>
-
-      <div className="space-y-1.5">
-        <label htmlFor="checkout-name" className="block font-medium">
-          Имя
-        </label>
-        <input
-          id="checkout-name"
-          name="name"
-          type="text"
-          autoComplete="name"
-          required
-          maxLength={60}
-          aria-invalid={fieldErrors.name ? true : undefined}
-          aria-describedby="checkout-name-error"
-          className={inputClass}
-        />
-        <FieldError id="checkout-name-error" message={fieldErrors.name} />
-      </div>
-
-      <fieldset className="space-y-2">
-        <legend className="font-medium">Куда присылать статусы заказа</legend>
-        <div className="flex flex-wrap gap-2">
-          {CHANNELS.map((channel) => (
-            <label
-              key={channel.value}
-              className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-xl border border-line bg-card px-4 has-[:checked]:border-ink"
-            >
-              <input type="radio" name="channel" value={channel.value} required />
-              {channel.label}
+      <Sheet>
+        <SheetTitle index="01">Контакты</SheetTitle>
+        <div className="grid min-w-0 gap-5 sm:grid-cols-2">
+          <div className="min-w-0">
+            <label htmlFor="checkout-phone" className={LABEL}>
+              Телефон
             </label>
-          ))}
+            <input
+              id="checkout-phone"
+              name="phone"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              required
+              maxLength={32}
+              placeholder="+7 912 345-67-89"
+              aria-invalid={fieldErrors.phone ? true : undefined}
+              aria-describedby="checkout-phone-hint checkout-phone-error"
+              className={inputClass({ className: 'tabular-nums' })}
+            />
+            <p id="checkout-phone-hint" className="mt-1.5 text-sm text-muted">
+              Мобильный номер: +7 или 8 и 10 цифр. По нему вы получите заказ.
+            </p>
+            <FieldError id="checkout-phone-error" message={fieldErrors.phone} />
+          </div>
+          <div className="min-w-0">
+            <label htmlFor="checkout-name" className={LABEL}>
+              Имя
+            </label>
+            <input
+              id="checkout-name"
+              name="name"
+              type="text"
+              autoComplete="name"
+              required
+              maxLength={60}
+              placeholder="Как к вам обращаться"
+              aria-invalid={fieldErrors.name ? true : undefined}
+              aria-describedby="checkout-name-error"
+              className={inputClass()}
+            />
+            <FieldError id="checkout-name-error" message={fieldErrors.name} />
+          </div>
         </div>
-        <p className="text-xs text-muted">
-          Это предпочтение: подключить уведомления можно будет на странице заказа.
-        </p>
-        <FieldError id="checkout-channel-error" message={fieldErrors.channel} />
-      </fieldset>
+      </Sheet>
 
-      <div className="space-y-3">
-        <label className="flex items-start gap-3">
-          <input
-            type="checkbox"
-            name="acceptOffer"
-            className="mt-1 size-5 shrink-0"
-            checked={acceptOffer}
-            onChange={(e) => setAcceptOffer(e.target.checked)}
-            aria-describedby="checkout-offer-error"
-          />
-          <span>
-            Принимаю условия{' '}
-            <a className="underline" href="/docs/offer" target="_blank" rel="noopener">
-              оферты
-            </a>
-          </span>
-        </label>
+      <Sheet>
+        <fieldset className="min-w-0">
+          <legend className="sr-only">Куда присылать статусы заказа</legend>
+          <SheetTitle index="02">Куда присылать статусы заказа</SheetTitle>
+          <div className="flex flex-wrap gap-2 sm:grid sm:grid-cols-3">
+            {CHANNELS.map((channel) => (
+              <label
+                key={channel.value}
+                className={cn(
+                  'flex h-12 min-w-0 grow cursor-pointer items-center gap-2 rounded border-[1.5px] border-line bg-card px-3 font-medium transition-colors sm:gap-2.5 sm:px-4',
+                  'hover:border-muted has-[:checked]:border-ink has-[:checked]:bg-paper',
+                  'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent',
+                )}
+              >
+                <input
+                  type="radio"
+                  name="channel"
+                  value={channel.value}
+                  required
+                  className="size-4.5 shrink-0 cursor-pointer appearance-none rounded-full border-[1.5px] border-line-strong bg-card transition-[border-width,border-color] checked:border-[5px] checked:border-ink focus-visible:outline-none"
+                />
+                <span className="whitespace-nowrap">{channel.label}</span>
+              </label>
+            ))}
+          </div>
+          <p className="mt-3 text-sm text-muted">
+            Это предпочтение: подключить уведомления можно будет на странице заказа.
+          </p>
+          <FieldError id="checkout-channel-error" message={fieldErrors.channel} />
+        </fieldset>
+      </Sheet>
+
+      <Sheet className="space-y-4">
+        <SheetTitle index="03">Согласия</SheetTitle>
+        <Consent
+          name="acceptOffer"
+          checked={acceptOffer}
+          onChange={setAcceptOffer}
+          describedBy="checkout-offer-error"
+        >
+          Принимаю условия{' '}
+          <a className={DOC_LINK} href="/docs/offer" target="_blank" rel="noopener">
+            оферты
+          </a>
+        </Consent>
         <FieldError id="checkout-offer-error" message={fieldErrors.acceptOffer} />
-        <label className="flex items-start gap-3">
-          <input
-            type="checkbox"
-            name="consentPd"
-            className="mt-1 size-5 shrink-0"
-            checked={consentPd}
-            onChange={(e) => setConsentPd(e.target.checked)}
-            aria-describedby="checkout-pd-error"
-          />
-          <span>
-            Даю{' '}
-            <a className="underline" href="/docs/consent" target="_blank" rel="noopener">
-              согласие на обработку персональных данных
-            </a>
-          </span>
-        </label>
+        <Consent
+          name="consentPd"
+          checked={consentPd}
+          onChange={setConsentPd}
+          describedBy="checkout-pd-error"
+        >
+          Даю{' '}
+          <a className={DOC_LINK} href="/docs/consent" target="_blank" rel="noopener">
+            согласие на обработку персональных данных
+          </a>
+        </Consent>
         <FieldError id="checkout-pd-error" message={fieldErrors.consentPd} />
         {props.marketingAvailable ? (
-          <label className="flex items-start gap-3">
-            <input type="checkbox" name="consentMarketing" className="mt-1 size-5 shrink-0" />
-            <span>
-              Хочу получать предложения и скидки (
-              <a
-                className="underline"
-                href="/docs/consent-marketing"
-                target="_blank"
-                rel="noopener"
-              >
-                согласие
-              </a>
-              , необязательно)
-            </span>
-          </label>
+          <Consent name="consentMarketing">
+            Хочу получать предложения и скидки (
+            <a className={DOC_LINK} href="/docs/consent-marketing" target="_blank" rel="noopener">
+              согласие
+            </a>
+            , необязательно)
+          </Consent>
         ) : null}
-      </div>
+      </Sheet>
 
       {/* Honeypot: off screen, skipped by keyboard and screen readers; people never fill it. */}
       <div aria-hidden="true" className="absolute -left-[10000px] h-px w-px overflow-hidden">
@@ -363,39 +431,37 @@ export function CheckoutForm(props: CheckoutFormProps) {
       <input type="hidden" name="expectedScheme" value={expectedScheme} />
       <input type="hidden" name="expectedPromisedDate" value={expectedPromisedDate ?? ''} />
 
-      {blocked ? (
-        <p className="rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
-          {props.blockedMessage}
-        </p>
-      ) : null}
+      {blocked ? <Notice tone="wait">{props.blockedMessage}</Notice> : null}
       {formError ? (
-        <p
-          className="rounded-xl border border-accent/30 bg-accent-soft px-4 py-3 text-sm text-accent-strong"
-          role="alert"
-          data-testid="checkout-error"
-        >
+        <Notice tone="danger" role="alert" data-testid="checkout-error">
           {formError}
-        </p>
+        </Notice>
       ) : null}
 
-      <button
-        type="submit"
-        disabled={!canSubmit}
-        className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-accent px-6 font-semibold text-white hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-faint md:w-auto"
-      >
-        {done ? 'Открываем заказ…' : pending ? 'Проверяем цены…' : 'Оформить заказ'}
-      </button>
-      {!acceptOffer || !consentPd ? (
-        <p className="text-xs text-muted">
-          Кнопка станет активной, когда вы примете оферту и дадите согласие на обработку данных.
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+        <button
+          type="submit"
+          disabled={!canSubmit}
+          className={cn(
+            buttonClass({ variant: 'primary', size: 'lg' }),
+            'w-full shrink-0 sm:w-auto',
+          )}
+        >
+          {done ? 'Открываем заказ…' : pending ? 'Проверяем цены…' : 'Оформить заказ'}
+          {!done && !pending ? <IconArrowRight size={18} /> : null}
+        </button>
+        <p className="min-w-0 text-sm text-muted">
+          {!acceptOffer || !consentPd
+            ? 'Кнопка станет активной, когда вы примете оферту и дадите согласие на обработку данных.'
+            : 'Перед созданием заказа ещё раз сверим цену и наличие у поставщика.'}
         </p>
-      ) : null}
+      </div>
 
       <noscript>
-        <p className="rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
+        <Notice tone="wait">
           Для оформления включите JavaScript
           {props.contactPhone ? ` или позвоните ${props.contactPhone}` : ' или позвоните нам'}.
-        </p>
+        </Notice>
       </noscript>
     </form>
   );

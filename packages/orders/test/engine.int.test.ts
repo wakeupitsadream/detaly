@@ -596,6 +596,39 @@ describe.skipIf(!DB_URL)('applyTransition', () => {
       .from(supplierOrderItems)
       .where(eq(supplierOrderItems.supplierOrderId, attempt!.id));
     expect(links.map((l) => l.orderItemId)).toEqual([copy.id]);
+
+    // The reorder's GetCheckout result is applied while the order stays ordered_at_supplier.
+    await db
+      .update(supplierOrders)
+      .set({ status: 'created' })
+      .where(eq(supplierOrders.id, attempt!.id));
+    const reordered = await applyTransition(deps, {
+      orderId: seeded.orderId,
+      event: 'supplier_checkout_succeeded',
+      actor: system,
+      facts: { supplierItemErrors: 0, coveredItemIds: [copy.id] },
+    });
+    expect(reordered).toMatchObject({ ok: true, to: 'ordered_at_supplier' });
+    const after = await itemRows(db, seeded.orderId);
+    expect(after.find((i) => i.id === copy.id)?.state).toBe('ordered');
+  });
+
+  it('a failed reorder of a damaged item goes to needs_attention', async () => {
+    const seeded = await seedOrder(db, { status: 'ordered_at_supplier' });
+    const [item1] = seeded.itemIds as [string, string];
+    await performStaffAction(deps, {
+      staff: { id: null, role: 'seller', via: 'bot' },
+      action: 'iprob',
+      targetId: item1,
+      input: { problem: 'damaged' },
+    });
+    const failed = await applyTransition(deps, {
+      orderId: seeded.orderId,
+      event: 'supplier_checkout_failed',
+      actor: system,
+    });
+    expect(failed).toMatchObject({ ok: true, to: 'needs_attention' });
+    expect((await orderRow(db, seeded.orderId)).attentionReason).toBe('checkout_failed');
   });
 
   it('«Выставить оплату»: only after «Клиент пришёл»; QR payment rows and outbox', async () => {

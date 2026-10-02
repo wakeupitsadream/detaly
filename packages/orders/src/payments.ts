@@ -530,7 +530,10 @@ export async function applyRefundObject(
           updatedAt: at,
         })
         .where(eq(refunds.id, refund.id));
-      if (next === 'succeeded' && refundReceiptRegistration(r.raw) === 'succeeded') {
+      if (
+        next === 'succeeded' &&
+        (r.receiptRegistration ?? refundReceiptRegistration(r.raw)) === 'succeeded'
+      ) {
         await tx
           .update(receipts)
           .set({ status: 'succeeded', updatedAt: at })

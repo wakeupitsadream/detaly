@@ -314,12 +314,23 @@ export interface ReceiptAttemptError {
 }
 
 /**
- * ProviderPayment with the fields the payments package adds in wave 2 (section 6.1). They are
- * read defensively: absent means "not reported" (RUB, no paid_at, no reason).
+ * ProviderPayment as the engine reads it. The wave 2 fields (section 6.1) are read defensively:
+ * absent means "not reported" (RUB, no paid_at, no reason), and the currency is widened to a
+ * string so that a non-RUB object (rejected by the YooKassa parser) still never matches a total.
  */
-export type ProviderPaymentLike = ProviderPayment & {
+export type ProviderPaymentLike = Omit<
+  ProviderPayment,
+  | 'currency'
+  | 'paidAt'
+  | 'cancellationReason'
+  | 'cancellationParty'
+  | 'receiptRegistration'
+  | 'refundedAmountKop'
+> & {
   currency?: string | null;
   paidAt?: string | null;
   cancellationReason?: string | null;
-  receiptRegistration?: 'pending' | 'succeeded' | 'canceled' | null;
+  cancellationParty?: string | null;
+  receiptRegistration?: ProviderPayment['receiptRegistration'];
+  refundedAmountKop?: ProviderPayment['refundedAmountKop'];
 };

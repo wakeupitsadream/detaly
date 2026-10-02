@@ -275,6 +275,40 @@ describe.skipIf(!DB_URL)('staff and client actions', () => {
     assertNoPhone(await eventsOf(db, seeded.orderId), seeded.phone);
   });
 
+  it('after «Вернуть платёж» a prepay order holds no money: cancel without refund, no order_anyway', async () => {
+    const seeded = await seedOrder(db, {
+      status: 'needs_attention',
+      attentionReason: 'amount_mismatch',
+    });
+    const refunded = await performStaffAction(deps, {
+      staff: admin,
+      action: 'refund_payment',
+      targetId: seeded.orderId,
+      input: { paymentId: seeded.paymentId!, reason: 'Неверная сумма' },
+    });
+    expect(refunded.ok).toBe(true);
+    const views = await loadStaffActions(deps, seeded.orderId, 'owner');
+    expect(views?.map((v) => v.code)).not.toContain('anyway');
+    expect(views?.find((v) => v.code === 'cancel')?.label).toBe('Отменить заказ');
+    const anyway = await performStaffAction(deps, {
+      staff: admin,
+      action: 'anyway',
+      targetId: seeded.orderId,
+    });
+    expect(anyway).toMatchObject({ ok: false });
+    const cancelled = await performStaffAction(deps, {
+      staff: admin,
+      action: 'cancel',
+      targetId: seeded.orderId,
+    });
+    expect(cancelled.ok).toBe(true);
+    expect((await orderRow(db, seeded.orderId)).status).toBe('cancelled');
+    // Only the owner's orphan refund: the cancel itself returns nothing.
+    expect(await db.select().from(refunds).where(eq(refunds.orderId, seeded.orderId))).toEqual([
+      expect.objectContaining({ scope: 'orphan' }),
+    ]);
+  });
+
   it('client actions: only the order owner; «Отказаться» before confirmation cancels', async () => {
     const seeded = await seedOrder(db, {
       scheme: 'pay_on_handover',

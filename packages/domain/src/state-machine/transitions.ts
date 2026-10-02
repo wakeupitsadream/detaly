@@ -73,6 +73,7 @@ import {
   paymentConfirmedUnpaid,
   paymentHeldFlag,
   paymentHeldKnown,
+  prepayFunded,
   paymentSucceeded,
   pickupWindowElapsed,
   prepay,
@@ -263,6 +264,7 @@ const owner = (template: OrderNotifyTemplate): NotifySpec => ({ audience: 'owner
 const refundReceipt = (ctx: TransitionContext): ReceiptKind | null => {
   const scheme: PaymentScheme | null | undefined = ctx.scheme;
   if (scheme === 'prepay') {
+    if (ctx.paymentHeld === false) return null;
     return ctx.settlementReceiptSucceeded === true ? 'refund_full' : 'refund_prepayment';
   }
   // pay_on_handover money is taken with a full_payment receipt (handover QR payment).
@@ -612,6 +614,36 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     notify: [client('new_eta')],
     effects: ['supplier_claim_and_reorder'],
   },
+  // The reorder of a damaged item is a GetCheckout while the order stays ordered_at_supplier
+  // (PLAN 3.4 «повторный заказ позиции»); its result is applied here like from `ordering`.
+  // VERIFY (R7): with rossko.prepay_invoice the replacement invoice is paid in the Rossko account
+  // (the order does not go back to awaiting_supplier_invoice for one item).
+  {
+    label: 'Повторный заказ позиции у Rossko создан',
+    from: ['ordered_at_supplier'],
+    event: 'supplier_checkout_succeeded',
+    to: 'ordered_at_supplier',
+    actors: ['system'],
+    guard: noItemErrors,
+    notify: [],
+  },
+  {
+    label: 'Повторный заказ позиции: GetCheckout вернул itemErrors',
+    from: ['ordered_at_supplier'],
+    event: 'supplier_checkout_succeeded',
+    to: 'needs_attention',
+    actors: ['system'],
+    guard: hasItemErrors,
+    notify: [sellers('staff_problem')],
+  },
+  {
+    label: 'Повторный заказ позиции: GetCheckout не прошёл',
+    from: ['ordered_at_supplier'],
+    event: 'supplier_checkout_failed',
+    to: 'needs_attention',
+    actors: ['system'],
+    notify: [sellers('staff_problem')],
+  },
   {
     label: 'Сдвиг срока',
     from: ['ordered_at_supplier'],
@@ -649,7 +681,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     from: ['needs_attention'],
     event: 'order_anyway',
     actors: ['staff'],
-    guard: marginAboveFloor,
+    guard: all(marginAboveFloor, prepayFunded),
     notify: [],
   }),
   {

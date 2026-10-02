@@ -209,6 +209,20 @@ const EXPECTED: readonly Row[] = [
     'ordered_at_supplier',
   ],
   ['ordered_at_supplier', 'item_damaged_on_receipt', staff(), 'ordered_at_supplier'],
+  // the reorder of a damaged item: GetCheckout outcome while the order stays ordered_at_supplier
+  [
+    'ordered_at_supplier',
+    'supplier_checkout_succeeded',
+    system({ supplierItemErrors: 0 }),
+    'ordered_at_supplier',
+  ],
+  [
+    'ordered_at_supplier',
+    'supplier_checkout_succeeded',
+    system({ supplierItemErrors: 1 }),
+    'needs_attention',
+  ],
+  ['ordered_at_supplier', 'supplier_checkout_failed', system(), 'needs_attention'],
   ['ordered_at_supplier', 'eta_changed', system(), 'ordered_at_supplier'],
   // "Жду до <дата>" / "Отменить позицию": partial refund of a delayed item
   [
@@ -643,6 +657,20 @@ describe('guards', () => {
         staff({ marginBp: 990, marginFloorBp: 1000, ...ORDERED }),
       ),
     ).toEqual({ ok: false, reason: 'guard_failed', failed: ['margin_floor'] });
+  });
+
+  it('a prepay order whose payment was returned holds no money: cancel without refund', () => {
+    const noMoney = staff({ paymentHeld: false, marginBp: 1500, marginFloorBp: 1000, ...ORDERED });
+    expect(resolveTransition('needs_attention', 'order_anyway', noMoney)).toMatchObject({
+      ok: false,
+      reason: 'guard_failed',
+      failed: ['prepay_funded'],
+    });
+    const cancelled = resolveTransition('needs_attention', 'order_cancelled', noMoney);
+    expect(cancelled.ok && cancelled.rule.to).toBe('cancelled');
+    const held = staff({ paymentHeld: true, marginBp: 1500, marginFloorBp: 1000, ...ORDERED });
+    const refunded = resolveTransition('needs_attention', 'order_cancelled', held);
+    expect(refunded.ok && refunded.rule.to).toBe('refund_pending');
   });
 
   it('back to work after a recheck problem sends GetCheckout (no supplier order yet)', () => {

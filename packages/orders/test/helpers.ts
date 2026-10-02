@@ -394,6 +394,8 @@ export function providerRefund(
     id,
     status,
     createdAt: T0.toISOString(),
+    receiptRegistration: null,
+    cancellationReason: null,
     raw: { id, status, receipt_registration: 'succeeded' },
     ...overrides,
   };
@@ -410,6 +412,9 @@ export function providerReceipt(
     paymentId: null,
     refundId: null,
     fiscalDocumentNumber: '12345',
+    paymentMode: null,
+    settlementTypes: [],
+    registeredAt: null,
     raw: { id },
     ...overrides,
   };

@@ -205,18 +205,31 @@ export const onPickupEligible = guard(
 );
 
 /**
- * Money was taken from the client: prepay orders, or pay_on_handover with a succeeded payment.
- * Decides between refund_pending (refund) and cancelled (nothing to return).
+ * Money was taken from the client: prepay orders (unless paymentHeld says explicitly that no
+ * payment is held, e.g. a wrong-amount payment already returned by «Вернуть платёж»), or
+ * pay_on_handover with a succeeded payment. Decides between refund_pending (refund) and
+ * cancelled (nothing to return).
  */
 export const moneyHeld = guard(
   'money_held',
-  (c) => c.scheme === 'prepay' || (c.scheme === 'pay_on_handover' && c.paymentHeld === true),
+  (c) =>
+    (c.scheme === 'prepay' && c.paymentHeld !== false) ||
+    (c.scheme === 'pay_on_handover' && c.paymentHeld === true),
 );
 
-/** pay_on_handover with an explicit "no payment taken"; a missing flag never cancels. */
+/** An explicit "no payment held" (either scheme); a missing flag never cancels. */
 export const noMoneyHeld = guard(
   'no_money_held',
-  (c) => c.scheme === 'pay_on_handover' && c.paymentHeld === false,
+  (c) => (c.scheme === 'prepay' || c.scheme === 'pay_on_handover') && c.paymentHeld === false,
+);
+
+/**
+ * Work may go on: a prepay order must still hold the client's money (a returned wrong-amount
+ * payment leaves nothing to order with); pay_on_handover is paid later.
+ */
+export const prepayFunded = guard(
+  'prepay_funded',
+  (c) => c.scheme === 'pay_on_handover' || (c.scheme === 'prepay' && c.paymentHeld !== false),
 );
 
 /** The order holds a succeeded payment (stale cancel/expiry of another payment is ignored). */

@@ -96,6 +96,7 @@ const GUARD_MESSAGES: Record<string, string> = {
   approval: 'Нет открытого вопроса клиенту',
   payments_disabled: 'Оплата не настроена (ЮKassa)',
   no_refundable_payment: 'Нет платежа для возврата',
+  prepay_funded: 'Платёж клиента возвращён — заказывать не на что',
   no_prepayment: 'Нет предоплаты для чека зачёта',
   no_phone: 'У клиента нет телефона для чека',
   refund_plan: 'Сумма возврата превышает платёж',

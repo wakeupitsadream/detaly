@@ -178,6 +178,8 @@ refund_full всего заказа с доставкой; в каждом — `
 | «Неожиданный платёж» для `ready` | `paymentSucceeded` | `paymentSucceeded & !lateHandoverPayment` (для прочих статусов списка — без изменений) |
 | `partial_refund_succeeded` (новое) | — | самопереход из `confirmed`, `ordering`, `awaiting_supplier_invoice`, `ordered_at_supplier`, `needs_attention`, `awaiting_client_approval`, `ready`, `awaiting_handover_payment`, `out_for_delivery`, `handed`, `completed`, `refund_pending`; actors `webhook`, `system`; охрана `refundConfirmed`; notify `client('money_sent')` |
 | `partial_refund_failed` (новое) | — | те же статусы, notify `owner('staff_refund_failed')` |
+| `ordered_at_supplier + supplier_checkout_succeeded/failed` (новое, интеграция волны 2) | — | итог GetCheckout повторного заказа повреждённой позиции: `noItemErrors` → самопереход без уведомлений; `hasItemErrors` и `supplier_checkout_failed` → `needs_attention` с `sellers('staff_problem')`. При `prepay_invoice` счёт за повторную позицию оплачивается в ЛК Rossko (VERIFY R7) |
+| `moneyHeld` / `noMoneyHeld` (интеграция волны 2) | prepay всегда «деньги у нас» | prepay с явным `paymentHeld: false` (платёж неверной суммы уже возвращён «Вернуть платёж») — денег нет: «Отменить заказ» → `cancelled` без возврата; «Заказать всё равно» требует охрану `prepayFunded` |
 
 `transitions.spec.ts`: строки EXPECTED для новых правил, полный перебор запрещённых пар
 подхватит события сам; кейсы: «Клиент не пришёл» продавцом до окна — `guard_failed`, после — как

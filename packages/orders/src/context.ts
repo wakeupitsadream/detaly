@@ -148,9 +148,13 @@ export function paymentHeldOf(snapshot: OrderSnapshot): boolean {
   return heldPayments(snapshot).length > 0;
 }
 
-/** Same as the moneyHeld guard: prepay always holds money, pay_on_handover after the QR payment. */
+/**
+ * Same as the moneyHeld guard with the context's explicit paymentHeld: money is held when a
+ * succeeded payment of the order is not refunded (a prepay order whose wrong-amount payment was
+ * returned by «Вернуть платёж» holds nothing).
+ */
 export function moneyHeldOf(snapshot: OrderSnapshot): boolean {
-  return snapshot.order.paymentScheme === 'prepay' || paymentHeldOf(snapshot);
+  return paymentHeldOf(snapshot);
 }
 
 /** The settlement receipt: offset for prepay, full (handover payment) for pay_on_handover. */

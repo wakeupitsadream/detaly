@@ -100,8 +100,29 @@ const envShape = {
     .regex(/^age1[0-9a-z]+$/, 'expected an age public key (age1...)')
     .optional(),
 
+  // --- Backup container [infra] (infra/backup/*.sh; see docs/runbook.md) ---
+  BACKUP_STORAGE: z.enum(['s3', 'local']).default('s3'),
+  BACKUP_PREFIX: z.string().trim().min(1).default('postgres'),
+  BACKUP_RETENTION_DAYS: int(1).default(30),
+  BACKUP_LOCAL_DIR: z.string().trim().min(1).default('/backups'),
+  /** '1' = take a dump when the backup container starts (entrypoint.sh compares to '1'). */
+  BACKUP_ON_START: z.enum(['0', '1']).default('0'),
+  HEALTHWATCH_REPEAT_MIN: int(1).default(60),
+
+  // --- Postgres container [infra]; compose builds DATABASE_URL for containers from these ---
+  POSTGRES_USER: z.string().trim().min(1).default('detaly'),
+  /** URL-safe: substituted into DATABASE_URL by compose; deploy.sh rejects empty and 'detaly'. */
+  POSTGRES_PASSWORD: z
+    .string()
+    .regex(/^[A-Za-z0-9._~-]+$/, 'expected URL-safe characters (openssl rand -hex 24)')
+    .optional(),
+  POSTGRES_DB: z.string().trim().min(1).default('detaly'),
+
   // --- Deploy [infra] ---
+  IMAGE_REGISTRY: z.string().trim().min(1).default('ghcr.io/wakeupitsadream'),
   IMAGE_TAG: optionalString,
+  /** Image tag for the stage profile; defaults to IMAGE_TAG (deploy.sh stage sets it). */
+  STAGE_IMAGE_TAG: optionalString,
   SITE_DOMAIN: optionalString,
   STAGE_DOMAIN: optionalString,
   ACME_EMAIL: z.email().optional(),

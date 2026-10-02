@@ -163,8 +163,7 @@ redis_start() {
   redis-server --bind "$PG_HOST" --port "$REDIS_PORT" --daemonize yes \
     --dir "$REDIS_DIR" --pidfile "$REDIS_DIR/redis.pid" --logfile "$REDIS_DIR/redis.log" \
     --save '' --appendonly no --maxmemory-policy noeviction >/dev/null
-  local i
-  for i in $(seq 1 50); do
+  for _ in $(seq 1 50); do
     redis_running && return
     sleep 0.1
   done

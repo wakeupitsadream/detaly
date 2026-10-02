@@ -1,0 +1,13 @@
+{
+  "_meta": {
+    "synthetic": true,
+    "note": "сверить с реальным ответом (текст message и отличие «не найдено» от ошибки ключей)",
+    "method": "GetSearch",
+    "args": { "text": "NOTFOUND" },
+    "covers": "success:false без PartsList; fixture-caller отдаёт этот ответ для любого неизвестного артикула"
+  },
+  "SearchResult": {
+    "success": false,
+    "message": "Ничего не найдено"
+  }
+}

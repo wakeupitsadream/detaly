@@ -1,0 +1,33 @@
+{
+  "_meta": {
+    "synthetic": true,
+    "note": "сверить с реальным ответом",
+    "method": "GetCheckout",
+    "args": { "variant": "itemErrors" },
+    "covers": "частичный заказ: одна позиция оформлена, одна в ItemsErrorList.ItemError"
+  },
+  "CheckoutResult": {
+    "success": true,
+    "message": "",
+    "OrderIDS": { "id": ["70000002"] },
+    "DeliveryCost": { "cost": "300.00" },
+    "ItemsList": {
+      "Item": {
+        "partnumber": "OC 90",
+        "brand": "Knecht",
+        "stock": "MSK7",
+        "count": 1,
+        "price": "389.00"
+      }
+    },
+    "ItemsErrorList": {
+      "ItemError": {
+        "partnumber": "W 914/2",
+        "brand": "MANN-FILTER",
+        "stock": "MSK7",
+        "count": 1,
+        "message": "Недостаточно товара на складе"
+      }
+    }
+  }
+}

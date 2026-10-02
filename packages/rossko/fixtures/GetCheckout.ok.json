@@ -1,0 +1,27 @@
+{
+  "_meta": {
+    "synthetic": true,
+    "note": "сверить с реальным ответом",
+    "method": "GetCheckout",
+    "args": { "variant": "ok" },
+    "covers": "все позиции заказаны: OrderIDS.id одиночный, DeliveryCost.cost, ItemsList.Item"
+  },
+  "CheckoutResult": {
+    "success": true,
+    "message": "",
+    "OrderIDS": { "id": "70000001" },
+    "DeliveryCost": { "cost": "0.00" },
+    "ItemsList": {
+      "Item": [
+        {
+          "partnumber": "OC 90",
+          "brand": "Knecht",
+          "stock": "ORB1",
+          "count": 2,
+          "price": "412.50"
+        },
+        { "partnumber": "GDB1330", "brand": "TRW", "stock": "ORB1", "count": 1, "price": "1834.00" }
+      ]
+    }
+  }
+}

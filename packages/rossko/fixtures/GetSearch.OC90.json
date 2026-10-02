@@ -1,0 +1,126 @@
+{
+  "_meta": {
+    "synthetic": true,
+    "note": "сверить с реальным ответом",
+    "method": "GetSearch",
+    "args": { "text": "OC90" },
+    "covers": "местный (ORB1) и удалённые склады, кроссы, одиночный stock, нулевая цена, count '>10', дубль кросса"
+  },
+  "SearchResult": {
+    "success": true,
+    "message": "",
+    "PartsList": {
+      "Part": [
+        {
+          "guid": "synthetic-oc90-knecht",
+          "brand": "Knecht",
+          "partnumber": "OC 90",
+          "name": "Фильтр масляный",
+          "stocks": {
+            "stock": [
+              {
+                "id": "ORB1",
+                "price": "412.50",
+                "count": 6,
+                "multiplicity": 1,
+                "type": 1,
+                "delivery": 0,
+                "extra": "",
+                "description": "Оренбург"
+              },
+              {
+                "id": "MSK7",
+                "price": "389.00",
+                "count": "24",
+                "multiplicity": "1",
+                "type": "2",
+                "delivery": "3",
+                "extra": "",
+                "description": "Москва, центральный склад"
+              }
+            ]
+          },
+          "crosses": {
+            "Part": [
+              {
+                "brand": "MAHLE",
+                "partnumber": "OC 90",
+                "name": "Фильтр масляный",
+                "stocks": {
+                  "stock": {
+                    "id": "EKB2",
+                    "price": "398.10",
+                    "count": 4,
+                    "multiplicity": 1,
+                    "type": 2,
+                    "delivery": 2,
+                    "description": "Екатеринбург"
+                  }
+                }
+              },
+              {
+                "brand": "MANN-FILTER",
+                "partnumber": "W 712/75",
+                "name": "Фильтр масляный",
+                "stocks": {
+                  "stock": [
+                    {
+                      "id": "ORB1",
+                      "price": "455",
+                      "count": 2,
+                      "multiplicity": 1,
+                      "type": 1,
+                      "delivery": 0,
+                      "description": "Оренбург"
+                    },
+                    {
+                      "id": "MSK7",
+                      "price": "0.00",
+                      "count": 5,
+                      "multiplicity": 1,
+                      "type": 2,
+                      "delivery": 3,
+                      "description": "Москва, центральный склад"
+                    }
+                  ]
+                }
+              },
+              {
+                "brand": "BOSCH",
+                "partnumber": "0 451 103 079",
+                "name": "Фильтр масляный",
+                "stocks": {
+                  "stock": [
+                    {
+                      "id": "MSK7",
+                      "price": "501.30",
+                      "count": ">10",
+                      "type": 2,
+                      "delivery": 4,
+                      "description": "Москва, центральный склад"
+                    }
+                  ]
+                }
+              },
+              {
+                "brand": "Knecht",
+                "partnumber": "OC 90",
+                "name": "Фильтр масляный (дубль в кроссах)",
+                "stocks": {
+                  "stock": {
+                    "id": "MSK7",
+                    "price": "389.00",
+                    "count": 24,
+                    "multiplicity": 1,
+                    "type": 2,
+                    "delivery": 3
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

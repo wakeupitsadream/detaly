@@ -150,7 +150,9 @@ describe('startSellerBot', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(bot.start).toHaveBeenCalledTimes(1);
     expect(logger.error).toHaveBeenCalledTimes(1);
-    expect(bot.start.mock.calls[0]?.[0]).toMatchObject({ allowed_updates: ['message'] });
+    expect(bot.start.mock.calls[0]?.[0]).toMatchObject({
+      allowed_updates: ['message', 'callback_query'],
+    });
 
     await vi.advanceTimersByTimeAsync(999);
     expect(bot.start).toHaveBeenCalledTimes(1);

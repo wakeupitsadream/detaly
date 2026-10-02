@@ -62,7 +62,7 @@ export async function runWorker({
     channel: resources.outboxChannel,
   });
 
-  // --- seller bot (wave 4 extends this block) ---
+  // --- seller bot: /ping, order card buttons, «Счёт оплачен», /queues (all through deps) ---
   let bot: ReturnType<typeof createSellerBot> | null = null;
   if (env.TG_SELLER_BOT_TOKEN) {
     const staffCache = createStaffCache({ load: () => loadStaffTgIds(db), logger });

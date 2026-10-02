@@ -19,7 +19,7 @@ import {
   type PaymentMode,
   RECEIPT_STATUSES,
 } from '@detaly/domain/statuses';
-import { amountValueToKop, kopToAmountValue } from './amount';
+import { AmountFormatError, amountValueToKop, kopToAmountValue } from './amount';
 import {
   PaymentProviderError,
   PaymentRequestError,
@@ -107,7 +107,13 @@ function parseAmount(raw: unknown, what: string): number {
       retryable: false,
     });
   }
-  return amountValueToKop(raw.value);
+  try {
+    return amountValueToKop(raw.value);
+  } catch (error) {
+    // '-1.00', '1.005' or garbage from the provider: a bad response, not a programming error.
+    if (error instanceof AmountFormatError) throw badResponse(`${what} amount`);
+    throw error;
+  }
 }
 
 function badResponse(what: string): PaymentProviderError {
@@ -279,10 +285,22 @@ function paymentMetadata(request: CreatePaymentRequest): Record<string, string> 
   return metadata;
 }
 
+/** An explicit UTC designator or offset is required: '2026-10-01T00:00:00' alone would be read
+ * in the server's local time zone and shift the reconciliation window. */
+const TIMESTAMP_ZONE_RE = /(?:Z|[+-]\d{2}:?\d{2})$/iu;
+
 function isoTimestamp(value: string, name: string): string {
-  const ms = Date.parse(value);
-  if (Number.isNaN(ms)) throw new PaymentRequestError(`${name} is not a timestamp`);
+  const ms = TIMESTAMP_ZONE_RE.test(value.trim()) ? Date.parse(value) : Number.NaN;
+  if (Number.isNaN(ms)) {
+    throw new PaymentRequestError(`${name} is not a timestamp with a time zone`);
+  }
   return new Date(ms).toISOString();
+}
+
+function assertPositiveKop(amountKop: number, what: string): void {
+  if (!Number.isSafeInteger(amountKop) || amountKop <= 0) {
+    throw new PaymentRequestError(`${what} amount must be a positive integer of kopecks`);
+  }
 }
 
 /** Validates a notification body: {type: 'notification', event, object: {id, status}}. */
@@ -343,7 +361,17 @@ export function createYooKassaProvider(
         },
       );
     }
-    const text = await response.text();
+    let text: string;
+    try {
+      text = await response.text();
+    } catch (error) {
+      // The timeout or the connection broke while the body was streaming: the request was
+      // processed or not, exactly like a network error before the headers.
+      throw new PaymentProviderError(
+        `YooKassa ${method} ${path} failed reading the response: ${(error as Error).name}`,
+        { status: null, code: 'network', retryable: true },
+      );
+    }
     let json: unknown;
     try {
       json = text === '' ? null : JSON.parse(text);
@@ -402,6 +430,7 @@ export function createYooKassaProvider(
     name: 'yookassa',
 
     async createPayment(request: CreatePaymentRequest): Promise<ProviderPayment> {
+      assertPositiveKop(request.amountKop, 'payment');
       assertPaymentRequest(request);
       // VERIFY Ю9: confirmation {type: 'qr'} (SBP QR at the pickup point) takes no return_url.
       const confirmation =
@@ -431,6 +460,7 @@ export function createYooKassaProvider(
     },
 
     async createRefund(request: CreateRefundRequest): Promise<ProviderRefund> {
+      assertPositiveKop(request.amountKop, 'refund');
       const payload: Json = { payment_id: request.paymentId, amount: money(request.amountKop) };
       if (request.description !== undefined) payload.description = request.description;
       // VERIFY Ю10: a refund receipt travels in the POST /refunds body and repeats the lines and
@@ -456,9 +486,14 @@ export function createYooKassaProvider(
         throw new PaymentRequestError(`limit must be 1..${LIST_LIMIT_MAX}`);
       }
       // VERIFY: filter names created_at.gte / created_at.lt, limit and cursor of GET /payments.
+      const createdGte = isoTimestamp(request.createdGte, 'createdGte');
+      const createdLt = isoTimestamp(request.createdLt, 'createdLt');
+      if (Date.parse(createdGte) >= Date.parse(createdLt)) {
+        throw new PaymentRequestError('createdGte must be earlier than createdLt');
+      }
       const query = new URLSearchParams({
-        'created_at.gte': isoTimestamp(request.createdGte, 'createdGte'),
-        'created_at.lt': isoTimestamp(request.createdLt, 'createdLt'),
+        'created_at.gte': createdGte,
+        'created_at.lt': createdLt,
         limit: String(limit),
       });
       if (request.cursor) query.set('cursor', request.cursor);

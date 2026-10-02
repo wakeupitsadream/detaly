@@ -786,12 +786,20 @@ export function createYooKassaMock(initialOptions: YooKassaMockOptions = {}): Yo
       return payment;
     },
     setRefundStatus(id, status) {
+      const previous = find(refunds, 'refund', id).status;
       const refund = update(refunds, 'refund', id, { status });
       if (status === 'succeeded') {
         registerRefundReceipt(refund, options.receiptRegistration ?? 'succeeded');
       }
-      if (status === 'canceled') {
+      if (status === 'canceled' && previous !== 'canceled') {
         refund.cancellation_details = { party: 'yoo_money', reason: 'rejected_by_payee' };
+        // A canceled refund gives the money back to the refundable balance of the payment.
+        const payment = payments.get(String(refund.payment_id));
+        if (payment !== undefined) {
+          const refunded =
+            (amountOf(payment.refunded_amount) ?? 0) - (amountOf(refund.amount) ?? 0);
+          payment.refunded_amount = rub(Math.max(0, refunded));
+        }
       }
       return refund;
     },

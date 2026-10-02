@@ -2,6 +2,7 @@
 // The set is cached for 60 s, so deactivating someone in the admin takes effect within a minute.
 import type { Logger } from '@detaly/config';
 import type { Database } from '@detaly/db';
+import type { StaffRole } from '@detaly/domain';
 
 export const STAFF_CACHE_TTL_MS = 60_000;
 /** After a failed reload the previous set is reused for this long before the next attempt. */
@@ -88,4 +89,25 @@ export function createStaffCache({
       loadedAt = 0;
     },
   };
+}
+
+/** An active staff member behind a Telegram user: who pressed a button and with which role. */
+export interface StaffMember {
+  id: string;
+  role: StaffRole;
+}
+
+/**
+ * The active staff row of a Telegram user, read on every press (not cached): the role decides
+ * owner-only buttons, and a deactivated seller loses them at once.
+ */
+export async function loadStaffMember(
+  db: Pick<Database, 'query'>,
+  tgUserId: number,
+): Promise<StaffMember | null> {
+  const row = await db.query.staff.findFirst({
+    columns: { id: true, role: true },
+    where: (t, { and, eq }) => and(eq(t.isActive, true), eq(t.tgUserId, tgUserId)),
+  });
+  return row ?? null;
 }

@@ -2,7 +2,7 @@ import { HEARTBEAT_KEY, HEARTBEAT_TTL_SEC, type Redis } from '@detaly/config';
 import { UnrecoverableError, type Job } from 'bullmq';
 import { describe, expect, inject, it, vi } from 'vitest';
 import type { WorkerDeps } from '../src/deps';
-import { createSellerCards, SELLER_CARDS_NOT_IMPLEMENTED } from '../src/bots/seller/cards';
+import { createSellerCards } from '../src/bots/seller/cards';
 import { PROCESSORS } from '../src/jobs';
 import { processHousekeeping } from '../src/jobs/housekeeping';
 import { unknownJobMessage } from '../src/jobs/unknown-job';
@@ -99,9 +99,14 @@ describe('phase 1B processors', () => {
     expect((error as Error).message).toBe('housekeeping timers needs WorkerDeps');
   });
 
-  it('seller cards port is a stub until wave 4', async () => {
-    const cards = createSellerCards(deps);
-    await expect(cards.refresh('order')).rejects.toThrow(SELLER_CARDS_NOT_IMPLEMENTED);
+  it('seller cards port: without a bot token a card is skipped, not failed', async () => {
+    const warn = vi.fn();
+    const logger = { warn } as unknown as WorkerDeps['logger'];
+    const cards = createSellerCards({ ...deps, telegram: null, logger });
+    await expect(
+      cards.post({ orderId: '00000000-0000-7000-8000-000000000000' }),
+    ).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledOnce();
   });
 });
 

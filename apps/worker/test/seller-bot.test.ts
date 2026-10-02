@@ -159,7 +159,7 @@ describe('seller bot silence', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('ignores updates that are not messages', async () => {
+  it('answers a press outside the served chats with an empty answer only', async () => {
     await bot.handleUpdate({
       update_id: updateId++,
       callback_query: {
@@ -169,7 +169,10 @@ describe('seller bot silence', () => {
         data: 'a:ping:1:n',
       },
     } as Update);
-    expect(calls).toHaveLength(0);
+    // Telegram keeps a spinner on the button until the query is answered: the answer is empty.
+    expect(calls).toEqual([
+      { method: 'answerCallbackQuery', payload: { callback_query_id: 'cb1' } },
+    ]);
   });
 });
 

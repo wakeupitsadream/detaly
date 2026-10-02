@@ -45,7 +45,7 @@ export function TrustBlock({ brand }: { brand: Brand }) {
           <dt className="text-muted">Телефон</dt>
           <dd className="min-w-0 wrap-anywhere">
             {brand.contactPhone ? (
-              <a className="underline" href={telHref(brand.contactPhone)}>
+              <a className="whitespace-nowrap underline" href={telHref(brand.contactPhone)}>
                 {brand.contactPhone}
               </a>
             ) : (

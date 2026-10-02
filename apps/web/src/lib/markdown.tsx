@@ -46,6 +46,11 @@ function startsBlock(line: string, next: string | undefined): boolean {
   );
 }
 
+/** Plain-text column header for data-label: inline markers removed. */
+function headerLabel(cell: string | undefined): string {
+  return (cell ?? '').replace(/\*\*|`/g, '').trim();
+}
+
 export function parseMarkdown(source: string): Block[] {
   const lines = source.replace(/\r\n?/g, '\n').split('\n');
   const blocks: Block[] = [];
@@ -215,7 +220,11 @@ function renderBlock(block: Block, key: number): ReactNode {
               {block.rows.map((row, rowIndex) => (
                 <tr key={rowIndex}>
                   {row.map((cell, index) => (
-                    <td key={index}>{renderInline(cell)}</td>
+                    // data-label: the column header shown before the cell when a narrow
+                    // screen stacks the table into cards (globals.css, .legal td::before).
+                    <td key={index} data-label={headerLabel(block.header[index])}>
+                      {renderInline(cell)}
+                    </td>
                   ))}
                 </tr>
               ))}

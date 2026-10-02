@@ -125,6 +125,18 @@ describe('parseEnv', () => {
     expect(env.ROSSKO_MODE).toBe('live');
   });
 
+  it('strips an "ИП" prefix from SELLER_REQUISITES_NAME', () => {
+    const name = (value: string) =>
+      parseEnv(minimalEnvSource({ SELLER_REQUISITES_NAME: value })).SELLER_REQUISITES_NAME;
+    expect(name('Иванов Иван Иванович')).toBe('Иванов Иван Иванович');
+    expect(name('ИП Иванов И. И.')).toBe('Иванов И. И.');
+    expect(name('  ип. Иванов И. И. ')).toBe('Иванов И. И.');
+    expect(name('Индивидуальный предприниматель Иванов И. И.')).toBe('Иванов И. И.');
+    expect(name('Ипатов Пётр')).toBe('Ипатов Пётр');
+    expect(name('')).toBeUndefined();
+    expect(() => parseEnv(minimalEnvSource({ SELLER_REQUISITES_NAME: 'ИП ' }))).toThrow(EnvError);
+  });
+
   it('parses STAFF_SEED_JSON', () => {
     const env = parseEnv(
       minimalEnvSource({

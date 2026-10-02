@@ -131,7 +131,7 @@ jobs:
       E2E_BASE_URL: http://127.0.0.1:3100
       # Test seller requisites and pickup point: seeded into the legal drafts and rendered
       # in the footer; screens.spec checks the exact INN via E2E_EXPECT_INN.
-      SELLER_REQUISITES_NAME: ИП Тестовый Продавец
+      SELLER_REQUISITES_NAME: Тестов Тест Тестович
       SELLER_REQUISITES_INN: '561234567890'
       SELLER_REQUISITES_OGRNIP: '312565800012345'
       SELLER_REQUISITES_ADDRESS: г. Оренбург, ул. Тестовая, 1

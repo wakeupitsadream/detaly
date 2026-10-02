@@ -131,7 +131,17 @@ const envShape = {
 
   // --- Brand, seller requisites, pickup point [ф0] ---
   BRAND_NAME: z.string().trim().min(1).default('Детали'),
-  SELLER_REQUISITES_NAME: optionalString,
+  // Full name of the sole proprietor WITHOUT the "ИП" prefix: the site and the legal texts add
+  // "ИП" / "индивидуальный предприниматель" themselves. A leading prefix is stripped so that
+  // "ИП Иванов И. И." does not render as "ИП ИП Иванов И. И.".
+  SELLER_REQUISITES_NAME: z
+    .string()
+    .trim()
+    .transform((value) =>
+      value.replace(/^(?:ИП|индивидуальный\s+предприниматель)(?:\s+|\.\s*|$)/iu, '').trim(),
+    )
+    .pipe(z.string().min(1))
+    .optional(),
   SELLER_REQUISITES_INN: z
     .string()
     .regex(/^\d{10}(\d{2})?$/, 'expected 10 or 12 digits')

@@ -31,7 +31,7 @@ export function SearchBar({
           maxLength={64}
           defaultValue={defaultValue}
           autoFocus={autoFocus}
-          placeholder="Например, OC90 или W 914/2"
+          placeholder="Например, OC90"
           className={`min-w-0 flex-1 rounded-xl border border-line bg-card px-4 text-ink shadow-sm outline-none placeholder:text-faint focus:border-accent ${
             large ? 'h-14 text-lg' : 'h-12 text-base'
           }`}

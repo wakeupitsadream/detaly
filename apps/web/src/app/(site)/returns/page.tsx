@@ -65,7 +65,7 @@ export default async function ReturnsPage() {
             <>
               {' '}
               или позвоните{' '}
-              <a className="underline" href={telHref(brand.contactPhone)}>
+              <a className="whitespace-nowrap underline" href={telHref(brand.contactPhone)}>
                 {brand.contactPhone}
               </a>
             </>

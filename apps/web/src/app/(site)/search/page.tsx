@@ -189,7 +189,7 @@ export default async function SearchPage({
             <>
               {' '}
               Сейчас заказать можно по телефону{' '}
-              <a className="underline" href={telHref(brand.contactPhone)}>
+              <a className="whitespace-nowrap underline" href={telHref(brand.contactPhone)}>
                 {brand.contactPhone}
               </a>
               .

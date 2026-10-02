@@ -64,7 +64,7 @@ describe('Markdown', () => {
     expect(html).toContain('<h1>Оферта</h1>');
     expect(html).toContain('[не задано: SELLER_NAME]');
     expect(html).toContain('<ol><li>Раз</li><li>Два</li></ol>');
-    expect(html).toContain('<td>телефон</td>');
+    expect(html).toContain('<td data-label="Данные">телефон</td>');
   });
 
   it('never renders raw HTML or unsafe links', () => {

@@ -171,7 +171,7 @@ describe('legal documents', () => {
     writeFile(file(), `---\ntitle: ${title}\nkind: offer\nversion: ${version}\n---\n\n${body}`);
   const requisites = {
     BRAND_NAME: 'Тестовый бренд',
-    SELLER_REQUISITES_NAME: 'ИП Тестов Т. Т.',
+    SELLER_REQUISITES_NAME: 'Тестов Т. Т.',
     SELLER_REQUISITES_INN: '123456789012',
   };
 
@@ -198,9 +198,7 @@ describe('legal documents', () => {
       .from(documentVersions)
       .where(eq(documentVersions.version, version));
     expect(doc?.title).toBe('Оферта Тестовый бренд');
-    expect(doc?.bodyMd).toBe(
-      'Продавец: ИП Тестов Т. Т., ИНН 123456789012.\nБренд: Тестовый бренд.\n',
-    );
+    expect(doc?.bodyMd).toBe('Продавец: Тестов Т. Т., ИНН 123456789012.\nБренд: Тестовый бренд.\n');
     expect(doc?.sha256).toBe(sha256Hex(doc!.bodyMd));
     expect(doc?.publishedAt).toBeInstanceOf(Date);
 

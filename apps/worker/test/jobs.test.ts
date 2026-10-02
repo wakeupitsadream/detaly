@@ -5,8 +5,7 @@ import type { WorkerDeps } from '../src/deps';
 import { createSellerCards, SELLER_CARDS_NOT_IMPLEMENTED } from '../src/bots/seller/cards';
 import { PROCESSORS } from '../src/jobs';
 import { processHousekeeping } from '../src/jobs/housekeeping';
-import { NOT_IMPLEMENTED_MESSAGE } from '../src/jobs/not-implemented';
-import { processStub } from '../src/jobs/stub';
+import { unknownJobMessage } from '../src/jobs/unknown-job';
 import { HEARTBEAT_EVERY_MS, PROCESSED_QUEUES, registerSchedulers } from '../src/queues';
 import { createTestDeps } from './helpers/test-deps';
 
@@ -45,15 +44,7 @@ describe('processHousekeeping', () => {
   });
 });
 
-describe('processStub (phase 0 composition without WorkerDeps)', () => {
-  it("throws UnrecoverableError('phase 0')", async () => {
-    const error = await processStub({ name: 'anything' }).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(UnrecoverableError);
-    expect((error as Error).message).toBe('phase 0');
-  });
-});
-
-describe('phase 1B processors (wave 1 stubs)', () => {
+describe('phase 1B processors', () => {
   const job = { name: 'anything', data: {} } as Job;
   const deps = {} as WorkerDeps;
 
@@ -61,18 +52,16 @@ describe('phase 1B processors (wave 1 stubs)', () => {
     expect(Object.keys(PROCESSORS).sort()).toEqual([...PROCESSED_QUEUES].sort());
   });
 
-  it.each(['payments', 'receipts', 'rossko', 'reconciliation'] as const)(
-    "%s throws UnrecoverableError('not implemented')",
+  it.each(['payments', 'receipts', 'rossko', 'reconciliation', 'notify'] as const)(
+    '%s fails an unknown job name without retries',
     async (queue) => {
       const error = await PROCESSORS[queue](job, deps).catch((e: unknown) => e);
       expect(error).toBeInstanceOf(UnrecoverableError);
-      expect((error as Error).message).toBe(NOT_IMPLEMENTED_MESSAGE);
+      expect((error as Error).message).toBe(unknownJobMessage(queue, 'anything'));
     },
   );
 
-  it('notify fails an unknown job or bad data without retries (wave 3, worker-ops)', async () => {
-    const unknown = await PROCESSORS.notify(job, deps).catch((e: unknown) => e);
-    expect(unknown).toBeInstanceOf(UnrecoverableError);
+  it('notify fails bad data without retries', async () => {
     const bad = await PROCESSORS.notify({ name: 'order', data: {} } as Job, deps).catch(
       (e: unknown) => e,
     );

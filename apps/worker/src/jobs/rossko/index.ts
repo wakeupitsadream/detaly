@@ -4,7 +4,7 @@
 import { ROSSKO_JOBS } from '@detaly/config';
 import type { Job } from 'bullmq';
 import type { WorkerDeps } from '../../deps';
-import { notImplemented } from '../not-implemented';
+import { unknownJob } from '../unknown-job';
 import { processCheckout, processRecover } from './checkout';
 import { processRecheck } from './recheck';
 
@@ -28,7 +28,6 @@ export async function processRossko(job: Job, deps: WorkerDeps): Promise<unknown
     case ROSSKO_JOBS.recover:
       return processRecover(job, deps);
     default:
-      // An unknown job name is never retried (UnrecoverableError 'not implemented').
-      return notImplemented();
+      return unknownJob(deps, 'rossko', job.name);
   }
 }

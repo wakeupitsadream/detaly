@@ -47,7 +47,7 @@ export interface SmsGuardOptions {
   redis: Redis;
   /** SESSION_SECRET: keys are HMAC(secret, phone) so Redis holds no numbers. */
   secret: string;
-  /** Redis key prefix (`detaly:` in production, `test:<uuid>:` in tests). */
+  /** Redis key prefix ('' in the worker in production, `test:<uuid>:` in tests). */
   keyPrefix: string;
   limits?: SmsLimits;
   /** Current month's budget state; 'exhausted' stops SMS before the rate windows are hit. */

@@ -51,7 +51,7 @@ function ownReceipt(list: readonly ProviderReceipt[], row: ReceiptRow): Provider
 
 /**
  * When the payment says receipt_registration=succeeded but the receipt list does not show it
- * (VERIFY: Ю1 — GET /receipts?payment_id= may be unavailable), the payment object is the proof:
+ * (VERIFY: Ю1, Ю19 — GET /receipts?payment_id= may be unavailable), the payment object is the proof:
  * the payment id stands in for the receipt id.
  */
 function receiptFromPayment(payment: ProviderPayment, row: ReceiptRow): ProviderReceipt {

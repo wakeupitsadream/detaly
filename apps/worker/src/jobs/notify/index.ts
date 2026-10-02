@@ -4,6 +4,7 @@
 import { NOTIFY_JOBS } from '@detaly/config';
 import { UnrecoverableError, type Job } from 'bullmq';
 import type { WorkerDeps } from '../../deps';
+import { unknownJob } from '../unknown-job';
 import { processNotifyOrder, type NotifyOrderOutcome } from './order';
 
 export { isFinalAttempt, notificationsOfEvent, type NotifyOrderJobData } from './order';
@@ -42,6 +43,6 @@ export async function processNotify(job: Job, deps: WorkerDeps): Promise<NotifyJ
       return { status: 'alerted' };
     }
     default:
-      throw new UnrecoverableError(`unknown notify job: ${job.name}`);
+      return unknownJob(deps, 'notify', job.name);
   }
 }

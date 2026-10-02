@@ -75,7 +75,7 @@ const selectDbPayment = {
 };
 
 /**
- * Every page of GET /payments for the window. VERIFY: Б29 — the list filters
+ * Every page of GET /payments for the window. VERIFY: Ю15, Б29 — the list filters
  * (created_at.gte / created_at.lt), cursor paging and that the list holds every payment of the
  * shop, test and live alike (packages/payments/src/yookassa.ts listPayments).
  */

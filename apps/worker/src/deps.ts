@@ -91,7 +91,11 @@ export interface WorkerDeps {
   logger: Logger;
   env: Env;
   now: () => Date;
-  /** Prefix of every Redis key the worker writes (tests: `test:<uuid>:`). */
+  /**
+   * Prefix of the worker's own Redis keys (Rossko limiter and cache, SMS limits): '' in
+   * production, shared with web for the Rossko quota; tests: `test:<uuid>:`. BullMQ and the
+   * heartbeat have their own `detaly:` keys (bullPrefix, heartbeatKey).
+   */
   keyPrefix: string;
   /** BullMQ prefix (BULLMQ_PREFIX in production). */
   bullPrefix: string;

@@ -170,7 +170,7 @@ export async function processPaymentCreate(
     return { providerStatus: current.status, qr: 'none' };
   }
   if (current.confirmationData === null) {
-    // VERIFY: Ю9 — confirmation.confirmation_data of a qr payment.
+    // VERIFY: Ю9 (docs/external.md) — confirmation.confirmation_data of a qr payment.
     deps.logger.error(log, 'handover payment has no QR data');
     return { providerStatus: current.status, qr: 'none' };
   }

@@ -11,7 +11,6 @@ import {
 } from '@detaly/payments';
 import { UnrecoverableError, type Job } from 'bullmq';
 import type { WorkerDeps } from '../../deps';
-import { notImplemented } from '../not-implemented';
 
 /** The actor id of everything the provider tells us (order_events.actor_id). */
 export const YOOKASSA_ACTOR = { type: 'system', id: 'yookassa' } as const;
@@ -139,15 +138,4 @@ export function nudgeOutbox(deps: Pick<WorkerDeps, 'engine'>): void {
   }
 }
 
-/**
- * Unknown job name of a queue: fail at once, without retries, with the shared message of
- * jobs/not-implemented.ts (the name is logged by the caller).
- */
-export function unknownJob(
-  deps: Pick<WorkerDeps, 'logger'> | undefined,
-  queue: string,
-  name: string,
-): never {
-  deps?.logger?.error({ queue, job: name }, 'unknown job name');
-  notImplemented();
-}
+export { unknownJob } from '../unknown-job';

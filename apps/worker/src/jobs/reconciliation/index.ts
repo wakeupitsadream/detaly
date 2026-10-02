@@ -4,7 +4,7 @@
 import { RECONCILIATION_JOBS } from '@detaly/config';
 import type { Job } from 'bullmq';
 import type { WorkerDeps } from '../../deps';
-import { unknownJob } from '../payments/shared';
+import { unknownJob } from '../unknown-job';
 import { runNightly } from './nightly';
 import { runSweep } from './sweep';
 

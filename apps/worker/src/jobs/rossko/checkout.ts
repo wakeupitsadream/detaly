@@ -364,8 +364,8 @@ function planResult(items: readonly OrderItemRow[], result: CheckoutResult): Res
   const requested = matchRequest(items);
   const created = result.orderIds.length > 0 || result.items.length > 0;
   if (created && result.items.length === 0 && result.itemErrors.length === 0) {
-    // VERIFY: an order id without ItemsList/ItemsErrorList means every line was accepted
-    // (docs/external.md R10, R16; also a recovered order whose GetOrders lines are missing).
+    // VERIFY (docs/external.md R20, R10, R16): an order id without ItemsList/ItemsErrorList
+    // means every line was accepted (also a recovered order whose GetOrders lines are missing).
     return {
       created,
       refused: 0,
@@ -406,8 +406,8 @@ function planResult(items: readonly OrderItemRow[], result: CheckoutResult): Res
  * Rossko invoice of the attempt (settings rossko.prepay_invoice): the Rossko order numbers and
  * Σ ordered lines + delivery. The lines are Rossko's own ItemsList (it bills what it ordered,
  * including a line we cannot match); only without ItemsList the covered items count.
- * VERIFY: the invoice number equals the Rossko order id and its amount equals the lines plus
- * DeliveryCost (docs/external.md R7); a line without a price counts at our supplier price.
+ * VERIFY (docs/external.md R19, R7): the invoice number equals the Rossko order id and its
+ * amount equals the lines plus DeliveryCost; a line without a price counts at our supplier price.
  */
 function invoiceOf(
   items: readonly OrderItemRow[],

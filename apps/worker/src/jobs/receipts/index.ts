@@ -3,7 +3,7 @@
 import { RECEIPTS_JOBS } from '@detaly/config';
 import type { Job } from 'bullmq';
 import type { WorkerDeps } from '../../deps';
-import { unknownJob } from '../payments/shared';
+import { unknownJob } from '../unknown-job';
 import { processOffsetReceipt } from './offset';
 import { processPaymentReceipt } from './payment-receipt';
 

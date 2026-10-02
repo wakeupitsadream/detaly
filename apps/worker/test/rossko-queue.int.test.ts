@@ -2,10 +2,13 @@
 // the cache, GetCheckout with double-submit protection, recovery after an ambiguous failure and
 // the Rossko invoice. Runs against the `_worker` database and a fixture caller that counts calls
 // (no network). Covers Verification «Фаза 1B» steps 5, 6, 22 and 23.
+// Runs against its own `${DATABASE_URL_TEST}_worker_rossko` database: the Verification 23 tests
+// flip settings.rossko.prepay_invoice, which other worker test files must never see.
 import { randomBytes, randomInt } from 'node:crypto';
 import { bullJobId, parseEnv, type Env } from '@detaly/config';
 import { minimalEnvSource, testRedisUrl } from '@detaly/config/testing';
 import {
+  createDb,
   eq,
   orderEvents,
   orderItems,
@@ -17,7 +20,9 @@ import {
   supplierOrders,
   supplierReturns,
   users,
+  type Db,
 } from '@detaly/db';
+import { prepareTestDb } from '@detaly/db/testing';
 import { promisedDate, type Offer } from '@detaly/domain';
 import {
   applyTransition,
@@ -32,6 +37,7 @@ import {
   createUnlimitedLimiter,
   FIXTURE_LOCAL_STOCK_IDS,
   RosskoCallError,
+  RosskoRateLimitError,
   type CheckoutFixtureVariant,
   type OrdersListFixtureVariant,
   type RosskoCaller,
@@ -47,7 +53,7 @@ import {
   recoverDelayMs,
   UNMATCHED_ITEM_ERROR,
 } from '../src/jobs/rossko';
-import { createTestDeps, workerTestDatabaseUrl, type TestDeps } from './helpers/test-deps';
+import { createTestDeps, type TestDeps } from './helpers/test-deps';
 
 const T0 = new Date('2026-10-05T07:00:00.000Z');
 const ETA = '2026-10-08';
@@ -132,12 +138,12 @@ async function harness(
   const envSource = { ...ROSSKO_ENV, ...options.env };
   const env: Env = parseEnv(
     minimalEnvSource({
-      DATABASE_URL: workerTestDatabaseUrl(),
+      DATABASE_URL: rosskoDb().url,
       REDIS_URL: testRedisUrl(),
       ...envSource,
     }),
   );
-  const t = await createTestDeps({ env, now: () => T0 });
+  const t = await createTestDeps({ env, db: rosskoDb().db, now: () => T0 });
   const caller = countingCaller(options);
   const client = createRosskoClient({
     caller,
@@ -373,6 +379,14 @@ async function expectNoPhone(t: TestDeps, seeded: Seeded): Promise<void> {
 
 const enabled = Boolean(inject('workerDatabaseUrl'));
 
+let ownDb: { url: string; db: Db } | null = null;
+
+/** The file's own database (prepared in beforeAll). */
+function rosskoDb(): { url: string; db: Db } {
+  if (ownDb === null) throw new Error('rossko test database is not prepared');
+  return ownDb;
+}
+
 describe.skipIf(!enabled)('rossko queue', () => {
   const open: Harness[] = [];
   const restore: (() => Promise<void>)[] = [];
@@ -383,13 +397,17 @@ describe.skipIf(!enabled)('rossko queue', () => {
     return h;
   }
 
-  beforeAll(() => {
+  beforeAll(async () => {
     expect(RECOVER_DELAY_MS).toBeGreaterThanOrEqual(15_000);
+    const { url } = await prepareTestDb({ url: `${inject('workerDatabaseUrl')}_rossko` });
+    ownDb = { url, db: createDb(url, { max: 4 }) };
   });
 
   afterAll(async () => {
     for (const undo of restore.reverse()) await undo();
     for (const h of open) await h.t.close();
+    await ownDb?.db.close();
+    ownDb = null;
   });
 
   describe('Verification 5: recheck bypassing the cache', () => {
@@ -1103,6 +1121,28 @@ describe.skipIf(!enabled)('rossko queue', () => {
       const seeded = await seedOrder(h.t, OK_LINES);
       await runRecheck(h.t, seeded.orderId);
       const [attempt] = await supplierOrdersOf(h.t, seeded.orderId);
+      expect(await runCheckout(h.t, attempt!.id)).toMatchObject({
+        outcome: 'failed',
+        reason: 'checkout_failed',
+      });
+      expect(h.caller.count('GetCheckout')).toBe(0);
+      expect(await outboxRow(h.t, `recover:${attempt!.id}`)).toBeNull();
+      expect((await orderOf(h.t, seeded.orderId)).attentionReason).toBe('checkout_failed');
+    });
+
+    it('a full Rossko limiter after the claim → checkout_failed, never recovery', async () => {
+      // RosskoRateLimitError is raised before the request leaves the process: the processor
+      // settles the attempt itself and never lets wrapProcessor delay a claimed job.
+      const h = await make();
+      const seeded = await seedOrder(h.t, OK_LINES);
+      await runRecheck(h.t, seeded.orderId);
+      const [attempt] = await supplierOrdersOf(h.t, seeded.orderId);
+      h.t.deps.rossko = {
+        ...h.client,
+        checkout: async () => {
+          throw new RosskoRateLimitError(5_000);
+        },
+      };
       expect(await runCheckout(h.t, attempt!.id)).toMatchObject({
         outcome: 'failed',
         reason: 'checkout_failed',

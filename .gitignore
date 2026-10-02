@@ -24,3 +24,6 @@ infra/certs/*.pem
 infra/certs/*.crt
 *.age
 *.key
+
+# Claude Code agent worktrees and local state
+.claude/worktrees/

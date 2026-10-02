@@ -164,7 +164,8 @@ VERIFY-вопросы 1A (продублированы в R13–R15, ответ�
   те же кроссы, что и при первом поиске.
 
 Места в коде с пометкой `VERIFY:`: `packages/domain/src/cart.ts`,
-`apps/web/src/server/cart-store.ts`, `apps/web/src/server/cart/cart-service.ts`.
+`apps/web/src/server/cart-store.ts`, `apps/web/src/server/cart/cart-service.ts`,
+`packages/rossko/src/mapper.ts` (R13), `packages/rossko/src/client.ts` (R15).
 
 ### 6.3. IP в `consents` (152-ФЗ) — подтвердить у юриста
 

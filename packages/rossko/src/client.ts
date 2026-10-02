@@ -62,9 +62,10 @@ export interface RosskoClientOptions {
 }
 
 /**
- * GetSearch answers "nothing found" as success:false with a message. The wording is taken
- * from the synthetic NOTFOUND fixture and must be re-checked against real responses
- * (scripts/rossko-smoke.ts); any other success:false is treated as a supplier error.
+ * GetSearch answers "nothing found" as success:false with a message; any other success:false
+ * is treated as a supplier error.
+ * VERIFY: the wording is taken from the synthetic NOTFOUND fixture and must be re-checked
+ * against real responses (scripts/rossko-smoke.ts, docs/external.md R15).
  */
 const SEARCH_NOT_FOUND_RE = /(?:ничего\s+)?не\s+найден|not\s+found/i;
 

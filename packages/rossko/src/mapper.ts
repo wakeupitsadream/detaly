@@ -72,6 +72,8 @@ function mapStock(raw: unknown, localStockIds: ReadonlySet<string>) {
   if (stockId === null) return null;
   const priceKop = kopOrNull(field(raw, 'price'));
   if (priceKop === null || priceKop <= 0) return null;
+  // VERIFY: a non-numeric stock count such as '>10' or '10+' (meaning and frequency unknown,
+  // docs/external.md R13) drops the offer for now; if it is common, read it as a lower bound.
   const count = int(field(raw, 'count'));
   if (count === null || count <= 0) return null;
   // A negative term is not a real promise (e.g. -1 for "unknown"): treat it as missing.

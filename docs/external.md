@@ -95,6 +95,7 @@
 | Ю9 [ф1B] | VERIFY: у платежа с `confirmation.type = qr` ссылка для QR приходит в `confirmation.confirmation_data`; воркер рисует из неё картинку для карточки продавца (`apps/worker/src/jobs/payments/index.ts`). Срок жизни такого платежа — Ю18 | | |
 | Ю19 [ф1B] | VERIFY (к Ю1, Ю14): если `GET /receipts?payment_id=` недоступен или не показывает чек, а у платежа `receipt_registration = succeeded`, воркер считает чек платежа зарегистрированным и пишет id платежа вместо `provider_receipt_id` (`apps/worker/src/jobs/receipts/payment-receipt.ts`). Ночная сверка `GET /payments` (Ю15, решение Б29) только шлёт алерты и ничего не меняет (`apps/worker/src/jobs/reconciliation/nightly.ts`) | | |
 | Ю11 [ф1B, лимиты] | VERIFY: лимиты `metadata` — 16 ключей, ключ до 32 и значение до 512 символов; `description` до 128 символов (`packages/payments/src/yookassa.ts`, `packages/orders/src/rows.ts`) | | |
+| Ю11 [ф1B, web-pay] | VERIFY: хост `confirmation_url` у платежа с `confirmation.type=redirect` — `yoomoney.ru` (CSP `form-action` в `apps/web/next.config.ts`: браузер применяет его к 303 после формы «Оплатить», чужой хост заблокирует переход); сохраняет ли ЮKassa query `?paid=1` в `return_url` (`apps/web/src/server/payments/pay-handler.ts`) | | |
 
 ## 4. Маркировка «Честный знак» (результат проверки, гейт фазы 0)
 

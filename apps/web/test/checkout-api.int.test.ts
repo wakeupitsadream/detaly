@@ -14,6 +14,7 @@ import {
   inArray,
   orderItems,
   orders,
+  outbox,
   sha256Hex,
   users,
   type Db,
@@ -96,6 +97,10 @@ let settingsOverride: Partial<CheckoutSettings['order']> = {};
 let excludedOverride: ExcludedRule[] | null = null;
 let gateEnv = intEnv({ RKN_NOTICE_NUMBER: 'TEST-1' });
 let logs: { level: string; details: Record<string, unknown>; message: string }[] = [];
+/** Engine env of the service: APP_BASE_URL of the test, settings defaults from env. */
+const serviceEnv = intEnv({ APP_BASE_URL: BASE_URL, TRUSTED_IP_HEADER: 'x-real-ip' });
+/** Outbox nudges after commits (decision Б1). */
+let nudges = 0;
 
 const logger: CheckoutLogger = {
   info: (details, message) => logs.push({ level: 'info', details, message }),
@@ -121,7 +126,10 @@ function service(): CheckoutService {
     loadSettings,
     gate,
     logger,
-    env: { APP_BASE_URL: BASE_URL, TRUSTED_IP_HEADER: 'x-real-ip' },
+    env: serviceEnv,
+    nudge: () => {
+      nudges += 1;
+    },
   });
 }
 
@@ -357,8 +365,12 @@ describe('POST /api/checkout: success', () => {
       preferredChannel: 'max',
       checkoutKey: p.checkoutKey,
       cartId: cart.id,
-      expiresAt: null,
     });
+    // Phase 1B: the engine sets the payment deadline (order.payment_ttl_min, decision Б5).
+    const ttlMs = (await supplier.settings.get()).order.paymentTtlMin * 60_000;
+    const expiresMs = order.expiresAt?.getTime() ?? 0;
+    expect(expiresMs).toBeGreaterThan(Date.now() + ttlMs - 120_000);
+    expect(expiresMs).toBeLessThanOrEqual(Date.now() + ttlMs + 1_000);
     expect(order.pickupCode).toMatch(/^\d{6}$/);
     const maxEta = p.lines
       .map((l) => l.etaDate as IsoDate)
@@ -386,9 +398,26 @@ describe('POST /api/checkout: success', () => {
       fromStatus: 'draft',
       toStatus: 'awaiting_payment',
       actorType: 'client',
-      payload: { part: 'all', scheme: 'prepay', items: 2, deferredEffects: ['create_payment'] },
+      payload: {
+        part: 'all',
+        scheme: 'prepay',
+        items: 2,
+        rule: 'Оформление: предоплата',
+        effects: ['set_scheme_prepay', 'create_payment'],
+      },
     });
     expect(JSON.stringify(order.events[0]?.payload)).not.toContain(phone.e164);
+    expect(order.events[0]?.payload).not.toHaveProperty('deferredEffects');
+    // The client notification goes through the outbox in the order transaction, then a nudge.
+    const queued = await db
+      .select()
+      .from(outbox)
+      .where(eq(outbox.jobId, `notify:${order.events[0]?.id}:payment_link`));
+    expect(queued).toHaveLength(1);
+    expect(queued[0]).toMatchObject({ queue: 'notify', name: 'order' });
+    expect(queued[0]?.data).toMatchObject({ orderId: order.id, audience: 'client' });
+    expect(JSON.stringify(queued[0]?.data)).not.toContain(phone.e164);
+    expect(nudges).toBeGreaterThanOrEqual(1);
 
     const [user] = await db.select().from(users).where(eq(users.phone, phone.e164));
     expect(user).toMatchObject({ name: 'Анна Тестовая', noShowCount: 0 });
@@ -440,7 +469,18 @@ describe('POST /api/checkout: success', () => {
     const expires = order.expiresAt?.getTime() ?? 0;
     expect(expires).toBeGreaterThanOrEqual(before + ttlMs - 1_000);
     expect(expires).toBeLessThanOrEqual(Date.now() + ttlMs + 1_000);
-    expect(order.events[0]?.payload).toEqual({ part: 'all', scheme: 'pay_on_handover', items: 1 });
+    expect(order.events[0]?.payload).toEqual({
+      part: 'all',
+      scheme: 'pay_on_handover',
+      items: 1,
+      rule: 'Оформление: оплата при получении',
+      effects: ['set_scheme_pay_on_handover'],
+    });
+    const queued = await db
+      .select()
+      .from(outbox)
+      .where(eq(outbox.jobId, `notify:${order.events[0]?.id}:confirm_request`));
+    expect(queued).toHaveLength(1);
   });
 
   it('a client with 2 no-shows gets prepay for local lines; the reason is neutral', async () => {
@@ -482,7 +522,7 @@ describe('POST /api/checkout: success', () => {
     expect(order.events[0]?.payload).toMatchObject({
       scheme: 'prepay',
       schemeReasons: ['no_show'],
-      deferredEffects: ['create_payment'],
+      effects: ['set_scheme_prepay', 'create_payment'],
     });
     // Upsert by phone: one user, the latest name (decision Д14).
     const rows = await db.select().from(users).where(eq(users.phone, phone.e164));
@@ -633,7 +673,8 @@ describe('POST /api/checkout: idempotency', () => {
         loadSettings,
         gate,
         logger,
-        env: { APP_BASE_URL: BASE_URL, TRUSTED_IP_HEADER: 'x-real-ip' },
+        env: serviceEnv,
+        nudge: () => undefined,
       }),
     );
     await lookupHeld;
@@ -1089,7 +1130,8 @@ describe('checkout terms the client saw (audit of phase 1A)', () => {
       loadSettings: async () => ({ ...(await loadSettings()), fromDatabase: false }),
       gate,
       logger,
-      env: { APP_BASE_URL: BASE_URL, TRUSTED_IP_HEADER: 'x-real-ip' },
+      env: serviceEnv,
+      nudge: () => undefined,
     });
     const phone = randomPhone();
     const res = await submit({ token: cart.token, page: p, phone: phone.typed }, svc);

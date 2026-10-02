@@ -13,6 +13,7 @@ import {
   orderEvents,
   orderItems,
   orders,
+  outbox,
   payments,
   users,
   type Db,
@@ -36,7 +37,7 @@ import { MAX_CANCEL_BODY_BYTES } from '@/server/orders/cancel-handler';
 import { handleCancelRequest, type CancelHandlerDeps } from '@/server/orders/cancel-handler';
 import type { CartReminder } from '@/server/orders/cart-reminder';
 import { findOrderNumber, loadOrderView, type OrderView } from '@/server/orders/order-view';
-import { webDatabaseUrl } from './helpers';
+import { intEnv, webDatabaseUrl } from './helpers';
 
 vi.mock('next/navigation', async (importOriginal) => ({
   ...(await importOriginal<typeof Navigation>()),
@@ -59,8 +60,15 @@ afterAll(async () => {
   await db.close();
 });
 
+/** Engine env of the tests (settings defaults; payments disabled unless overridden). */
+const ENV = intEnv({ APP_BASE_URL: APP });
+
 function deps(overrides: Partial<CancelHandlerDeps> = {}): CancelHandlerDeps {
-  return { db, redis, keyPrefix: prefix, appBaseUrl: APP, ...overrides };
+  return { db, env: ENV, redis, keyPrefix: prefix, appBaseUrl: APP, ...overrides };
+}
+
+function viewOf(token: string, paymentsEnabled = false): Promise<OrderView | null> {
+  return loadOrderView(db, token, { env: ENV, paymentsEnabled });
 }
 
 function offer(brand: string, article: string, name: string, isLocal: boolean): Offer {
@@ -281,7 +289,7 @@ function render(view: OrderView, cartReminder: CartReminder | null = null): stri
 describe('loadOrderView', () => {
   it('loads items, totals, the promise date and the timeline by token', async () => {
     const order = await insertOrder({ checkoutAt: new Date('2026-10-02T09:05:00Z') });
-    const view = await loadOrderView(db, order.token);
+    const view = await viewOf(order.token);
     expect(view).toMatchObject({
       id: order.id,
       number: order.number,
@@ -325,15 +333,15 @@ describe('loadOrderView', () => {
   });
 
   it('returns null for an unknown or malformed token', async () => {
-    expect(await loadOrderView(db, randomBytes(32).toString('base64url'))).toBeNull();
-    expect(await loadOrderView(db, 'short')).toBeNull();
-    expect(await loadOrderView(db, `${'a'.repeat(42)}'`)).toBeNull();
+    expect(await viewOf(randomBytes(32).toString('base64url'))).toBeNull();
+    expect(await viewOf('short')).toBeNull();
+    expect(await viewOf(`${'a'.repeat(42)}'`)).toBeNull();
     expect(await findOrderNumber(db, 'short')).toBeNull();
   });
 
   it('pay_on_handover awaiting confirmation can be cancelled', async () => {
     const order = await insertOrder({ status: 'awaiting_confirmation' });
-    const view = await loadOrderView(db, order.token);
+    const view = await viewOf(order.token);
     expect(view).toMatchObject({
       status: 'awaiting_confirmation',
       statusLabel: 'Ждёт подтверждения',
@@ -344,29 +352,29 @@ describe('loadOrderView', () => {
   });
 
   it('shows the pickup code only at ready and offers no cancellation there', async () => {
-    const ready = await loadOrderView(db, (await insertOrder({ status: 'ready' })).token);
+    const ready = await viewOf((await insertOrder({ status: 'ready' })).token);
     expect(ready).toMatchObject({
       pickupCode: '482913',
       canCancel: false,
       statusLabel: 'Готов к выдаче',
     });
-    const confirmed = await loadOrderView(db, (await insertOrder({ status: 'confirmed' })).token);
+    const confirmed = await viewOf((await insertOrder({ status: 'confirmed' })).token);
     expect(confirmed).toMatchObject({ pickupCode: null, canCancel: false });
   });
 
   it('does not offer cancellation once the latest payment succeeded', async () => {
     const order = await insertOrder();
     await insertPayment(order.id, 'canceled', new Date('2026-10-02T09:06:00Z'));
-    expect((await loadOrderView(db, order.token))?.canCancel).toBe(true);
+    expect((await viewOf(order.token))?.canCancel).toBe(true);
     await insertPayment(order.id, 'succeeded', new Date('2026-10-02T09:10:00Z'));
-    expect((await loadOrderView(db, order.token))?.canCancel).toBe(false);
+    expect((await viewOf(order.token))?.canCancel).toBe(false);
   });
 });
 
 describe('order page rendering', () => {
   it('prepay: status, date, pickup point, inactive payment, items, timeline, cancel', async () => {
     const order = await insertOrder();
-    const view = await loadOrderView(db, order.token);
+    const view = await viewOf(order.token);
     if (!view) throw new Error('view missing');
     const html = render(view);
     const text = plain(html);
@@ -401,7 +409,7 @@ describe('order page rendering', () => {
       status: 'awaiting_confirmation',
       preferredChannel: 'telegram',
     });
-    const view = await loadOrderView(db, order.token);
+    const view = await viewOf(order.token);
     if (!view) throw new Error('view missing');
     const html = render(view, {
       text: 'В корзине остались детали под заказ — оформить второй заказ',
@@ -410,7 +418,9 @@ describe('order page rendering', () => {
     const text = plain(html);
     expect(text).toContain('Ждёт подтверждения');
     expect(text).toContain('Оплата при получении картой или по QR');
-    expect(text).toContain('Подтверждение заказа подключается: мы свяжемся с вами');
+    // Phase 1B: «Подтверждаю» on the page (decision Б24).
+    expect(text).toContain('Подтверждаю');
+    expect(html).toContain('data-testid="order-confirm-open"');
     expect(text).not.toContain('Оплатить');
     expect(html).toMatch(/data-testid="messenger-telegram" data-selected="true"/);
     expect(html).toContain('href="/checkout?part=order"');
@@ -419,7 +429,7 @@ describe('order page rendering', () => {
 
   it('cancelled: no cancel button, no payment button, no messenger stubs', async () => {
     const order = await insertOrder({ status: 'cancelled' });
-    const view = await loadOrderView(db, order.token);
+    const view = await viewOf(order.token);
     if (!view) throw new Error('view missing');
     const text = plain(render(view));
     expect(text).toContain('Отменён');
@@ -430,7 +440,7 @@ describe('order page rendering', () => {
   });
 
   it('ready: shows the pickup code', async () => {
-    const view = await loadOrderView(db, (await insertOrder({ status: 'ready' })).token);
+    const view = await viewOf((await insertOrder({ status: 'ready' })).token);
     if (!view) throw new Error('view missing');
     expect(plain(render(view))).toContain('Код выдачи 482913');
   });
@@ -532,10 +542,10 @@ describe('POST /api/orders/<token>/cancel', () => {
       toStatus: 'cancelled',
       actorType: 'client',
       actorId: order.userId,
-      payload: {},
+      payload: { rule: 'Клиент отменил заказ до оплаты' },
     });
 
-    const view = await loadOrderView(db, order.token);
+    const view = await viewOf(order.token);
     expect(view).toMatchObject({ status: 'cancelled', canCancel: false, closed: true });
     expect(view?.timeline.map((e) => e.text)).toEqual([
       'Заказ оформлен, ждём оплату',
@@ -755,21 +765,40 @@ describe('cancellation: refusal after arrival, the attempt counter under the loc
   it('an order switched to prepay at `ready` (items arrived): cancel records the supplier-return task', async () => {
     const order = await insertOrder({ itemState: 'arrived' });
     await insertPayment(order.id, 'pending');
-    const view = await loadOrderView(db, order.token);
+    const view = await viewOf(order.token);
     expect(view?.canCancel).toBe(true);
     const res = await cancel(order.token, { last4: order.last4 });
     expect(res.status).toBe(200);
     expect((await orderRow(order.id)).status).toBe('cancelled');
     const event = (await eventsOf(order.id)).find((e) => e.type === 'client_cancelled');
-    expect(event?.payload).toEqual({
-      deferredEffects: ['cancel_at_supplier_task'],
-      deferredNotify: ['client:order_cancelled', 'sellers:staff_cancel_at_supplier_task'],
+    // Phase 1B: the engine runs the effect and queues the notifications in the same
+    // transaction (no deferredEffects any more).
+    expect(event?.payload).toMatchObject({
+      effects: ['cancel_at_supplier_task'],
+      tasks: ['cancel_at_supplier'],
     });
+    expect(event?.payload).not.toHaveProperty('deferredEffects');
+    const queued = await db
+      .select()
+      .from(outbox)
+      .where(sql`${outbox.jobId} like ${`notify:${event?.id}:%`}`);
+    expect(queued.map((row) => row.jobId).sort()).toEqual(
+      [
+        `notify:${event?.id}:order_cancelled`,
+        `notify:${event?.id}:staff_cancel_at_supplier_task`,
+      ].sort(),
+    );
     // A plain cancel before payment owes nothing.
     const plain = await insertOrder();
     expect((await cancel(plain.token, { last4: plain.last4 })).status).toBe(200);
     const plainEvent = (await eventsOf(plain.id)).find((e) => e.type === 'client_cancelled');
-    expect(plainEvent?.payload).toEqual({});
+    expect(plainEvent?.payload).toEqual({ rule: 'Клиент отменил заказ до оплаты' });
+    expect(
+      await db
+        .select()
+        .from(outbox)
+        .where(sql`${outbox.jobId} like ${`notify:${plainEvent?.id}:%`}`),
+    ).toEqual([]);
   });
 
   it('after 4 failures a wrong and a right guess queued on the lock: the right one is refused', async () => {

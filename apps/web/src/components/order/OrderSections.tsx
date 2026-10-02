@@ -1,8 +1,8 @@
-import { formatRub, type NotificationChannel, type PaymentScheme } from '@detaly/domain';
+import { formatRub, type NotificationChannel } from '@detaly/domain';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import type { CartReminder } from '@/server/orders/cart-reminder';
-import type { OrderItemView, OrderView } from '@/server/orders/order-view';
+import type { OrderItemView } from '@/server/orders/order-view';
 import type { StatusTone } from '@/server/orders/status-labels';
 import type { TimelineEntry } from '@/server/orders/timeline';
 
@@ -32,7 +32,7 @@ export function StatusBadge({ label, tone }: { label: string; tone: StatusTone }
   );
 }
 
-function Card({
+export function Card({
   title,
   children,
   testId,
@@ -87,55 +87,12 @@ export function PickupBlock({ pickup }: { pickup: PickupInfo }) {
   );
 }
 
-export function PaymentBlock({
-  scheme,
-  status,
-  totalKop,
-}: {
-  scheme: PaymentScheme;
-  status: OrderView['status'];
-  totalKop: number;
-}) {
-  if (scheme === 'prepay') {
-    return (
-      <Card title="Оплата" testId="order-payment">
-        <p className="font-medium">Предоплата 100% онлайн</p>
-        {status === 'awaiting_payment' ? (
-          <>
-            <button
-              type="button"
-              disabled
-              aria-disabled="true"
-              className="mt-3 inline-flex h-11 w-full cursor-not-allowed items-center justify-center rounded-xl bg-accent px-5 font-semibold text-white opacity-50 sm:w-auto"
-              data-testid="pay-button"
-            >
-              Оплатить {formatRub(totalKop)}
-            </button>
-            <p className="mt-2 text-sm text-muted">
-              Оплата подключается — пришлём ссылку, как только она заработает.
-            </p>
-          </>
-        ) : null}
-      </Card>
-    );
-  }
-  return (
-    <Card title="Оплата" testId="order-payment">
-      <p className="font-medium">Оплата при получении картой или по QR</p>
-      {status === 'awaiting_confirmation' ? (
-        <p className="mt-2 text-sm text-muted">
-          Подтверждение заказа подключается: мы свяжемся с вами.
-        </p>
-      ) : null}
-    </Card>
-  );
-}
-
 function ItemRow({ item }: { item: OrderItemView }) {
   return (
     <li
-      className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 py-3"
+      className={`grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 py-3 ${item.inactive ? 'opacity-60' : ''}`}
       data-testid="order-item"
+      data-state={item.state}
     >
       <div className="min-w-0">
         <div className="text-sm font-semibold tracking-wide text-muted uppercase wrap-anywhere">
@@ -143,6 +100,11 @@ function ItemRow({ item }: { item: OrderItemView }) {
         </div>
         <div className="font-mono font-semibold wrap-anywhere">{item.article}</div>
         <div className="text-sm wrap-anywhere">{item.name}</div>
+        {item.stateLabel ? (
+          <div className="mt-1 text-sm text-muted" data-testid="order-item-state">
+            {item.stateLabel}
+          </div>
+        ) : null}
       </div>
       <div className="text-right">
         <div className="font-semibold whitespace-nowrap">{formatRub(item.lineTotalKop)}</div>

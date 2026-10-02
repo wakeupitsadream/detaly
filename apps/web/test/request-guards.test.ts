@@ -31,7 +31,6 @@ describe('isSameOrigin', () => {
       'http://detaly.example',
       'https://detaly.example:8443',
       'https://sub.detaly.example',
-      'null',
       '',
     ]) {
       expect(isSameOrigin(headers({ origin, 'sec-fetch-site': 'same-origin' }), BASE), origin).toBe(
@@ -46,6 +45,21 @@ describe('isSameOrigin', () => {
     expect(isSameOrigin(headers({ 'sec-fetch-site': 'same-site' }), BASE)).toBe(false);
     expect(isSameOrigin(headers({ 'sec-fetch-site': 'none' }), BASE)).toBe(false);
     expect(isSameOrigin(headers({}), BASE)).toBe(false);
+  });
+
+  it('treats Origin: null (form post under Referrer-Policy: no-referrer) as a missing Origin', () => {
+    // Chromium sends `Origin: null` with `Sec-Fetch-Site: same-origin` for the «Оплатить» form
+    // of /o/<token> (the page has Referrer-Policy: no-referrer).
+    expect(isSameOrigin(headers({ origin: 'null', 'sec-fetch-site': 'same-origin' }), BASE)).toBe(
+      true,
+    );
+    expect(isSameOrigin(headers({ origin: 'null', 'sec-fetch-site': 'cross-site' }), BASE)).toBe(
+      false,
+    );
+    expect(isSameOrigin(headers({ origin: 'null', 'sec-fetch-site': 'same-site' }), BASE)).toBe(
+      false,
+    );
+    expect(isSameOrigin(headers({ origin: 'null' }), BASE)).toBe(false);
   });
 
   it('fails closed on a broken base URL', () => {

@@ -1,7 +1,13 @@
 // Worker entry point: node --import tsx apps/worker/src/main.ts
-// Step 0 stub; BullMQ queues, heartbeat scheduler, seller bot and graceful shutdown
-// are implemented in work package P6.
-import { createLogger, QUEUE_NAMES } from '@detaly/config';
+import { createLogger, getEnv } from '@detaly/config';
+import { runWorker } from './app';
 
-const logger = createLogger('worker');
-logger.warn({ queues: QUEUE_NAMES }, 'worker stub: nothing to run yet (phase 0, step 0)');
+const env = getEnv();
+const logger = createLogger('worker', { level: env.LOG_LEVEL, base: { gitSha: env.GIT_SHA } });
+
+try {
+  await runWorker({ env, logger });
+} catch (error) {
+  logger.fatal({ err: error }, 'worker failed to start');
+  process.exit(1);
+}

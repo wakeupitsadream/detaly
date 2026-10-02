@@ -5,8 +5,13 @@
 
 /** Separators people type inside a number: spaces, brackets, dashes, dots. */
 const SEPARATORS_RE = /[\s().‐-―-]/g;
-/** National significant number: 10 digits, first one 3, 4, 8 (ABC, geographic) or 9 (DEF). */
-const NSN_RE = /^[3489]\d{9}$/;
+/**
+ * National significant number: 10 digits, first one 3, 4, 8 (ABC, geographic, and 800-809
+ * non-geographic) or 9 (DEF, mobile). Codes 88x and 89x are not allocated: a 10-digit input
+ * starting with 89 is almost always '8 9xx…' with a digit missing, and reading it as
+ * +7 89x… would send order statuses to a stranger's number.
+ */
+const NSN_RE = /^(?:[349]\d|8[0-7])\d{8}$/;
 
 /**
  * '8 (912) 345-67-89', '+7 912 345 67 89', '79123456789' and '9123456789' -> '+79123456789'.

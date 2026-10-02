@@ -50,7 +50,7 @@ pnpm dev:web                                                       # http://loca
 |---|---|---|
 | `/cart` | корзина: позиции с ценой и датой, пересчёт цен через кэш при открытии (плашка изменений), способ оплаты, «Разделить на два заказа» для смешанной корзины. Работает без JavaScript | noindex |
 | `/checkout?part=all\|local\|order` | оформление на одном экране: телефон, имя, канал статусов (MAX, Telegram, SMS), самовывоз, согласия (оферта и ПД обязательны, маркетинг по желанию). Требует JavaScript. Без `RKN_NOTICE_NUMBER` формы нет | noindex |
-| `/o/<token>` | страница заказа по секретной ссылке: статус, дата получения, точка выдачи, способ оплаты, позиции, лента событий, отмена по последним 4 цифрам телефона | noindex, `Referrer-Policy: no-referrer` |
+| `/o/<token>` | страница заказа по секретной ссылке: статус, дата получения, точка выдачи, способ оплаты, позиции, лента событий, отмена по последним 4 цифрам телефона (отмена требует JavaScript) | noindex, `Referrer-Policy: no-referrer` |
 
 ### Эндпоинты
 
@@ -61,8 +61,8 @@ pnpm dev:web                                                       # http://loca
 | `POST /api/cart/items` | форма или JSON: `q` (артикул запроса), `offerId`, `qty` (необязательно) | форма: 303 на `/cart?added=1`, ошибка — 303 на `/cart?error=<code>`; JSON: 200 `{count, totalKop}`. Без cookie создаёт корзину и ставит cookie `cart`. Ошибки: 400, 403, 404 `offer_not_found`, 422 `excluded` / `qty` / `cart_full` / `too_many_searches`, 503 `supplier_unavailable` |
 | `PATCH /api/cart/items/<id>` (или `POST` с `_method=patch`) | `qty` | 303 на `/cart` / 200; 404 чужая строка; 422 `qty` |
 | `DELETE /api/cart/items/<id>` (или `POST` с `_method=delete`) | — | 303 на `/cart` / 200; 404 |
-| `POST /api/checkout` | JSON `{part, phone, name, channel, acceptOffer, consentPd, consentMarketing, expectedTotalKop, itemsHash, checkoutKey, website}` | 201 `{orderUrl, number}`; повтор с тем же `checkoutKey` — 200 с тем же заказом; 409 `stale` `{changes, totalKop, itemsHash}` — цены или наличие изменились, заказ не создан; 422 `validation` / `consent_required` / `below_minimum` / `cart_too_large`; 400 `bad_request` / `rejected`; 403 `forbidden_origin` / `checkout_closed`; 404 `cart_empty`; 503 `supplier_unavailable` |
-| `POST /api/orders/<token>/cancel` | JSON `{last4}` | 200 `{status: 'cancelled'}`; 422 `wrong_digits` с `attemptsLeft`; 429 после 5 неверных попыток за час; 409 `not_cancellable`; 503, если недоступен счётчик попыток |
+| `POST /api/checkout` | JSON `{part, phone, name, channel, acceptOffer, consentPd, consentMarketing, expectedTotalKop, itemsHash, checkoutKey, website}` | 201 `{orderUrl, number}`; повтор с тем же `checkoutKey` — 200 с тем же заказом (409 `checkout_key_conflict`, если ключ уже использован заказом из другой корзины); 409 `stale` `{changes, totalKop, itemsHash}` — цены или наличие изменились, заказ не создан; 422 `validation` / `consent_required` / `below_minimum` / `cart_too_large`; 400 `bad_request` / `rejected`; 403 `forbidden_origin` / `checkout_closed`; 404 `cart_empty`; 503 `supplier_unavailable` |
+| `POST /api/orders/<token>/cancel` | JSON `{last4}` | 200 `{status: 'cancelled'}`; 422 `wrong_digits` с `attemptsLeft`, 422 `validation` (не 4 цифры); 429 `too_many_attempts` после 5 неверных попыток за час; 409 `not_cancellable`; 400 `bad_request` (не JSON); 403 `forbidden_origin`; 404 `not_found`; 503 `unavailable`, если недоступен счётчик попыток |
 
 Перед созданием заказа `POST /api/checkout` заново проверяет цены у Rossko мимо кэша (priority `critical`, ожидание лимитера не больше 5 с). Заказ, пользователь, согласия (`pd` и при желании `marketing`, с версией и sha256 текста, IP и браузером) и событие `order_events` создаются в одной транзакции. Заказ получает статус `awaiting_payment` (предоплата) или `awaiting_confirmation` (оплата при получении) по правилу машины состояний.
 
@@ -84,6 +84,7 @@ pnpm dev:web                                                       # http://loca
 
 ```sh
 scripts/dev-db.sh up && eval "$(scripts/dev-db.sh env)"
+scripts/dev-db.sh ensure-db detaly_e2e && export DATABASE_URL="${DATABASE_URL%/*}/detaly_e2e"
 export SESSION_SECRET=local-session-secret-0123456789abcdef0123 \
   APP_BASE_URL=http://127.0.0.1:3100 RKN_NOTICE_NUMBER=E2E-TEST ROSSKO_MODE=fixtures \
   LEGAL_OFFER_VERSION=2026-10-d1 LEGAL_PRIVACY_VERSION=2026-10-d1 \
@@ -103,6 +104,6 @@ E2E_BASE_URL=http://127.0.0.1:3100 PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers \
 grep -cE '\+79[0-9]{9}' /tmp/web-1a.log   # 0: телефонов в логах нет
 ```
 
-Важно: standalone-сервер работает с `NODE_ENV=production`, поэтому оформление в e2e откроется только с опубликованными версиями документов (`LEGAL_*_VERSION` при сиде) и `APP_BASE_URL`, равным адресу сервера. `TRUSTED_IP_HEADER=x-real-ip` нужен, чтобы каждый прогон шёл со своим случайным `X-Real-IP` из `playwright.config.ts` и не упирался в лимиты прошлых прогонов. Для e2e используйте отдельную базу: сид публикует версии, а опубликованный текст потом нельзя изменить.
+Важно: standalone-сервер работает с `NODE_ENV=production`, поэтому оформление в e2e откроется только с опубликованными версиями документов (`LEGAL_*_VERSION` при сиде) и `APP_BASE_URL`, равным адресу сервера. `TRUSTED_IP_HEADER=x-real-ip` нужен, чтобы каждый прогон шёл со своим случайным `X-Real-IP` из `playwright.config.ts` и не упирался в лимиты прошлых прогонов. Поэтому e2e идёт в отдельной базе `detaly_e2e` (вторая строка): сид публикует версии, а опубликованный текст потом нельзя изменить, и рабочую базу разработки публиковать не нужно.
 
 Фаза 0 начинается с внешних действий (ОКВЭД, аккаунт Rossko и ключи API, домен, РКН, ЮKassa, проверка маркировки) параллельно с кодом; их статус — в `docs/external.md`.

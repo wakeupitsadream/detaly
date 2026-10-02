@@ -412,7 +412,7 @@ limit 50;
 Сводка по статусам:
 
 ```sql
-select status, payment_scheme, count(*), sum(total_kop) / 100 as total_rub
+select status, payment_scheme, count(*), (sum(total_kop) / 100.0)::numeric(14, 2) as total_rub
 from orders group by 1, 2 order by 1, 2;
 ```
 
@@ -471,8 +471,11 @@ select u.phone, u.name from orders o join users u on u.id = o.user_id where o.nu
 Если клиент не помнит номер, спросите последние 4 цифры телефона и примерную дату заказа:
 
 ```sql
-select o.number, o.status, o.created_at from orders o join users u on u.id = o.user_id
-where right(u.phone, 4) = '4567' and o.created_at > now() - interval '3 days';
+select o.number, o.status,
+       to_char(o.created_at at time zone 'Asia/Yekaterinburg', 'DD.MM HH24:MI') as created
+from orders o join users u on u.id = o.user_id
+where right(u.phone, 4) = '4567' and o.created_at > now() - interval '3 days'
+order by o.created_at desc;
 ```
 
 Код выдачи (`orders.pickup_code`) создаётся при оформлении, но клиенту показывается только со
@@ -546,8 +549,10 @@ commit;
 |---|---|---|
 | `POST /api/checkout` → 409, в логе web `checkout stale` (с числом изменений) | Цена, остаток или наличие у Rossko изменились между открытием `/checkout` и отправкой, либо сумма и хэш позиций от клиента устарели. Заказ **не** создан, корзина пересчитана, клиент видит «Корзина изменилась — проверьте состав и сумму» и отправляет форму ещё раз | Изредка — норма. Если 409 получает каждое оформление, значит, цены «прыгают» между вызовами Rossko или хэш считается по-разному: сверить R14 в `docs/external.md` и разобрать с разработчиком |
 | `checkout stale: cart changed meanwhile` | Корзину изменили в другой вкладке во время оформления | Норма |
+| `POST /api/checkout` → 409 `checkout_key_conflict` (в логе web ничего) | Ключ повторной отправки формы (`checkoutKey`) уже использован заказом из другой корзины (другого браузера). Ссылка на чужой заказ не выдаётся, клиент видит «Форма устарела — обновите страницу и попробуйте ещё раз» | Единичные — норма (форма открыта в двух браузерах). Массовые — кто-то подбирает ключи: смотреть 429 и подсети в журнале Caddy |
 | `POST /api/orders/<token>/cancel` → 409 `not_cancellable` | Заказ уже нельзя отменить на сайте: статус не `awaiting_*` (например, уже отменён) или по заказу есть успешная оплата. Клиент видит «Этот заказ уже нельзя отменить на сайте — позвоните нам» | Если клиент звонит, посмотреть статус (11.3) |
 | На `/cart` и `/checkout` надпись «Оформление временно недоступно», в логе web `checkout closed: legal documents are not published` с полем `missing` | `RKN_NOTICE_NUMBER` задан, но нужных документов нет или (в production) они не опубликованы. `missing` перечисляет виды: `offer`, `privacy`, `consent_pd` | Задать `LEGAL_*_VERSION` и прогнать сид (11.2). Если это прод до 1B — убрать `RKN_NOTICE_NUMBER` (11.1) |
+| Та же надпись на `/cart`, в логе web `checkout gate failed` | Не удалось прочитать документы из базы (ошибка Postgres): корзина закрывает оформление, пока база не ответит | Раздел 5 (база), `dc logs postgres` |
 | `checkout supplier unavailable`, ответ 503 `supplier_unavailable` | Перепроверка цен у Rossko мимо кэша не удалась: ошибка API, лимитер не дал окно за 5 с или недоступен Redis. Заказ не создан, клиент видит «Не удалось проверить цены у поставщика — попробуйте через минуту» | Разделы 6 (квота) и 5 (Redis) |
 | `checkout honeypot`, ответ 400 | Заполнено скрытое поле формы — это бот | Ничего. Если таких много — смотреть 429 и подсети в журнале Caddy |
 | `checkout failed`, ответ 500 | Ошибка базы или кода, транзакция заказа откатилась | Смотреть ошибку в логе, разбирать |

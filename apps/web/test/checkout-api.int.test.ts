@@ -543,6 +543,68 @@ describe('POST /api/checkout: idempotency', () => {
     expect(items).toHaveLength(2);
   });
 
+  it('a duplicate whose key check ran before the first commit still gets the same order', async () => {
+    const cart = await makeCart(KNECHT_LOCAL);
+    const p = ready(await page(cart.token));
+    const phone = randomPhone().typed;
+    // The duplicate's first lookup by checkout_key misses (the first submit has not committed
+    // yet) and its answer is held until the first submit has converted the cart.
+    let releaseLookup: () => void = () => undefined;
+    const firstDone = new Promise<void>((resolve) => {
+      releaseLookup = resolve;
+    });
+    let held = false;
+    let onHeld: () => void = () => undefined;
+    const lookupHeld = new Promise<void>((resolve) => {
+      onHeld = resolve;
+    });
+    const racingDb = new Proxy(db, {
+      get(target, prop) {
+        if (prop === 'query') {
+          return new Proxy(target.query, {
+            get(query, table) {
+              if (table !== 'orders') return Reflect.get(query, table) as unknown;
+              return {
+                findFirst: async (...args: Parameters<typeof query.orders.findFirst>) => {
+                  const result = await query.orders.findFirst(...args);
+                  if (!held) {
+                    held = true;
+                    expect(result).toBeUndefined();
+                    onHeld();
+                    await firstDone;
+                  }
+                  return result;
+                },
+              };
+            },
+          });
+        }
+        const value = Reflect.get(target, prop) as unknown;
+        return typeof value === 'function'
+          ? (value as (...args: unknown[]) => unknown).bind(target)
+          : value;
+      },
+    });
+    const duplicate = submit(
+      { token: cart.token, page: p, phone },
+      createCheckoutService({
+        db: racingDb,
+        supplier: { rossko },
+        loadSettings,
+        gate,
+        logger,
+        env: { APP_BASE_URL: BASE_URL, TRUSTED_IP_HEADER: 'x-real-ip' },
+      }),
+    );
+    await lookupHeld;
+    const first = await submit({ token: cart.token, page: p, phone });
+    releaseLookup();
+    const second = await duplicate;
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(200);
+    expect(second.json.orderUrl).toBe(first.json.orderUrl);
+  });
+
   it('a key used with another cart does not reveal that order', async () => {
     const cart = await makeCart(KNECHT_LOCAL);
     const p = ready(await page(cart.token));

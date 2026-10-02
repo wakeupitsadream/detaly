@@ -272,11 +272,14 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
       if (!locked || locked.status !== 'active') return { kind: 'cart_changed' };
 
       // The lines must still be exactly what was repriced (no edit in another tab meanwhile).
+      // Locked: a quantity edit committed between this check and the removal below would
+      // otherwise be lost (the order would carry the old quantity).
       const ids = lines.map((l) => l.id);
       const current = await tx
         .select({ id: cartItems.id, qty: cartItems.qty, price: cartItems.priceClientKop })
         .from(cartItems)
-        .where(and(eq(cartItems.cartId, cartId), inArray(cartItems.id, ids)));
+        .where(and(eq(cartItems.cartId, cartId), inArray(cartItems.id, ids)))
+        .for('update');
       const byId = new Map(current.map((row) => [row.id, row]));
       const intact = lines.every((l) => {
         const row = byId.get(l.id);
@@ -495,12 +498,15 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
     const replay = await replayOf(db, input.checkoutKey, cartToken);
     if (replay) return replay;
 
+    // An empty or converted cart may be the work of a duplicate submit with this very key that
+    // committed after the lookup above: it gets that order, not 404.
+    const cartEmpty = async (): Promise<CheckoutResponse> =>
+      (await replayOf(db, input.checkoutKey, cartToken)) ??
+      respond(404, { error: 'cart_empty', message: MESSAGES.cartEmpty });
     const active = cartToken === null ? null : await findActiveCart(db, cartToken);
-    if (!active) return respond(404, { error: 'cart_empty', message: MESSAGES.cartEmpty });
+    if (!active) return cartEmpty();
     const partLines = selectCartPart(active.lines, input.part);
-    if (partLines.length === 0) {
-      return respond(404, { error: 'cart_empty', message: MESSAGES.cartEmpty });
-    }
+    if (partLines.length === 0) return cartEmpty();
     const part: CartPart = splitCartLines(active.lines).mixed ? input.part : 'all';
     const articles = new Set(partLines.map((l) => l.searchArticleNorm));
     if (articles.size > MAX_CART_SEARCHES) {

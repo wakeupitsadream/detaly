@@ -2,7 +2,7 @@
 import { itemsHashPayload } from '@detaly/domain';
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { cookieSource } from '@/server/checkout/handler';
+import { cookieSource, MAX_CHECKOUT_BODY_BYTES, readJson } from '@/server/checkout/handler';
 import { itemsHash } from '@/server/checkout/hash';
 import { cleanName, FIELD_MESSAGES, parseCheckoutInput } from '@/server/checkout/input';
 import { parseCartPart } from '@/server/checkout/page-data';
@@ -161,5 +161,43 @@ describe('tokens and keys', () => {
     expect(parseCartPart(['order', 'local'])).toBe('order');
     expect(parseCartPart('everything')).toBe('all');
     expect(parseCartPart(undefined)).toBe('all');
+  });
+});
+
+describe('readJson', () => {
+  const post = (body: BodyInit | null, headers: Record<string, string> = {}) =>
+    new Request('http://127.0.0.1:3100/api/checkout', {
+      method: 'POST',
+      body,
+      headers,
+      // Required by undici for a ReadableStream body.
+      ...(body instanceof ReadableStream ? { duplex: 'half' } : {}),
+    } as RequestInit);
+
+  it('parses a small JSON body; empty, broken or declared-too-large bodies give undefined', async () => {
+    expect(await readJson(post('{"a":1}'))).toEqual({ a: 1 });
+    expect(await readJson(post(null))).toBeUndefined();
+    expect(await readJson(post(''))).toBeUndefined();
+    expect(await readJson(post('phone=1'))).toBeUndefined();
+    expect(
+      await readJson(post('{}', { 'content-length': String(MAX_CHECKOUT_BODY_BYTES + 1) })),
+    ).toBeUndefined();
+  });
+
+  it('stops reading an endless body past the limit instead of buffering it', async () => {
+    let pulled = 0;
+    let cancelled = false;
+    const endless = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(new Uint8Array(4096).fill(0x20));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    expect(await readJson(post(endless))).toBeUndefined();
+    expect(cancelled).toBe(true);
+    expect(pulled * 4096).toBeLessThan(MAX_CHECKOUT_BODY_BYTES * 2);
   });
 });

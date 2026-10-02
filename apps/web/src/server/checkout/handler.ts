@@ -24,14 +24,30 @@ export function cookieSource(header: string | null): {
   };
 }
 
-/** JSON body, or undefined when it is missing, too large or not JSON. */
-async function readJson(request: Request): Promise<unknown> {
+/**
+ * JSON body, or undefined when it is missing, too large or not JSON. The body is read as a
+ * stream and abandoned past MAX_CHECKOUT_BODY_BYTES: nothing in front of web (Caddy, Next route
+ * handlers) caps request bodies, so `request.text()` would buffer whatever a client sends.
+ */
+export async function readJson(request: Request): Promise<unknown> {
+  const declared = Number(request.headers.get('content-length') ?? '0');
+  if (declared > MAX_CHECKOUT_BODY_BYTES || request.body === null) return undefined;
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
   try {
-    const text = await request.text();
-    if (text.length === 0 || Buffer.byteLength(text, 'utf8') > MAX_CHECKOUT_BODY_BYTES) {
-      return undefined;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_CHECKOUT_BODY_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        return undefined;
+      }
+      chunks.push(value);
     }
-    return JSON.parse(text) as unknown;
+    if (size === 0) return undefined;
+    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
   } catch {
     return undefined;
   }

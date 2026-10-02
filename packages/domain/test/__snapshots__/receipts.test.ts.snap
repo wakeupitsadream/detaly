@@ -1,0 +1,135 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`receipt payloads > full (pay_on_handover at the point): full_payment 1`] = `
+{
+  "amountKop": 128000,
+  "data": {
+    "customer": {
+      "phone": "79123456789",
+    },
+    "lines": [
+      {
+        "description": "MANN-FILTER W 914/2 Фильтр масляный",
+        "paymentMode": "full_payment",
+        "paymentSubject": "commodity",
+        "quantity": 2,
+        "unitPriceKop": 64000,
+        "vatCode": 1,
+      },
+    ],
+    "taxSystemCode": 2,
+  },
+}
+`;
+
+exports[`receipt payloads > offset after a cancelled item: only the rest, prepaymentKop = payment - refund 1`] = `
+{
+  "data": {
+    "customer": {
+      "phone": "79123456789",
+    },
+    "lines": [
+      {
+        "description": "MANN-FILTER W 914/2 Фильтр масляный",
+        "paymentMode": "full_payment",
+        "paymentSubject": "commodity",
+        "quantity": 2,
+        "unitPriceKop": 64000,
+        "vatCode": 1,
+      },
+    ],
+    "taxSystemCode": 2,
+  },
+  "prepaymentKop": 128000,
+}
+`;
+
+exports[`receipt payloads > prepayment: two items, full_prepayment, no delivery 1`] = `
+{
+  "amountKop": 443000,
+  "data": {
+    "customer": {
+      "phone": "79123456789",
+    },
+    "lines": [
+      {
+        "description": "MANN-FILTER W 914/2 Фильтр масляный",
+        "paymentMode": "full_prepayment",
+        "paymentSubject": "commodity",
+        "quantity": 2,
+        "unitPriceKop": 64000,
+        "vatCode": 1,
+      },
+      {
+        "description": "BOSCH 0 986 494 524 Колодки тормозные передние",
+        "paymentMode": "full_prepayment",
+        "paymentSubject": "commodity",
+        "quantity": 1,
+        "unitPriceKop": 315000,
+        "vatCode": 1,
+      },
+    ],
+    "taxSystemCode": 2,
+  },
+}
+`;
+
+exports[`receipt payloads > refund_full of the whole order with delivery 1`] = `
+{
+  "amountKop": 473000,
+  "data": {
+    "customer": {
+      "phone": "79123456789",
+    },
+    "lines": [
+      {
+        "description": "MANN-FILTER W 914/2 Фильтр масляный",
+        "paymentMode": "full_payment",
+        "paymentSubject": "commodity",
+        "quantity": 2,
+        "unitPriceKop": 64000,
+        "vatCode": 1,
+      },
+      {
+        "description": "BOSCH 0 986 494 524 Колодки тормозные передние",
+        "paymentMode": "full_payment",
+        "paymentSubject": "commodity",
+        "quantity": 1,
+        "unitPriceKop": 315000,
+        "vatCode": 1,
+      },
+      {
+        "description": "Доставка",
+        "paymentMode": "full_payment",
+        "paymentSubject": "service",
+        "quantity": 1,
+        "unitPriceKop": 30000,
+        "vatCode": 1,
+      },
+    ],
+    "taxSystemCode": 2,
+  },
+}
+`;
+
+exports[`receipt payloads > refund_prepayment of one line 1`] = `
+{
+  "amountKop": 315000,
+  "data": {
+    "customer": {
+      "phone": "79123456789",
+    },
+    "lines": [
+      {
+        "description": "BOSCH 0 986 494 524 Колодки тормозные передние",
+        "paymentMode": "full_prepayment",
+        "paymentSubject": "commodity",
+        "quantity": 1,
+        "unitPriceKop": 315000,
+        "vatCode": 1,
+      },
+    ],
+    "taxSystemCode": 2,
+  },
+}
+`;

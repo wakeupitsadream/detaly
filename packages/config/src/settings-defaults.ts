@@ -48,5 +48,7 @@ export function settingsDefaultsFromEnv(env: Env): SettingsValues {
     'courier.fee_kop': env.COURIER_FEE_RUB * KOP_PER_RUB,
     'rossko.local_stock_ids': [...env.ROSSKO_LOCAL_STOCK_IDS],
     'rossko.prepay_invoice': false,
+    // PLAN section 3: the client has 24 hours to answer an alternative / new date.
+    'approval.timeout_h': 24,
   };
 }

@@ -9,6 +9,7 @@ import {
   primaryKey,
   text,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { createdAt, id, kop, kopCheck, namedCheck, tstz, updatedAt } from './columns';
@@ -41,13 +42,33 @@ export const supplierOrders = pgTable(
      * `updS3Key` into `upd_s_3_key`.
      */
     updS3Key: text('upd_s3_key'),
+    /**
+     * Set and committed right before GetCheckout (decision Б13): a job that sees it while the
+     * row is still `sending` never calls GetCheckout again and goes to recovery instead.
+     */
+    calledAt: tstz(),
+    /** Recovery after a timeout ran (decision Б14). */
+    recoveredAt: tstz(),
+    /** Last error without PD. */
+    error: text(),
+    /** Rossko invoice to pay before shipping (settings rossko.prepay_invoice). */
+    invoiceNumber: text(),
+    invoiceAmountKop: kop(),
+    /** «Счёт оплачен»: when, and the payment order number and date. */
+    invoicePaidAt: tstz(),
+    invoicePaymentRef: text(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     unique('supplier_orders_order_id_attempt_no_unique').on(t.orderId, t.attemptNo),
+    // At most one GetCheckout in flight per order (double-submit protection).
+    uniqueIndex('supplier_orders_order_sending_unique')
+      .on(t.orderId)
+      .where(sql`${t.status} = 'sending'`),
     namedCheck('supplier_orders', 'attempt_no', sql`${t.attemptNo} >= 1`),
     kopCheck('supplier_orders', 'delivery_cost_kop', t.deliveryCostKop),
+    kopCheck('supplier_orders', 'invoice_amount_kop', t.invoiceAmountKop),
   ],
 );
 

@@ -1,0 +1,44 @@
+import { describe, expect, it } from 'vitest';
+import {
+  bullJobId,
+  HOUSEKEEPING_JOBS,
+  OUTBOX_CHANNEL,
+  OUTBOX_QUEUES,
+  QUEUE_NAMES,
+  RECONCILIATION_JOBS,
+} from '../src/queues';
+
+describe('bullJobId (decision Б2)', () => {
+  it('replaces every ":" with "|" so BullMQ accepts PLAN-style keys', () => {
+    expect(bullJobId('payment.succeeded:2f3c-11')).toBe('payment.succeeded|2f3c-11');
+    expect(bullJobId('notify:0192:client_paid:sms')).toBe('notify|0192|client_paid|sms');
+    expect(bullJobId('checkout:0192a')).toBe('checkout|0192a');
+    expect(bullJobId('no-colons')).toBe('no-colons');
+    expect(bullJobId('a:b:c:d')).not.toContain(':');
+  });
+
+  it('is injective for keys without "|"', () => {
+    const keys = ['a:b', 'a|b:', 'ab', 'a::b', 'a:b:'];
+    const ids = keys.filter((k) => !k.includes('|')).map(bullJobId);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe('queue names', () => {
+  it('outbox may target every queue except dead-letter', () => {
+    expect(OUTBOX_QUEUES).toEqual(QUEUE_NAMES.filter((name) => name !== 'dead-letter'));
+    expect(OUTBOX_QUEUES).not.toContain('dead-letter');
+  });
+
+  it('phase 1B jobs and the outbox channel', () => {
+    expect(OUTBOX_CHANNEL).toBe('detaly:outbox');
+    expect(Object.keys(HOUSEKEEPING_JOBS)).toEqual([
+      'heartbeat',
+      'timers',
+      'reminders',
+      'smsBudget',
+      'deferred1a',
+    ]);
+    expect(RECONCILIATION_JOBS).toEqual({ sweep: 'sweep', nightly: 'nightly' });
+  });
+});

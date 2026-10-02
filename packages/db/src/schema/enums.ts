@@ -4,6 +4,8 @@ import { pgEnum } from 'drizzle-orm/pg-core';
 import {
   ACTOR_TYPES,
   API_CALL_SOURCES,
+  APPROVAL_DECISIONS,
+  APPROVAL_KINDS,
   CART_STATUSES,
   CLAIM_DECISIONS,
   CLAIM_KINDS,
@@ -26,6 +28,7 @@ import {
   RECEIPT_KINDS,
   RECEIPT_STATUSES,
   REFUND_REASONS,
+  REFUND_SCOPES,
   REFUND_STATUSES,
   STAFF_ROLES,
   SUPPLIER_ORDER_STATUSES,
@@ -51,6 +54,8 @@ export const receiptKind = pgEnum('receipt_kind', RECEIPT_KINDS);
 export const receiptStatus = pgEnum('receipt_status', RECEIPT_STATUSES);
 export const refundReason = pgEnum('refund_reason', REFUND_REASONS);
 export const refundStatus = pgEnum('refund_status', REFUND_STATUSES);
+/** Phase 1B (decision Б11): whole order, one item, or an orphan payment. */
+export const refundScope = pgEnum('refund_scope', REFUND_SCOPES);
 
 // Supplier
 export const supplierOrderStatus = pgEnum('supplier_order_status', SUPPLIER_ORDER_STATUSES);
@@ -62,6 +67,10 @@ export const claimKind = pgEnum('claim_kind', CLAIM_KINDS);
 export const claimDecision = pgEnum('claim_decision', CLAIM_DECISIONS);
 export const vinRequestStatus = pgEnum('vin_request_status', VIN_REQUEST_STATUSES);
 export const vinProvider = pgEnum('vin_provider', VIN_PROVIDERS);
+
+// Client approvals (phase 1B, decision Б16)
+export const approvalKind = pgEnum('approval_kind', APPROVAL_KINDS);
+export const approvalDecision = pgEnum('approval_decision', APPROVAL_DECISIONS);
 
 // Legal
 export const documentKind = pgEnum('document_kind', DOCUMENT_KINDS);

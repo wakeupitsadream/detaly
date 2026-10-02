@@ -9,4 +9,5 @@ export * from './payments';
 export * from './supplier';
 export * from './service';
 export * from './system';
+export * from './workflow';
 export * from './relations';

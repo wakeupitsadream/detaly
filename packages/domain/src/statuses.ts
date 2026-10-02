@@ -274,3 +274,68 @@ export type ApiCallSource = (typeof API_CALL_SOURCES)[number];
 /** Rossko search modes (ROSSKO_MODE env): fixtures work before API keys arrive. */
 export const ROSSKO_MODES = ['fixtures', 'live'] as const;
 export type RosskoMode = (typeof ROSSKO_MODES)[number];
+
+// ---------------------------------------------------------------------------
+// Phase 1B: receipts, payments, refunds, client approvals, webhooks
+// ---------------------------------------------------------------------------
+
+/**
+ * 54-FZ settlement method of a receipt line ("признак способа расчёта"): full_prepayment for
+ * the prepay payment and its refund, full_payment for payment at handover, the offset receipt
+ * and refunds after it.
+ */
+export const PAYMENT_MODES = ['full_prepayment', 'full_payment'] as const;
+export type PaymentMode = (typeof PAYMENT_MODES)[number];
+
+/** Subject of a receipt line. Installation is never sold, so only goods and delivery exist. */
+export const PAYMENT_SUBJECTS = ['commodity', 'service'] as const;
+export type PaymentSubject = (typeof PAYMENT_SUBJECTS)[number];
+
+/** payments.confirmation_type: redirect link on /o/<token>, or QR on the seller's screen. */
+export const CONFIRMATION_TYPES = ['redirect', 'qr'] as const;
+export type ConfirmationType = (typeof CONFIRMATION_TYPES)[number];
+
+/**
+ * refunds.scope (decision Б11): the whole order (-> refunded), one item (partial refund, the
+ * order status stays) or an orphan payment (a payment of an already refunded order, journal
+ * only). A pgEnum: append only.
+ */
+export const REFUND_SCOPES = ['order', 'item', 'orphan'] as const;
+export type RefundScope = (typeof REFUND_SCOPES)[number];
+
+/** client_approvals.kind (pgEnum approval_kind): an alternative at the client's price or a new date. */
+export const APPROVAL_KINDS = ['alternative', 'new_eta'] as const;
+export type ApprovalKind = (typeof APPROVAL_KINDS)[number];
+
+/** client_approvals.decision (pgEnum approval_decision); timeout = no answer in approval.timeout_h. */
+export const APPROVAL_DECISIONS = ['approved', 'refund', 'timeout'] as const;
+export type ApprovalDecision = (typeof APPROVAL_DECISIONS)[number];
+
+/** client_approvals.scope (text + check): the whole order or one item (order_item_id set). */
+export const APPROVAL_SCOPES = ['order', 'item'] as const;
+export type ApprovalScope = (typeof APPROVAL_SCOPES)[number];
+
+/** seller_cards.kind (text + check): an order card with action buttons, or the handover QR. */
+export const SELLER_CARD_KINDS = ['order', 'qr'] as const;
+export type SellerCardKind = (typeof SELLER_CARD_KINDS)[number];
+
+/**
+ * webhook_events.result (a text column): what applying the re-read provider object did.
+ * - duplicate: the object was already applied (no new transition);
+ * - stale: the event is not about the order's current payment;
+ * - pending: the object is not final yet;
+ * - orphan_payment: a payment of an already refunded order (refunded back automatically);
+ * - amount_mismatch: the paid amount differs from orders.total_kop (needs_attention);
+ * - ignored: an event type the system does not act on.
+ */
+export const WEBHOOK_RESULTS = [
+  'processed',
+  'duplicate',
+  'stale',
+  'pending',
+  'orphan_payment',
+  'amount_mismatch',
+  'ignored',
+  'error',
+] as const;
+export type WebhookResult = (typeof WEBHOOK_RESULTS)[number];

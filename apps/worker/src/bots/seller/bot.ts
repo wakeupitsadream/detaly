@@ -3,6 +3,7 @@ import type { Logger } from '@detaly/config';
 import type { PingData } from '@detaly/notify';
 import { Bot, type ApiClientOptions } from 'grammy';
 import type { UserFromGetMe } from 'grammy/types';
+import type { WorkerDeps } from '../../deps';
 import { describeBotError, toSafeError } from './errors';
 import { allowedChats, pingHandler, staffOnly } from './handlers';
 import type { IsStaff } from './staff';
@@ -17,6 +18,8 @@ export interface SellerBotOptions {
   sellerChatId?: number;
   logger?: Pick<Logger, 'error'>;
   client?: ApiClientOptions;
+  /** Phase 1B: engine, cards and inspector for order buttons and /queues (wave 4 uses them). */
+  deps?: WorkerDeps;
 }
 
 export function createSellerBot({

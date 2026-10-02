@@ -1,0 +1,31 @@
+/**
+ * Fixed periods of phase 1B (PLAN section 1, docs/phase-1b-implementation.md section 3.3) in
+ * one place. Business deadlines that the owner may tune (payment TTL, pickup windows, QR TTL,
+ * approval timeout) live in `settings`, not here.
+ */
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+
+export const TIMERS = {
+  /** Offset / payment receipt status is polled every 2 minutes ... */
+  receiptPollEveryMs: 2 * MINUTE,
+  /** ... until 15 minutes after the first attempt, then an alert («Выдал» stays blocked). */
+  receiptGiveUpMs: 15 * MINUTE,
+  /** Reconciliation looks at pending payments and refunds older than 10 minutes ... */
+  reconcilePendingAgeMs: 10 * MINUTE,
+  /** ... every 10 minutes. */
+  reconcileEveryMs: 10 * MINUTE,
+  /** «Оплатить счёт Rossko» reminder to the owner. */
+  invoiceReminderEveryMs: 4 * HOUR,
+  /** needs_attention reminder to the sellers. */
+  attentionReminderEveryMs: 4 * HOUR,
+  /** The client gets one reminder of an open approval after 12 hours. */
+  approvalReminderAfterMs: 12 * HOUR,
+  /** The owner is warned 2 days before the 10-day refund deadline. */
+  refundDeadlineWarnMs: 2 * DAY,
+  /** Outbox dispatcher poll period when no PUBLISH nudge arrives. */
+  outboxPollMs: 2_000,
+} as const;
+
+export type TimerName = keyof typeof TIMERS;

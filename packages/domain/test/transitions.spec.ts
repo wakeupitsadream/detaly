@@ -13,6 +13,7 @@ import {
   ORDER_NOTIFY_TEMPLATES,
   ORDER_STATUSES,
   type OrderEvent,
+  PARTIAL_REFUND_STATUSES,
   type OrderStatus,
   receiptFor,
   resolveTransition,
@@ -350,8 +351,11 @@ const EXPECTED: readonly Row[] = [
   ['ready', 'handed_over', staff({ settlementReceiptSucceeded: true }), 'handed'],
   ['ready', 'switch_to_prepay', client({ ...COD }), 'awaiting_payment'],
   ['ready', 'courier_dispatched', staff({ ...COURIER }), 'out_for_delivery'],
-  ['ready', 'storage_expired', system(), 'refund_pending'],
-  ['ready', 'storage_expired', system({ ...COD }), 'cancelled'],
+  ['ready', 'storage_expired', system({ pickupWindowElapsed: true }), 'refund_pending'],
+  ['ready', 'storage_expired', system({ ...COD, pickupWindowElapsed: true }), 'cancelled'],
+  // «Клиент не пришёл» from staff after the window (decision Б10)
+  ['ready', 'storage_expired', staff({ pickupWindowElapsed: true }), 'refund_pending'],
+  ['ready', 'storage_expired', staff({ ...COD, pickupWindowElapsed: true }), 'cancelled'],
 
   // awaiting_handover_payment
   [
@@ -378,6 +382,20 @@ const EXPECTED: readonly Row[] = [
     'payment_ttl_expired',
     system({ ...COD, ...CURRENT_CANCELED }),
     'ready',
+  ],
+  // decision Б9: the QR TTL does not wait for a confirmed cancel
+  [
+    'awaiting_handover_payment',
+    'payment_ttl_expired',
+    system({ ...COD, eventPaymentIsCurrent: true, providerPaymentStatus: 'pending' }),
+    'ready',
+  ],
+  // ... and a late payment of that QR brings the order back with the money
+  [
+    'ready',
+    'payment_succeeded',
+    paid(500_000, { ...COD, eventPaymentKind: 'full' }),
+    'awaiting_handover_payment',
   ],
 
   // a payment that succeeds while the order does not wait for one is never dropped
@@ -450,6 +468,12 @@ const EXPECTED: readonly Row[] = [
   // refunds
   ['refund_pending', 'refund_succeeded', webhook({ refundConfirmed: true }), 'refunded'],
   ['refund_pending', 'refund_failed', webhook(), 'refund_pending'],
+
+  // partial (one item) refunds: the status does not change (decision Б11)
+  ...PARTIAL_REFUND_STATUSES.flatMap((status): Row[] => [
+    [status, 'partial_refund_succeeded', webhook({ refundConfirmed: true }), status],
+    [status, 'partial_refund_failed', system(), status],
+  ]),
 ];
 
 const pairKey = (status: OrderStatus, event: OrderEvent): string => `${status}|${event}`;
@@ -1145,12 +1169,13 @@ describe('guards', () => {
     });
 
     it('storage expiry counts a no-show and creates the supplier return task', () => {
-      const pre = resolveTransition('ready', 'storage_expired', system());
-      const cod = resolveTransition('ready', 'storage_expired', system({ ...COD }));
-      expect(pre.ok && effectsFor(pre.rule, system())).toEqual(
+      const elapsed = { pickupWindowElapsed: true } as const;
+      const pre = resolveTransition('ready', 'storage_expired', system(elapsed));
+      const cod = resolveTransition('ready', 'storage_expired', system({ ...COD, ...elapsed }));
+      expect(pre.ok && effectsFor(pre.rule, system(elapsed))).toEqual(
         expect.arrayContaining(['create_refund', 'no_show_increment', 'supplier_return_task']),
       );
-      expect(cod.ok && effectsFor(cod.rule, system({ ...COD }))).toEqual([
+      expect(cod.ok && effectsFor(cod.rule, system({ ...COD, ...elapsed }))).toEqual([
         'no_show_increment',
         'supplier_return_task',
       ]);
@@ -1200,6 +1225,172 @@ describe('guards', () => {
       ['create_refund'],
     ]);
     expect(b.ok && [receiptFor(b.rule, cod), effectsFor(b.rule, cod)]).toEqual([null, []]);
+  });
+});
+
+describe('phase 1B rules (docs/phase-1b-implementation.md section 3.4)', () => {
+  it('«Клиент не пришёл» from staff before the window -> guard_failed, after -> as housekeeping', () => {
+    expect(resolveTransition('ready', 'storage_expired', staff())).toEqual({
+      ok: false,
+      reason: 'guard_failed',
+      failed: ['pickup_window_elapsed'],
+    });
+    expect(
+      resolveTransition('ready', 'storage_expired', staff({ ...COD, pickupWindowElapsed: false })),
+    ).toMatchObject({ ok: false, failed: ['pickup_window_elapsed'] });
+    // housekeeping is held to the same window
+    expect(resolveTransition('ready', 'storage_expired', system())).toMatchObject({
+      ok: false,
+      failed: ['pickup_window_elapsed'],
+    });
+    const bySeller = staff({ pickupWindowElapsed: true });
+    const byTimer = system({ pickupWindowElapsed: true });
+    const a = resolveTransition('ready', 'storage_expired', bySeller);
+    const b = resolveTransition('ready', 'storage_expired', byTimer);
+    expect(a.ok && b.ok && a.rule === b.rule).toBe(true);
+    expect(a.ok && [receiptFor(a.rule, bySeller), effectsFor(a.rule, bySeller)]).toEqual([
+      'refund_prepayment',
+      ['create_refund', 'no_show_increment', 'supplier_return_task'],
+    ]);
+    // the client cannot mark himself a no-show
+    expect(
+      resolveTransition('ready', 'storage_expired', client({ pickupWindowElapsed: true })),
+    ).toMatchObject({ ok: false, failed: ['actor'] });
+  });
+
+  it('QR TTL: pending at the provider -> ready, succeeded -> stays', () => {
+    const current = { ...COD, eventPaymentIsCurrent: true } as const;
+    for (const providerPaymentStatus of ['pending', 'canceled', null] as const) {
+      const result = resolveTransition(
+        'awaiting_handover_payment',
+        'payment_ttl_expired',
+        system({ ...current, providerPaymentStatus }),
+      );
+      expect(result.ok && result.rule.to, String(providerPaymentStatus)).toBe('ready');
+    }
+    expect(
+      resolveTransition(
+        'awaiting_handover_payment',
+        'payment_ttl_expired',
+        system({ ...current, providerPaymentStatus: 'succeeded' }),
+      ),
+    ).toEqual({ ok: false, reason: 'guard_failed', failed: ['no_payment_succeeded'] });
+    // fails closed: a forgotten provider status or a held (two-stage) payment never drops a QR
+    for (const providerPaymentStatus of [undefined, 'waiting_for_capture'] as const) {
+      expect(
+        resolveTransition(
+          'awaiting_handover_payment',
+          'payment_ttl_expired',
+          system({ ...current, providerPaymentStatus }),
+        ),
+        String(providerPaymentStatus),
+      ).toMatchObject({ ok: false, reason: 'guard_failed', failed: ['no_payment_succeeded'] });
+    }
+  });
+
+  it('an old QR paid in ready returns the order to awaiting_handover_payment silently', () => {
+    const ctx = paid(500_000, { ...COD, eventPaymentKind: 'full' });
+    const result = resolveTransition('ready', 'payment_succeeded', ctx);
+    expect(result).toMatchObject({
+      ok: true,
+      rule: { to: 'awaiting_handover_payment', notify: [], label: 'Оплата по истёкшему QR прошла' },
+    });
+    expect(result.ok && receiptFor(result.rule, ctx)).toBeNull();
+    // then «Выдал» needs the full receipt like any handover payment
+    expect(
+      resolveTransition(
+        'awaiting_handover_payment',
+        'handed_over',
+        staff({ ...COD, providerPaymentStatus: 'succeeded' }),
+      ),
+    ).toEqual({ ok: false, reason: 'guard_failed', failed: ['settlement_receipt_succeeded'] });
+  });
+
+  it('a prepayment or a wrong amount paid in ready is an unexpected payment', () => {
+    const owner = [{ audience: 'owner', template: 'staff_unexpected_payment' }];
+    for (const ctx of [
+      paid(500_000, { ...COD, eventPaymentKind: 'prepayment' }),
+      paid(400_000, { ...COD, eventPaymentKind: 'full' }),
+      paid(500_000, { eventPaymentKind: 'full' }),
+      paid(500_000, { eventPaymentKind: 'prepayment' }),
+    ]) {
+      const result = resolveTransition('ready', 'payment_succeeded', ctx);
+      expect(result).toMatchObject({ ok: true, rule: { to: 'needs_attention', notify: owner } });
+    }
+    // a late QR payment counts only once GET /payments confirmed it
+    expect(
+      resolveTransition(
+        'ready',
+        'payment_succeeded',
+        paid(500_000, { ...COD, eventPaymentKind: 'full', providerPaymentStatus: 'pending' }),
+      ),
+    ).toMatchObject({ ok: false, reason: 'guard_failed', failed: ['payment_succeeded'] });
+  });
+
+  it('"Выставить оплату" needs «Клиент пришёл»; «Выдал» needs the full receipt', () => {
+    expect(
+      resolveTransition('ready', 'handover_payment_requested', staff({ ...COD })),
+    ).toMatchObject({ ok: false, reason: 'guard_failed', failed: ['client_arrived'] });
+    expect(
+      resolveTransition(
+        'awaiting_handover_payment',
+        'handed_over',
+        staff({
+          ...COD_PAID,
+          providerPaymentStatus: 'succeeded',
+          settlementReceiptSucceeded: false,
+        }),
+      ),
+    ).toMatchObject({
+      ok: false,
+      reason: 'guard_failed',
+      failed: ['settlement_receipt_succeeded'],
+    });
+  });
+
+  it('partial refunds keep the status; refund_succeeded is only for refund_pending', () => {
+    for (const status of PARTIAL_REFUND_STATUSES) {
+      const ok = resolveTransition(
+        status,
+        'partial_refund_succeeded',
+        webhook({ refundConfirmed: true }),
+      );
+      expect(ok).toMatchObject({
+        ok: true,
+        rule: { to: status, notify: [{ audience: 'client', template: 'money_sent' }] },
+      });
+      expect(resolveTransition(status, 'partial_refund_succeeded', webhook())).toMatchObject({
+        ok: false,
+        failed: ['refund_confirmed'],
+      });
+      expect(resolveTransition(status, 'partial_refund_failed', system())).toMatchObject({
+        ok: true,
+        rule: { to: status, notify: [{ audience: 'owner', template: 'staff_refund_failed' }] },
+      });
+      // staff and clients never report refund outcomes
+      expect(
+        resolveTransition(status, 'partial_refund_succeeded', staff({ refundConfirmed: true })),
+      ).toMatchObject({ ok: false, failed: ['actor'] });
+    }
+    for (const status of ['draft', 'awaiting_payment', 'cancelled', 'refunded'] as const) {
+      expect(
+        resolveTransition(status, 'partial_refund_succeeded', webhook({ refundConfirmed: true })),
+      ).toMatchObject({ reason: 'no_rule' });
+    }
+    expect(
+      resolveTransition('ready', 'refund_succeeded', webhook({ refundConfirmed: true })),
+    ).toMatchObject({ reason: 'no_rule' });
+  });
+
+  it('the new staff templates are known template ids', () => {
+    for (const template of [
+      'staff_orphan_payment',
+      'staff_receipt_failed',
+      'staff_approval_unreachable',
+      'staff_refund_deadline',
+    ] as const) {
+      expect(ORDER_NOTIFY_TEMPLATES).toContain(template);
+    }
   });
 });
 
@@ -1308,7 +1499,18 @@ describe('graph properties', () => {
                       noShowCount: 0,
                       noShowLimit: 2,
                       claimKind: 'delay',
+                      eventPaymentKind: 'full',
+                      pickupWindowElapsed: true,
                     });
+    // a provider-confirmed payment and a prepayment event exercise the ready payment split
+    for (const variant of [...variants]) {
+      variants.push({ ...variant, providerPaymentStatus: 'succeeded' });
+      variants.push({
+        ...variant,
+        providerPaymentStatus: 'succeeded',
+        eventPaymentKind: 'prepayment',
+      });
+    }
     // money held and supplier order flags multiply the variants for the splits that use them
     for (const variant of [...variants]) {
       variants.push({ ...variant, paymentHeld: true, pendingSupplierItems: 0 });

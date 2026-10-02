@@ -17,6 +17,7 @@ describe('settingsDefaultsFromEnv', () => {
     expect(settings['courier.fee_kop']).toBe(0);
     expect(settings['rossko.prepay_invoice']).toBe(false);
     expect(settings['no_show.limit']).toBe(2);
+    expect(settings['approval.timeout_h']).toBe(24);
   });
 
   it('converts percents with decimals exactly', () => {

@@ -1,0 +1,85 @@
+{
+  "_meta": {
+    "synthetic": true,
+    "note": "сверить с реальным ответом: поддерживает ли GetOrders вызов без order_ids (список недавних заказов), имя поля комментария, есть ли склад у позиции, период и постраничность",
+    "method": "GetOrders",
+    "args": {},
+    "covers": "восстановление после таймаута GetCheckout по комментарию DT-000123/1: заказ на два склада (два id, у одного комментарий с префиксом), похожий комментарий DT-000123/12, старый заказ без комментария и склада"
+  },
+  "OrdersResult": {
+    "success": true,
+    "message": "",
+    "OrdersList": {
+      "Order": [
+        {
+          "id": "70000012",
+          "created": "2026-10-02T15:41:00+03:00",
+          "status": 1,
+          "status_name": "В работе",
+          "comment": "DT-000123/12",
+          "parts": {
+            "part": {
+              "brand": "TRW",
+              "partnumber": "GDB1330",
+              "stock": "ORB1",
+              "count": 1,
+              "price": "1834.00",
+              "status": 1
+            }
+          }
+        },
+        {
+          "id": "70000011",
+          "created": "2026-10-02T15:20:05+03:00",
+          "status": 1,
+          "status_name": "В работе",
+          "comment": "Заказ DT-000123/1",
+          "parts": {
+            "part": {
+              "brand": "MANN-FILTER",
+              "partnumber": "W 914/2",
+              "stock": "MSK7",
+              "count": 1,
+              "price": "623.40",
+              "status": 1
+            }
+          }
+        },
+        {
+          "id": "70000010",
+          "created": "2026-10-02T15:20:04+03:00",
+          "status": 1,
+          "status_name": "В работе",
+          "comment": "DT-000123/1",
+          "parts": {
+            "part": [
+              {
+                "brand": "Knecht",
+                "partnumber": "OC 90",
+                "stock": "ORB1",
+                "count": 2,
+                "price": "412.50",
+                "status": 1
+              }
+            ]
+          }
+        },
+        {
+          "id": "70000009",
+          "created": "2026-10-01T10:00:00+03:00",
+          "status": 3,
+          "status_name": "Готов к выдаче",
+          "parts": {
+            "part": {
+              "brand": "Knecht",
+              "partnumber": "OC 90",
+              "count": 1,
+              "price": "389.00",
+              "status": 3
+            }
+          }
+        }
+      ]
+    }
+  }
+}

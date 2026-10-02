@@ -17,5 +17,6 @@ export * from './checkout';
 export * from './receipts';
 export * from './refunds';
 export type * from './recheck-types';
+export * from './recheck';
 export * from './timers';
 export * from './journal';

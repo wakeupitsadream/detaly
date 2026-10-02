@@ -103,9 +103,10 @@ describe('phase 1B processors', () => {
     const warn = vi.fn();
     const logger = { warn } as unknown as WorkerDeps['logger'];
     const cards = createSellerCards({ ...deps, telegram: null, logger });
-    await expect(
-      cards.post({ orderId: '00000000-0000-7000-8000-000000000000' }),
-    ).resolves.toBeUndefined();
+    await expect(cards.post({ orderId: '00000000-0000-7000-8000-000000000000' })).resolves.toEqual({
+      status: 'skipped',
+      fallbackReason: 'driver_unavailable',
+    });
     expect(warn).toHaveBeenCalledOnce();
   });
 });

@@ -121,7 +121,10 @@ describe.skipIf(!hasTestDatabase)('createWorkerDeps', () => {
   it('builds the seller bot API from the token and hands the deps to the cards factory', async () => {
     const posted: string[] = [];
     const cards: SellerCardPort = {
-      post: async (input) => void posted.push(input.orderId),
+      post: async (input) => {
+        posted.push(input.orderId);
+        return { status: 'posted' };
+      },
       refresh: async () => undefined,
       sendHandoverQr: async () => undefined,
     };

@@ -24,7 +24,7 @@ import {
   type Db,
 } from '@detaly/db';
 import { CLIENT_TIME_ZONE, formatRub } from '@detaly/domain';
-import { newNonce } from '@detaly/notify';
+import { FALLBACK_REASONS, newNonce } from '@detaly/notify';
 import {
   availableStaffActions,
   loadClientPhone,
@@ -243,11 +243,13 @@ export function createCardService(
   const service: CardService = {
     async post({ orderId, template, orderEventId, note }) {
       const chatId = sellerChat('post', orderId);
-      if (chatId === null || api === null) return;
+      if (chatId === null || api === null) {
+        return { status: 'skipped', fallbackReason: FALLBACK_REASONS.driverUnavailable };
+      }
       const data = await loadCard(orderId, { headline: headlineFor(template), note });
       if (data === null) {
         logger.warn({ orderId }, 'seller card: order not found');
-        return;
+        return { status: 'skipped', fallbackReason: 'order_not_found' };
       }
       const nonce = newNonce();
       const [row] = await db
@@ -276,6 +278,7 @@ export function createCardService(
         { orderNumber: data.order.number, template: template ?? null },
         'seller card posted',
       );
+      return { status: 'posted' };
     },
 
     async refresh(orderId) {

@@ -168,7 +168,7 @@ grep -cE '\+79[0-9]{9}' /tmp/web-1a.log   # 0: телефонов в логах 
 | `ADMIN_BASIC_AUTH` | пусто | `user:password` админки; пусто — `/admin` отвечает 404 |
 | `ROSSKO_ALLOW_CHECKOUT` | `false` | `true` разрешает GetCheckout; при `false` заказ уходит в «требует внимания» для ручного заказа в ЛК Rossko |
 | `ROSSKO_DELIVERY_ID`, `ROSSKO_PAYMENT_ID`, `ROSSKO_ADDRESS_ID` | пусто | id доставки, оплаты и адреса из GetCheckoutDetails; без первых двух GetCheckout не вызывается |
-| `TG_SELLER_BOT_TOKEN`, `TG_SELLER_CHAT_ID` | пусто | бот продавца и чат продавцов (фаза 0); без них карточки не отправляются (в логе worker `seller card: … skipped`), алерты записываются как `skipped` |
+| `TG_SELLER_BOT_TOKEN`, `TG_SELLER_CHAT_ID` | пусто | бот продавца и чат продавцов (фаза 0); без них карточки не отправляются (в логе worker `seller card: … skipped`), карточки и алерты записываются в `notifications` как `skipped` |
 | `SMS_PROVIDER` | `none` | `smsaero` или `smsc`; `none` — клиентские уведомления без мессенджера `skipped` |
 | `SMS_LOGIN` [1B] | пусто | логин SMS Aero (e-mail) или smsc.ru |
 | `SMS_API_KEY`, `SMS_SENDER` | пусто | ключ (пароль) и подпись отправителя (для SMS Aero обязательна) |

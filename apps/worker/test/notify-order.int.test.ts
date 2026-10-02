@@ -379,6 +379,49 @@ describe.skipIf(!inject('workerDatabaseUrl'))('notify/order (worker-ops)', () =>
     }
   });
 
+  it('a sellers card that reached no chat (no seller bot) is skipped, never sent', async () => {
+    clock.now = new Date(T0.getTime() + 6 * 24 * HOUR);
+    const skipping = await createTestDeps({
+      db,
+      now: () => clock.now,
+      envOverrides: ENV,
+      sellerCards: {
+        async post() {
+          return { status: 'skipped', fallbackReason: 'driver_unavailable' };
+        },
+        async refresh() {},
+        async sendHandoverQr() {},
+      },
+    });
+    try {
+      const order = await seedOrder(skipping.deps.db, { status: 'needs_attention', paid: true });
+      expect(await proposeNewEta(skipping, order.orderId)).toMatchObject({ ok: true });
+      const [row] = (await outboxOf(db, order.orderId)).filter((r) => r.queue === 'notify');
+      await processNotify(job(row!.data), skipping.deps);
+      const [staff] = (await outboxOf(db, order.orderId)).filter(
+        (r) => r.data.template === 'staff_approval_unreachable',
+      );
+
+      expect(await processNotify(job(staff!.data), skipping.deps)).toEqual({
+        status: 'skipped',
+        fallbackReason: 'driver_unavailable',
+      });
+      const [card] = await rowsOfEvent(db, String(staff!.data.orderEventId));
+      expect(card).toMatchObject({
+        channel: 'telegram',
+        status: 'skipped',
+        fallbackReason: 'driver_unavailable',
+        sentAt: null,
+        attempts: 1,
+      });
+      expect(await processNotify(job(staff!.data), skipping.deps)).toMatchObject({
+        status: 'duplicate',
+      });
+    } finally {
+      await skipping.close();
+    }
+  });
+
   it('Verification 7: without any channel «Новый срок» is refused; the order stays in needs_attention', async () => {
     clock.now = new Date(T0.getTime() + 5 * 24 * HOUR);
     const off = await createTestDeps({

@@ -17,6 +17,13 @@ import type { Queues } from './queues';
  * Seller bot cards (decision Б17): the bot renders them from the database state, one message and
  * one nonce per card (table seller_cards).
  */
+/**
+ * What SellerCardPort.post did: `skipped` when nothing reached the chat (no seller bot token or
+ * chat id, or the order is gone), so the notifications row is not recorded as `sent`.
+ */
+export type SellerCardPostResult =
+  { status: 'posted' } | { status: 'skipped'; fallbackReason: string };
+
 export interface SellerCardPort {
   /** A new card for the order; closes the order's older open cards. */
   post(input: {
@@ -26,7 +33,7 @@ export interface SellerCardPort {
     orderEventId?: string | null;
     /** Extra line without PD. */
     note?: string | null;
-  }): Promise<void>;
+  }): Promise<SellerCardPostResult>;
   /** Redraws the latest open card of the order (new buttons, e.g. «Выдал» after the receipt). */
   refresh(orderId: string): Promise<void>;
   /** QR photo of the handover payment, to the sellers chat only (never to the client). */

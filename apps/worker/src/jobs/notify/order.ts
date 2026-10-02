@@ -263,8 +263,9 @@ async function notifySellers(ctx: NotifyContext): Promise<NotifyOrderOutcome> {
   const outcome = await deps.db.transaction(async (tx) => {
     const status = await lockRow(tx, row.id);
     if (status !== 'queued') return { kind: 'duplicate' as const, status };
+    let posted;
     try {
-      await deps.sellerCards.post({
+      posted = await deps.sellerCards.post({
         orderId,
         template: data.template,
         orderEventId: data.orderEventId,
@@ -284,6 +285,19 @@ async function notifySellers(ctx: NotifyContext): Promise<NotifyOrderOutcome> {
       return { kind: 'error' as const, error };
     }
     const at = deps.now();
+    if (posted.status === 'skipped') {
+      // Nothing reached the sellers chat (no bot token / chat id): never recorded as `sent`.
+      await tx
+        .update(notifications)
+        .set({
+          status: 'skipped',
+          fallbackReason: posted.fallbackReason,
+          attempts: sql`${notifications.attempts} + 1`,
+          updatedAt: at,
+        })
+        .where(eq(notifications.id, row.id));
+      return { kind: 'skipped' as const, fallbackReason: posted.fallbackReason };
+    }
     await tx
       .update(notifications)
       .set({
@@ -299,6 +313,8 @@ async function notifySellers(ctx: NotifyContext): Promise<NotifyOrderOutcome> {
   if (outcome.kind === 'duplicate')
     return { status: 'duplicate', existing: outcome.status ?? 'missing' };
   if (outcome.kind === 'error') throw outcome.error;
+  if (outcome.kind === 'skipped')
+    return { status: 'skipped', fallbackReason: outcome.fallbackReason };
   return { status: 'sent', channel: 'telegram' };
 }
 

@@ -15,6 +15,8 @@ export default defineConfig([
     '**/playwright-report/**',
     '**/next-env.d.ts',
     'packages/db/drizzle/**',
+    // Agent worktrees are full checkouts of other branches (gitignored).
+    '.claude/**',
   ]),
   js.configs.recommended,
   tseslint.configs.recommended,

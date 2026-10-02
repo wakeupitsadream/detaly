@@ -58,6 +58,7 @@ export function recordingSellerCards(): RecordingSellerCards {
     calls,
     async post(input) {
       calls.push({ method: 'post', input });
+      return { status: 'posted' };
     },
     async refresh(orderId) {
       calls.push({ method: 'refresh', orderId });

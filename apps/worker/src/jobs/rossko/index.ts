@@ -12,7 +12,12 @@ export { processCheckout, processRecover, UNMATCHED_ITEM_ERROR } from './checkou
 export type { CheckoutFailureReason, CheckoutJobResult, SettleResult } from './checkout';
 export { processRecheck, RECHECK_UNAVAILABLE_NOTE, SupplierSearchError } from './recheck';
 export type { RecheckJobResult } from './recheck';
-export { RECOVER_DELAY_MS, isFinalAttempt } from './shared';
+export {
+  CRITICAL_LIMITER_WAIT_MS,
+  RECOVER_DELAY_MS,
+  isFinalAttempt,
+  recoverDelayMs,
+} from './shared';
 
 export async function processRossko(job: Job, deps: WorkerDeps): Promise<unknown> {
   switch (job.name) {

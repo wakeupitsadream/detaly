@@ -1,4 +1,5 @@
 // Helpers shared by the rossko queue jobs (recheck, checkout, recover).
+import type { Env } from '@detaly/config';
 import { isUuid, type ActorRef } from '@detaly/orders';
 import { UnrecoverableError, type Job } from 'bullmq';
 import type { WorkerDeps } from '../../deps';
@@ -7,11 +8,32 @@ import type { WorkerDeps } from '../../deps';
 export const SYSTEM_ACTOR: ActorRef = { type: 'system', id: 'rossko', staffRole: null };
 
 /**
- * Delay before the recovery lookup after an ambiguous GetCheckout failure (decision Б14): Rossko
- * may list a fresh order with a lag, and a checkout job declared stalled while its GetCheckout
- * is still in flight (ROSSKO_TIMEOUT_MS, 15 s by default) must finish before the lookup.
+ * Minimum delay before the recovery lookup after an ambiguous GetCheckout failure (decision
+ * Б14): Rossko may list a fresh order with a lag. See recoverDelayMs for the in-flight case.
  */
 export const RECOVER_DELAY_MS = 60_000;
+
+/**
+ * How long a critical Rossko call may wait for the per-minute limiter before it is sent: the
+ * default `criticalMaxWaitMs` of createRosskoClient. The claim (`called_at`) is committed before
+ * that wait, so a stalled run may reach Rossko this long plus ROSSKO_TIMEOUT_MS after it.
+ */
+export const CRITICAL_LIMITER_WAIT_MS = 60_000;
+
+/** Slack on top of the limiter wait and the call timeout (clock skew, slow commit). */
+const RECOVER_SLACK_MS = 15_000;
+
+/**
+ * Delay of rossko/recover after the claim: at least RECOVER_DELAY_MS, and long enough for a
+ * run that is still waiting for the limiter or for its GetCheckout answer to finish first, so
+ * the lookup does not read "not found" for an order that is about to be created.
+ */
+export function recoverDelayMs(env: Pick<Env, 'ROSSKO_TIMEOUT_MS'>): number {
+  return Math.max(
+    RECOVER_DELAY_MS,
+    CRITICAL_LIMITER_WAIT_MS + env.ROSSKO_TIMEOUT_MS + RECOVER_SLACK_MS,
+  );
+}
 
 /**
  * Whether this run is the job's last attempt (BullMQ counts `attemptsMade` after failures).

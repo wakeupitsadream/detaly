@@ -44,6 +44,7 @@ import {
   processRossko,
   RECHECK_UNAVAILABLE_NOTE,
   RECOVER_DELAY_MS,
+  recoverDelayMs,
   UNMATCHED_ITEM_ERROR,
 } from '../src/jobs/rossko';
 import { createTestDeps, workerTestDatabaseUrl, type TestDeps } from './helpers/test-deps';
@@ -839,7 +840,11 @@ describe.skipIf(!enabled)('rossko queue', () => {
       expect(sending?.error).toMatch(/timeout/);
       const queued = await outboxRow(h.t, `recover:${attempt!.id}`);
       expect(queued).toMatchObject({ queue: 'rossko', name: 'recover' });
-      expect(queued!.availableAt.getTime()).toBe(T0.getTime() + RECOVER_DELAY_MS);
+      // Long enough for a stalled run still waiting for the limiter (60 s) and its timeout.
+      expect(queued!.availableAt.getTime()).toBe(T0.getTime() + recoverDelayMs(h.t.deps.env));
+      expect(recoverDelayMs(h.t.deps.env)).toBeGreaterThanOrEqual(
+        60_000 + h.t.deps.env.ROSSKO_TIMEOUT_MS,
+      );
       expect((await orderOf(h.t, seeded.orderId)).status).toBe('ordering');
 
       // called_at is set: a repeated checkout job goes to recovery, GetCheckout stays at 1.
@@ -1011,6 +1016,86 @@ describe.skipIf(!enabled)('rossko queue', () => {
       expect(h.caller.count('GetCheckout')).toBe(0);
       const [row] = await supplierOrdersOf(h.t, seeded.orderId);
       expect(row).toMatchObject({ status: 'failed', error: 'order_status:refund_pending' });
+    });
+
+    it('an order cancelled while GetCheckout is in flight: alert with the Russian status', async () => {
+      const h = await make();
+      const seeded = await seedOrder(h.t, OK_LINES);
+      await runRecheck(h.t, seeded.orderId);
+      const [attempt] = await supplierOrdersOf(h.t, seeded.orderId);
+      h.t.deps.rossko = {
+        ...h.client,
+        checkout: async (request) => {
+          const result = await h.client.checkout(request);
+          await h.t.deps.db
+            .update(orders)
+            .set({ status: 'cancelled' })
+            .where(eq(orders.id, seeded.orderId));
+          return result;
+        },
+      };
+      const result = await runCheckout(h.t, attempt!.id);
+      expect(result).toMatchObject({ outcome: 'created', transition: { ok: false } });
+      expect(h.t.fakes.alerts.calls).toEqual([
+        expect.objectContaining({
+          audience: 'sellers',
+          dedupeKey: `rossko-late:${attempt!.id}`,
+          text: expect.stringContaining('заказ уже в статусе «отменён»'),
+        }),
+      ]);
+      expect(h.t.fakes.alerts.calls[0]?.text).not.toContain('cancelled');
+    });
+
+    it('a late answer already recorded by recovery (same Rossko orders) raises no alert', async () => {
+      const h = await make();
+      const seeded = await seedOrder(h.t, OK_LINES);
+      await runRecheck(h.t, seeded.orderId);
+      const [attempt] = await supplierOrdersOf(h.t, seeded.orderId);
+      h.t.deps.rossko = {
+        ...h.client,
+        checkout: async (request) => {
+          const result = await h.client.checkout(request);
+          // Recovery settled the attempt while this run was still waiting for the answer.
+          await h.t.deps.db
+            .update(supplierOrders)
+            .set({ status: 'created', rosskoOrderIds: result.orderIds })
+            .where(eq(supplierOrders.id, attempt!.id));
+          return result;
+        },
+      };
+      expect(await runCheckout(h.t, attempt!.id)).toEqual({
+        outcome: 'stale',
+        supplierOrderId: attempt!.id,
+      });
+      expect(h.caller.count('GetCheckout')).toBe(1);
+      expect(h.t.fakes.alerts.calls).toEqual([]);
+    });
+
+    it('a late answer after the attempt was closed as failed raises the alert', async () => {
+      const h = await make();
+      const seeded = await seedOrder(h.t, OK_LINES);
+      await runRecheck(h.t, seeded.orderId);
+      const [attempt] = await supplierOrdersOf(h.t, seeded.orderId);
+      h.t.deps.rossko = {
+        ...h.client,
+        checkout: async (request) => {
+          const result = await h.client.checkout(request);
+          await h.t.deps.db
+            .update(supplierOrders)
+            .set({ status: 'failed', error: 'not_found_by_comment' })
+            .where(eq(supplierOrders.id, attempt!.id));
+          return result;
+        },
+      };
+      expect(await runCheckout(h.t, attempt!.id)).toMatchObject({ outcome: 'stale' });
+      expect(h.t.fakes.alerts.calls).toEqual([
+        expect.objectContaining({
+          dedupeKey: `rossko-late:${attempt!.id}`,
+          text: expect.stringContaining('попытка уже закрыта как несостоявшаяся'),
+        }),
+      ]);
+      expect(h.t.fakes.alerts.calls[0]?.text).toContain(seeded.number);
+      expect(h.t.fakes.alerts.calls[0]?.text).not.toContain(seeded.phone.slice(2));
     });
 
     it('missing ids before the call (RosskoConfigError) → checkout_failed', async () => {

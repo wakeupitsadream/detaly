@@ -25,12 +25,13 @@
  * Every row update and its transition run in one transaction under the order row lock (the order
  * first, then the supplier_orders row, like the engine).
  */
-import { and, eq, isNull, supplierOrders } from '@detaly/db';
+import { and, eq, isNull, orders, supplierOrders } from '@detaly/db';
 import type { Kop } from '@detaly/domain';
 import {
   applyTransition,
   enqueueOutbox,
   loadOrderSettings,
+  ORDER_STATUS_LABELS,
   loadOrderSnapshot,
   type ApplyResult,
   type AttentionReason,
@@ -57,11 +58,11 @@ import {
 import type { Job } from 'bullmq';
 import type { WorkerDeps } from '../../deps';
 import {
-  RECOVER_DELAY_MS,
   SYSTEM_ACTOR,
   errorText,
   isFinalAttempt,
   nudge,
+  recoverDelayMs,
   uuidField,
 } from './shared';
 
@@ -136,7 +137,7 @@ function matchRequest(items: readonly OrderItemRow[]): CheckoutMatchRequest[] {
 }
 
 async function queueRecover(
-  deps: WorkerDeps,
+  deps: Pick<WorkerDeps, 'db' | 'env' | 'now' | 'engine'>,
   row: Pick<SupplierOrderRow, 'id' | 'orderId'>,
 ): Promise<void> {
   await enqueueOutbox(deps.db, {
@@ -144,7 +145,7 @@ async function queueRecover(
     name: 'recover',
     key: `recover:${row.id}`,
     data: { supplierOrderId: row.id, orderId: row.orderId },
-    availableAt: new Date(deps.now().getTime() + RECOVER_DELAY_MS),
+    availableAt: new Date(deps.now().getTime() + recoverDelayMs(deps.env)),
   });
   nudge(deps);
 }
@@ -210,27 +211,49 @@ export async function processCheckout(job: Job, deps: WorkerDeps): Promise<Check
     })),
   };
 
-  // The claim is its own committed statement: from here on a retry must not call GetCheckout.
+  // The claim is its own committed transaction: from here on a retry must not call GetCheckout.
+  // It holds the order row lock (as every transition does), so a cancellation either lands
+  // before the claim (nothing is sent) or after it (the result is reported as late).
   const now = deps.now();
-  const claimed = await deps.db
-    .update(supplierOrders)
-    .set({
-      calledAt: now,
-      request: {
-        comment,
-        items: items.map((item, i) => ({ orderItemId: item.id, ...request.items[i] })),
-      },
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(supplierOrders.id, row.id),
-        eq(supplierOrders.status, 'sending'),
-        isNull(supplierOrders.calledAt),
-      ),
-    )
-    .returning({ id: supplierOrders.id });
-  if (claimed.length === 0) {
+  const claim = await deps.db.transaction(async (tx: Tx) => {
+    const [locked] = await tx
+      .select({ status: orders.status })
+      .from(orders)
+      .where(eq(orders.id, row.orderId))
+      .for('update');
+    const current = locked?.status ?? null;
+    if (current === null || !(CHECKOUT_STATUSES as readonly string[]).includes(current)) {
+      await tx
+        .update(supplierOrders)
+        .set({ status: 'failed', error: `order_status:${current ?? 'missing'}`, updatedAt: now })
+        .where(and(eq(supplierOrders.id, row.id), eq(supplierOrders.status, 'sending')));
+      return { claimed: false as const, cancelled: current ?? 'missing' };
+    }
+    const updated = await tx
+      .update(supplierOrders)
+      .set({
+        calledAt: now,
+        request: {
+          comment,
+          items: items.map((item, i) => ({ orderItemId: item.id, ...request.items[i] })),
+        },
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(supplierOrders.id, row.id),
+          eq(supplierOrders.status, 'sending'),
+          isNull(supplierOrders.calledAt),
+        ),
+      )
+      .returning({ id: supplierOrders.id });
+    return { claimed: updated.length > 0, cancelled: null };
+  });
+  if (claim.cancelled !== null) {
+    log.info({ status: claim.cancelled }, 'checkout cancelled: order is no longer ordering');
+    return { outcome: 'cancelled', status: claim.cancelled };
+  }
+  if (!claim.claimed) {
     // Another run claimed the attempt meanwhile; whatever it did, recovery decides.
     await queueRecover(deps, row);
     return { outcome: 'recover_queued', reason: 'claimed' };
@@ -381,7 +404,8 @@ function planResult(items: readonly OrderItemRow[], result: CheckoutResult): Res
 
 /**
  * Rossko invoice of the attempt (settings rossko.prepay_invoice): the Rossko order numbers and
- * Σ covered lines + delivery.
+ * Σ ordered lines + delivery. The lines are Rossko's own ItemsList (it bills what it ordered,
+ * including a line we cannot match); only without ItemsList the covered items count.
  * VERIFY: the invoice number equals the Rossko order id and its amount equals the lines plus
  * DeliveryCost (docs/external.md R7); a line without a price counts at our supplier price.
  */
@@ -392,9 +416,11 @@ function invoiceOf(
 ): { invoiceNumber: string | null; invoiceAmountKop: Kop } {
   const byId = new Map(items.map((item) => [item.id, item]));
   let linesKop = 0;
-  if (plan.match !== null) {
-    for (const { id, line } of plan.match.covered) {
-      const item = byId.get(id);
+  if (result.items.length > 0) {
+    const coveredBy = new Map((plan.match?.covered ?? []).map(({ id, line }) => [line, id]));
+    for (const line of result.items) {
+      const id = coveredBy.get(line);
+      const item = id === undefined ? undefined : byId.get(id);
       const unitKop = line.priceKop ?? item?.priceSupplierAtOrderKop ?? 0;
       linesKop += unitKop * line.count;
     }
@@ -411,12 +437,36 @@ function invoiceOf(
 }
 
 /** Alert text without PD: the order number and the Rossko numbers only. */
-function lateResultAlert(orderNumber: string, status: string, rosskoIds: string[]): string {
+function lateResultAlert(orderNumber: string, situation: string, rosskoIds: string[]): string {
   const ids = rosskoIds.length > 0 ? ` (№ ${rosskoIds.join(', ')})` : '';
   return (
-    `Заказ ${orderNumber}: Rossko принял заказ${ids}, но заказ уже в статусе «${status}». ` +
+    `Заказ ${orderNumber}: Rossko принял заказ${ids}, но ${situation}. ` +
     'Проверьте ЛК Rossko и при необходимости отмените заказ у поставщика.'
   );
+}
+
+/** «заказ уже в статусе «отменён»» for a refused transition. */
+function orderStatusSituation(status: string): string {
+  const label = (ORDER_STATUS_LABELS as Record<string, string>)[status] ?? status;
+  return `заказ уже в статусе «${label}»`;
+}
+
+/**
+ * A result that arrives after the attempt was settled by another run. null when that run
+ * recorded the very same Rossko orders (recovery found what this GetCheckout created): nothing
+ * to report, an alert would make the seller cancel a correct supplier order.
+ */
+function staleSituation(
+  row: SupplierOrderRow | undefined,
+  rosskoIds: readonly string[],
+): string | null {
+  if (row?.status === 'created') {
+    const known = new Set(row.rosskoOrderIds ?? []);
+    if (rosskoIds.every((id) => known.has(id))) return null;
+    return 'эта попытка уже отмечена с другими номерами Rossko';
+  }
+  if (row?.status === 'failed') return 'эта попытка уже закрыта как несостоявшаяся';
+  return 'эта попытка уже закрыта';
 }
 
 async function settle(
@@ -546,14 +596,14 @@ async function settle(
 
   if (settled.stale) {
     // Recovery (or another run) settled the attempt first. A real answer is still reported.
-    if (outcome.kind === 'result' && outcome.result.orderIds.length > 0) {
+    const situation =
+      outcome.kind === 'result' && outcome.result.orderIds.length > 0
+        ? staleSituation(settled.row, outcome.result.orderIds)
+        : null;
+    if (outcome.kind === 'result' && situation !== null) {
       await deps.alerts.send({
         audience: 'sellers',
-        text: lateResultAlert(
-          settled.orderNumber ?? '—',
-          settled.row?.status ?? 'unknown',
-          outcome.result.orderIds,
-        ),
+        text: lateResultAlert(settled.orderNumber ?? '—', situation, outcome.result.orderIds),
         dedupeKey: `rossko-late:${supplierOrderId}`,
       });
     }
@@ -571,7 +621,11 @@ async function settle(
     if (settled.result !== null && settled.plan?.created) {
       await deps.alerts.send({
         audience: 'sellers',
-        text: lateResultAlert(orderNumber, settled.status, settled.result.orderIds),
+        text: lateResultAlert(
+          orderNumber,
+          orderStatusSituation(settled.status),
+          settled.result.orderIds,
+        ),
         dedupeKey: `rossko-late:${supplierOrderId}`,
       });
     }

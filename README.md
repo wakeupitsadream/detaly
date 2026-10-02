@@ -2,13 +2,13 @@
 
 Платформа перепродажи автозапчастей для Оренбурга: сайт, боты MAX и Telegram, приём оплаты через ЮKassa, заказ у поставщика Rossko, выдача и установка в автосервисе «Сервис56». Бренд, реквизиты продавца и точка выдачи берутся только из переменных окружения (`BRAND_NAME`, `SELLER_REQUISITES_*`, `PICKUP_*`).
 
-Статус: фаза 0 завершена (каркас, поиск на фикстурах Rossko, документы, бот продавца, инфраструктура). Фаза 1A — корзина, оформление с согласиями и страница заказа **без оплаты и без уведомлений**: оплата, подтверждение и уведомления появятся в фазе 1B. В проде оформление до 1B не включается (`docs/runbook.md`, раздел 11.1).
+Статус: фазы 0 и 1A завершены (каркас, поиск на фикстурах Rossko, документы, бот продавца, инфраструктура; корзина, оформление с согласиями и страница заказа). Фаза 1B — оплата через ЮKassa с чеками, полная машина состояний заказа, карточки и кнопки в боте продавца, заказ у Rossko с защитой от двойной отправки, мини-админка, сверка платежей и dead-letter. Код 1B проверен на эмуляции ЮKassa (msw), фикстурах Rossko и подменённом транспорте Telegram; живой прогон — на stage по `docs/runbook.md`, раздел 12.3. Оформление в проде включается только при условиях раздела 12.11 runbook.
 
 ## С чего начать
 
 1. `docs/PLAN.md` — утверждённый поэтапный план: архитектура, модель данных, машина состояний заказа, интеграции (Rossko SOAP, ЮKassa, MAX/Telegram, VIN), UX, фазы с приёмкой, внешние и юридические шаги, риски, бюджет, проверка, первая неделя.
-2. `docs/phase0-implementation.md`, `docs/phase-1a-implementation.md` — разбивка фаз на пакеты, решения по умолчанию, тест-кейсы, критерии приёмки.
-3. `docs/runbook.md` — эксплуатация: установка, деплой, откат, бэкапы, инциденты, оформление заказов 1A.
+2. `docs/phase0-implementation.md`, `docs/phase-1a-implementation.md`, `docs/phase-1b-implementation.md` — разбивка фаз на пакеты, решения по умолчанию, тест-кейсы, критерии приёмки.
+3. `docs/runbook.md` — эксплуатация: установка, деплой, откат, бэкапы, инциденты, оформление заказов 1A, оплата, чеки, возвраты, бот продавца и админка 1B (раздел 12).
 4. `docs/external.md` — журнал внешних заявок и вопросов (Rossko, ЮKassa, РКН), в том числе VERIFY-вопросы к живому API.
 5. `docs/research/research-brief.md`, `docs/research/design-review.md` — исследование и итоги проектирования.
 
@@ -17,12 +17,15 @@
 | Путь | Что |
 |---|---|
 | `apps/web` | Next.js 16: сайт, API, `src/proxy.ts` (лимиты и заголовки) |
-| `apps/worker` | BullMQ и бот продавца (grammY) |
+| `apps/worker` | BullMQ (очереди 1B, outbox, dead-letter) и бот продавца (grammY) |
 | `packages/config` | схема env (`getEnv`), логгер, Redis-утилиты; env читается только через этот пакет |
 | `packages/db` | Drizzle-схема, миграции, сид, тестовые базы |
-| `packages/domain` | чистая логика: цены, даты, корзина, оформление, машина состояний |
+| `packages/domain` | чистая логика: цены, даты, корзина, оформление, машина состояний, чеки, возвраты, перепроверка |
+| `packages/orders` | движок заказов: переходы под блокировкой строки, эффекты и `outbox`, действия продавца и клиента, применение ответов ЮKassa |
 | `packages/rossko` | клиент Rossko (SOAP), лимитер, кэш, фикстуры `fx:` |
-| `packages/payments`, `packages/notify`, `packages/vin` | ЮKassa, уведомления, VIN (фазы 1B и далее) |
+| `packages/payments` | ЮKassa: платежи, чеки, возвраты, разбор уведомлений, allowlist IP; msw-эмуляция для тестов (`@detaly/payments/testing`) |
+| `packages/notify` | шаблоны уведомлений, Telegram и SMS (SMS Aero, smsc.ru), лимиты и бюджет SMS, кодек `callback_data` |
+| `packages/vin` | VIN (фазы 1C и далее) |
 | `content/legal` | тексты оферты, политики, согласий: `<kind>/<version>.md` |
 | `infra` | compose, Caddyfile, `deploy.sh`, бэкап |
 
@@ -72,8 +75,8 @@ pnpm dev:web                                                       # http://loca
 
 | Переменная | По умолчанию | Что |
 |---|---|---|
-| `CART_TTL_DAYS` | `30` | срок жизни cookie корзины `cart` в днях (`Max-Age`). Строки корзин в базе по нему не удаляются: очистка — housekeeping фазы 1B |
-| `RKN_NOTICE_NUMBER` | пусто | номер записи в реестре операторов ПД; пока пусто, оформление закрыто. В проде до 1B не задавать |
+| `CART_TTL_DAYS` | `30` | срок жизни cookie корзины `cart` в днях (`Max-Age`). Строки корзин в базе по нему не удаляются; очистки брошенных корзин нет и в 1B |
+| `RKN_NOTICE_NUMBER` | пусто | номер записи в реестре операторов ПД; пока пусто, оформление закрыто. В проде задавать только при условиях `docs/runbook.md`, раздел 12.11 |
 | `LEGAL_OFFER_VERSION`, `LEGAL_PRIVACY_VERSION`, `LEGAL_CONSENT_PD_VERSION`, `LEGAL_CONSENT_MARKETING_VERSION` | пусто | опубликованные версии документов; при `NODE_ENV=production` без опубликованных оферты, политики и согласия ПД оформление закрыто |
 | `APP_BASE_URL` | `http://localhost:3000` | публичный origin сайта: с ним сравнивается `Origin` изменяющих запросов |
 | `TRUSTED_IP_HEADER` | `none` | `x-real-ip` за Caddy (в compose задан). При `none` все клиенты делят один бакет лимитов, а `consents.ip` пишется пустым |
@@ -105,5 +108,74 @@ grep -cE '\+79[0-9]{9}' /tmp/web-1a.log   # 0: телефонов в логах 
 ```
 
 Важно: standalone-сервер работает с `NODE_ENV=production`, поэтому оформление в e2e откроется только с опубликованными версиями документов (`LEGAL_*_VERSION` при сиде) и `APP_BASE_URL`, равным адресу сервера. `TRUSTED_IP_HEADER=x-real-ip` нужен, чтобы каждый прогон шёл со своим случайным `X-Real-IP` из `playwright.config.ts` и не упирался в лимиты прошлых прогонов. Поэтому e2e идёт в отдельной базе `detaly_e2e` (вторая строка): сид публикует версии, а опубликованный текст потом нельзя изменить, и рабочую базу разработки публиковать не нужно.
+
+## Фаза 1B: оплата, чеки, бот продавца, админка
+
+Эксплуатация, включение оплаты и прогон проверки на stage — `docs/runbook.md`, раздел 12; разбивка и решения Б1–Б30 — `docs/phase-1b-implementation.md`; неподтверждённые поля внешних API — `docs/external.md`, раздел 7.
+
+Как устроено: каждый переход заказа идёт через движок `packages/orders` (`select … for update` строки заказа, охраны таблицы переходов `packages/domain`). Переход, запись `order_events` и его последствия (уведомления, платежи, возвраты, чеки, заказ у Rossko) пишутся одной транзакцией: последствия — строками таблицы `outbox`. Web после коммита публикует сигнал в Redis-канал `detaly:outbox`, воркер забирает строки (`for update skip locked`, плюс проход раз в 2 с) и ставит задачи в BullMQ. Идемпотентность держится на строках базы: повтор задачи не создаёт второго платежа, чека, сообщения или GetCheckout.
+
+### Страницы и эндпоинты
+
+Изменяющие запросы сайта, как и в 1A, проверяют `Origin`. Ответы с `Cache-Control: no-store`.
+
+| Метод и путь | Кто | Тело | Ответ |
+|---|---|---|---|
+| `POST /api/orders/<token>/pay` | клиент, кнопка «Оплатить N ₽» на `/o/<token>` | форма или JSON без полей | форма: 303 на страницу оплаты ЮKassa (`confirmation_url`), повторный клик ведёт на тот же платёж; ошибка — 303 на `/o/<token>?pay=error` или `?pay=unavailable`. JSON: 200 `{redirectUrl}`; 403 `forbidden_origin`; 404 `not_found`; 409 `not_payable` / `payment_unavailable`; 502 `payment_failed`; 503 `payments_disabled` (оплата не настроена); 500 `internal`. После оплаты ЮKassa возвращает клиента на `/o/<token>?paid=1` («Проверяем оплату…») |
+| `POST /api/orders/<token>/actions` | клиент на `/o/<token>` | JSON `{action, itemId?, last4?}`; `action`: `confirm` («Подтверждаю»), `approve` («Согласен»), `prepay_now` («Оплатить заранее») — по ссылке; `refund_request` («Вернуть деньги»), `refuse` («Отказаться от заказа»), `item_cancel` («Отменить позицию», с `itemId`) — дополнительно последние 4 цифры телефона | 200 `{status}`; 400 `bad_request`; 422 `validation` / `wrong_digits` (с `attemptsLeft`); 429 `too_many_attempts` (общий с отменой 1A счётчик: 5 неверных за час на заказ); 409 `not_allowed`; 404 `not_found`; 403 `forbidden_origin`; 503 `unavailable` (нет Redis для счётчика) |
+| `POST /api/webhooks/yookassa` | ЮKassa | уведомление ЮKassa (`payment.succeeded`, `payment.canceled`, `refund.succeeded`; `payment.waiting_for_capture` тоже принимается) | 200 `{}` (и на повтор); 403 — отправитель не прошёл проверку: нужен `TRUSTED_IP_HEADER=x-real-ip` и адрес из `YOOKASSA_WEBHOOK_IP_ALLOWLIST`, иначе отказ всем (fail closed); 413 — тело больше 64 КБ; 400 — не уведомление ЮKassa; 500 — ошибка записи (ЮKassa повторит). Уведомление только записывается (`webhook_events` + `outbox`); воркер перечитывает платёж или возврат через API |
+| `GET /admin` | владелец, Basic auth `ADMIN_BASIC_AUTH` | — | список заказов: фильтр по статусу и «Требуют внимания», поиск по номеру `DT-…` и последним 4 цифрам телефона, 50 на страницу |
+| `GET /admin/orders/<id>` | владелец | — | карточка: полный телефон и имя (единственное место), позиции, платежи, чеки, возвраты, заказы Rossko, согласования, возвраты поставщику, журнал, QR на оплату, формы действий |
+| `POST /api/admin/orders/<id>/actions` | владелец, Basic auth | форма `application/x-www-form-urlencoded`: `action` (коды бота продавца `recheck`, `refused`, `cancel`, `anyway`, `ialt`, `ieta`, `icancel`, `iprob`, `iarr`, `invpaid`, `came`, `rcpt`, `qr`, `handed`, `noshow` и админские `manual_supplier_order`, `supplier_return_accept`, `supplier_return_reject`, `stock_item`, `refund_payment`) и поля действия (`itemId`, `offerKey`, `etaDate`, `problem`, `ppNumber` + `ppDate`, `rosskoOrderIds`, `supplierReturnId`, `amountRub`, `paymentId`, `reason`, `note`); необратимые действия требуют `confirm=on` | 303 обратно на карточку с `?done=<сообщение>`; 409 — страница с отказом движка (например, «Выдал» без чека — «Ждём чек»); 400 — форма не прочитана или поле неверно; 401 с `WWW-Authenticate`; 404 без `ADMIN_BASIC_AUTH`; 403 — чужой `Origin` |
+
+`/admin` и `/api/admin/*` закрыты Basic auth в `apps/web/src/proxy.ts` (сравнение за постоянное время, 20 неверных паролей в час на IP-бакет — 429), отвечают `X-Robots-Tag: noindex, nofollow`, `Referrer-Policy: no-referrer`; `/admin` запрещён в `robots.txt`. Без `ADMIN_BASIC_AUTH` админки нет (404). Пользователь админки действует как владелец (`actor_id = 'admin'`).
+
+Лимиты на IP-бакет (в дополнение к 1A): «Оплатить» — 10 в час, действия клиента — 20 в час. Вебхук не лимитируется (его закрывает allowlist).
+
+На `/o/<token>` в 1B добавились: блок оплаты (без настроенной ЮKassa — «Оплата подключается»), «Подтверждаю», предложение аналога или нового срока с «Согласен» / «Вернуть деньги» и сроком ответа, «Жду до <дата>» и «Отменить позицию» при частичном приезде, «Отказаться от заказа», «Оплатить заранее», код выдачи с `ready`, блок возврата, фразы ленты для событий 1B. Ссылка на оплату и QR клиенту в мессенджер не уходят никогда.
+
+### Бот продавца
+
+Бот (`apps/worker/src/bots/seller`, long polling) рисует карточку заказа из базы: номер, схема оплаты, сумма, дата, позиции «Бренд Артикул × кол-во — состояние», клиент `•••4567`, причина проблемы и кнопки, которые сейчас разрешает машина состояний. Нажатие (`callback_data = a:<действие>:<id>:<nonce>`, не длиннее 64 байт) выполняет действие и перерисовывает карточку с новым nonce; устаревшая карточка отвечает «Карточка устарела, откройте свежую». Кнопки: «Проверить и заказать», «Заказать всё равно», «Аналог», «Новый срок», «Отменить позицию», «Проблема с позицией», «Приехало», «Счёт оплачен» (владелец), «Клиент пришёл», «Повторить чек», «Выставить оплату» (QR фото только в чат продавцов), «Выдал» (только при succeeded чеке), «Клиент не пришёл», «Отменить заказ и вернуть деньги», «Отказ клиента», «Открыть в админке». Команды: `/ping` (фаза 0), `/queues` (владелец: очереди и последние 10 задач dead-letter с кнопкой «Повторить»).
+
+### Очереди и задачи
+
+Очереди BullMQ с префиксом `detaly:bull`; логический ключ задачи хранится в `outbox.job_id`, в BullMQ уходит с `|` вместо `:`.
+
+| Очередь | Задачи | Попытки | Что делают |
+|---|---|---|---|
+| `payments` | `webhook` `{webhookEventId}`, `payment-create` `{paymentId}` (QR на точке), `payment-recheck` `{paymentId}`, `refund-create` `{refundId}` | 5, экспонента от 10 с | перечитывают платёж или возврат у ЮKassa и применяют ответ; создают QR-платёж и возвраты с тем же `Idempotence-Key` |
+| `receipts` | `offset` и `offset-poll` `{receiptId}`, `payment-receipt` `{receiptId}` | 3 | чек зачёта аванса по «Клиент пришёл» и статус чека в составе платежа; опрос раз в 2 мин, через 15 мин без `succeeded` — алерт, «Выдал» заблокирована |
+| `rossko` | `recheck` `{orderId, eventId, staffId}`, `checkout` `{supplierOrderId}`, `recover` `{supplierOrderId}` | 3; `checkout` — ровно 1 | перепроверка цен мимо кэша; GetCheckout одной попыткой (строка `supplier_orders` пишется до вызова); после таймаута — поиск заказа через GetOrders по комментарию `DT-000123/<попытка>`, без повтора GetCheckout |
+| `notify` | `order` `{orderEventId, audience, template}`, `alert` | 5, экспонента от 30 с | карточки продавцам, сообщения владельцу, SMS клиенту по allowlist (строка `notifications` с `dedupe_key` до отправки), алерты |
+| `reconciliation` | `sweep` (каждые 10 мин), `nightly` (03:15 Asia/Yekaterinburg) | 1 | pending-платежи и возвраты старше 10 мин — перечитать или повторить POST с тем же ключом; ночная сверка платежей магазина за сутки — только алерты |
+| `housekeeping` | `heartbeat` (30 с), `timers` (1 мин), `reminders` (15 мин), `sms-budget` (1 ч), `deferred-1a` (10 мин) | 1 | сроки по `orders.expires_at` и `client_approvals.expires_at` (оплата, подтверждение, QR, хранение, завершение, ответ клиента); напоминания; алерты SMS-бюджета 80 % и 100 %; отложенные эффекты заказов 1A |
+| `dead-letter` | `dead` | — | задачи, исчерпавшие попытки: исходная очередь, данные, ошибка без ПД; алерт в чат продавцов; повтор — `/queues` |
+
+### Переменные 1B
+
+Полный список с комментариями — `.env.example`. Новые в 1B — `SMS_LOGIN`, `SMS_API_URL`, `SMS_PRICE_KOP`; остальные были в схеме с фазы 0 и с 1B используются.
+
+| Переменная | По умолчанию | Что |
+|---|---|---|
+| `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY` | пусто | магазин ЮKassa (на stage — тестовый). Оплата включена, только когда заданы оба и оба кода ниже |
+| `YOOKASSA_VAT_CODE` | пусто | код ставки НДС в чеке (ожидаем `1` — без НДС, VERIFY Ю4) |
+| `YOOKASSA_TAX_SYSTEM_CODE` | пусто | код системы налогообложения (ожидаем `2` — УСН «доходы», VERIFY Ю4) |
+| `YOOKASSA_WEBHOOK_IP_ALLOWLIST` | пусто | IP и подсети уведомлений ЮKassa через запятую; пусто — все уведомления получают 403 |
+| `YOOKASSA_API_URL` | `https://api.yookassa.ru/v3` | адрес API (в e2e — мок) |
+| `YOOKASSA_RETURN_URL` | пусто | в 1B не используется: возврат всегда на `APP_BASE_URL/o/<token>?paid=1` |
+| `TRUSTED_IP_HEADER` | `none` | `x-real-ip` за Caddy; без него вебхуки ЮKassa получают 403 |
+| `ADMIN_BASIC_AUTH` | пусто | `user:password` админки; пусто — `/admin` отвечает 404 |
+| `ROSSKO_ALLOW_CHECKOUT` | `false` | `true` разрешает GetCheckout; при `false` заказ уходит в «требует внимания» для ручного заказа в ЛК Rossko |
+| `ROSSKO_DELIVERY_ID`, `ROSSKO_PAYMENT_ID`, `ROSSKO_ADDRESS_ID` | пусто | id доставки, оплаты и адреса из GetCheckoutDetails; без первых двух GetCheckout не вызывается |
+| `TG_SELLER_BOT_TOKEN`, `TG_SELLER_CHAT_ID` | пусто | бот продавца и чат продавцов (фаза 0); без них карточки не отправляются (в логе worker `seller card: … skipped`), алерты записываются как `skipped` |
+| `SMS_PROVIDER` | `none` | `smsaero` или `smsc`; `none` — клиентские уведомления без мессенджера `skipped` |
+| `SMS_LOGIN` [1B] | пусто | логин SMS Aero (e-mail) или smsc.ru |
+| `SMS_API_KEY`, `SMS_SENDER` | пусто | ключ (пароль) и подпись отправителя (для SMS Aero обязательна) |
+| `SMS_API_URL` [1B] | пусто | переопределение адреса шлюза; пусто — `https://gate.smsaero.ru/v2` или `https://smsc.ru/sys` |
+| `SMS_PRICE_KOP` [1B] | `500` | цена одного SMS в копейках для бюджета (VERIFY: тариф) |
+| `SMS_MONTHLY_BUDGET_RUB` | пусто | месячный бюджет SMS: 80 % — алерт, 100 % — SMS не отправляются; пусто — без ограничения |
+
+Пороги сроков (`order.payment_ttl_min`, `order.on_pickup_confirm_ttl_h`, `pickup.window_*_days`, `handover.qr_ttl_min`, `handed.complete_days`, `approval.timeout_h`, `rossko.prepay_invoice` и другие) лежат в таблице `settings`; страницы настроек в админке в 1B нет, меняются SQL (`docs/runbook.md`, 12.4).
 
 Фаза 0 начинается с внешних действий (ОКВЭД, аккаунт Rossko и ключи API, домен, РКН, ЮKassa, проверка маркировки) параллельно с кодом; их статус — в `docs/external.md`.

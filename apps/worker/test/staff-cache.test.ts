@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createStaffCache, STAFF_CACHE_TTL_MS } from '../src/bots/seller/staff';
+import {
+  createStaffCache,
+  STAFF_CACHE_TTL_MS,
+  STAFF_RETRY_AFTER_FAILURE_MS,
+} from '../src/bots/seller/staff';
 
 function clock(start = 1_000_000) {
   let t = start;
@@ -64,6 +68,26 @@ describe('createStaffCache', () => {
     load.mockRejectedValueOnce(new Error('db down'));
     expect(await cache.isStaff(1)).toBe(true);
     expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits before retrying a failed reload instead of hitting the database on every call', async () => {
+    const c = clock();
+    const load = vi.fn(async () => new Set([1]));
+    const cache = createStaffCache({ load, now: c.now, logger: { warn: vi.fn(), error: vi.fn() } });
+    await cache.isStaff(1);
+
+    c.advance(STAFF_CACHE_TTL_MS);
+    load.mockRejectedValueOnce(new Error('db down'));
+    expect(await cache.isStaff(1)).toBe(true);
+    expect(await cache.isStaff(1)).toBe(true);
+    c.advance(STAFF_RETRY_AFTER_FAILURE_MS - 1);
+    expect(await cache.isStaff(1)).toBe(true);
+    expect(load).toHaveBeenCalledTimes(2);
+
+    c.advance(1);
+    load.mockResolvedValueOnce(new Set([2]));
+    expect(await cache.isStaff(1)).toBe(false);
+    expect(load).toHaveBeenCalledTimes(3);
   });
 
   it('reloads after invalidate()', async () => {

@@ -4,6 +4,8 @@ import type { Logger } from '@detaly/config';
 import { staff, type Database } from '@detaly/db';
 
 export const STAFF_CACHE_TTL_MS = 60_000;
+/** After a failed reload the previous set is reused for this long before the next attempt. */
+export const STAFF_RETRY_AFTER_FAILURE_MS = 10_000;
 
 export type IsStaff = (tgUserId: number) => Promise<boolean>;
 
@@ -20,6 +22,7 @@ export async function loadStaffTgIds(db: Pick<Database, 'select'>): Promise<Set<
 export interface StaffCacheOptions {
   load: () => Promise<Set<number>>;
   ttlMs?: number;
+  retryAfterFailureMs?: number;
   /** Clock in epoch ms (tests). */
   now?: () => number;
   logger?: Pick<Logger, 'warn' | 'error'>;
@@ -33,12 +36,13 @@ export interface StaffCache {
 
 /**
  * Caches the staff set for `ttlMs` with a single in-flight reload. When a reload fails the
- * previous set stays in use (logged); with no previous set everyone is treated as a stranger,
+ * previous set stays in use (logged) and the next attempt waits `retryAfterFailureMs`; with no previous set everyone is treated as a stranger,
  * so the bot stays silent rather than answering an unverified user.
  */
 export function createStaffCache({
   load,
   ttlMs = STAFF_CACHE_TTL_MS,
+  retryAfterFailureMs = STAFF_RETRY_AFTER_FAILURE_MS,
   now = Date.now,
   logger,
 }: StaffCacheOptions): StaffCache {
@@ -55,6 +59,9 @@ export function createStaffCache({
       })
       .catch((error: unknown) => {
         if (ids) {
+          // Without this every message would wait for the failing database again
+          // (postgres-js waits up to its connect timeout).
+          loadedAt = now() - ttlMs + retryAfterFailureMs;
           logger?.warn({ err: error }, 'staff reload failed, using the previous list');
         } else {
           logger?.error({ err: error }, 'staff load failed, treating everyone as a stranger');

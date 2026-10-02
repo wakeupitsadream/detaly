@@ -42,6 +42,8 @@ export interface InstallShutdownOptions {
 export interface ShutdownHandle {
   /** Runs the shutdown as if `signal` had arrived. */
   shutdown(signal: string): Promise<void>;
+  /** True once a signal (or shutdown()) has started the shutdown. */
+  isShuttingDown(): boolean;
   uninstall(): void;
 }
 
@@ -122,6 +124,9 @@ export function installShutdown({
     shutdown(signal) {
       running ??= run(signal);
       return running;
+    },
+    isShuttingDown() {
+      return running !== null;
     },
     uninstall() {
       for (const signal of signals) proc.off(signal, onSignal);

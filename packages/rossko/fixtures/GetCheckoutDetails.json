@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "synthetic": true,
+    "note": "сверить с реальным ответом: структура GetCheckoutDetails выдумана целиком",
+    "method": "GetCheckoutDetails",
+    "args": {}
+  },
+  "CheckoutDetailsResult": {
+    "success": true,
+    "message": "",
+    "DeliveryList": {
+      "delivery": [
+        { "id": "000000001", "name": "Самовывоз со склада", "cost": "0.00" },
+        {
+          "id": "000000002",
+          "name": "Доставка до адреса",
+          "cost": "300.00",
+          "free_from": "5000.00"
+        }
+      ]
+    },
+    "PaymentList": {
+      "payment": { "id": "1", "name": "Безналичный расчёт" }
+    },
+    "AddressList": {
+      "address": [{ "id": "1001", "city": "Оренбург", "street": "ул. Примерная", "house": "1" }]
+    }
+  }
+}

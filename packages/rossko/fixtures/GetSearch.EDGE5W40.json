@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "synthetic": true,
+    "note": "сверить с реальным ответом",
+    "method": "GetSearch",
+    "args": { "text": "EDGE5W40" },
+    "covers": "моторное масло: маркируемая группа, должно исключаться фильтром domain (isExcluded)"
+  },
+  "SearchResult": {
+    "success": true,
+    "message": "",
+    "PartsList": {
+      "Part": [
+        {
+          "guid": "synthetic-edge5w40-castrol",
+          "brand": "CASTROL",
+          "partnumber": "EDGE 5W-40",
+          "name": "Масло моторное Castrol EDGE 5W-40 синтетическое 4 л",
+          "group": "Моторные масла",
+          "stocks": {
+            "stock": [
+              {
+                "id": "ORB1",
+                "price": "3890.00",
+                "count": 5,
+                "multiplicity": 1,
+                "type": 1,
+                "delivery": 0,
+                "description": "Оренбург"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

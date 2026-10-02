@@ -1,0 +1,32 @@
+{
+  "_meta": {
+    "synthetic": true,
+    "note": "сверить с реальным ответом",
+    "method": "GetSearch",
+    "args": { "text": "W9142" },
+    "covers": "одиночный объект вместо массива в PartsList.Part и stocks.stock, без кроссов"
+  },
+  "SearchResult": {
+    "success": true,
+    "message": "",
+    "PartsList": {
+      "Part": {
+        "guid": "synthetic-w9142-mann",
+        "brand": "MANN-FILTER",
+        "partnumber": "W 914/2",
+        "name": "Фильтр масляный",
+        "stocks": {
+          "stock": {
+            "id": "MSK7",
+            "price": "623.40",
+            "count": 12,
+            "multiplicity": 1,
+            "type": 2,
+            "delivery": 3,
+            "description": "Москва, центральный склад"
+          }
+        }
+      }
+    }
+  }
+}

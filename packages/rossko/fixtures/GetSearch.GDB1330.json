@@ -1,0 +1,65 @@
+{
+  "_meta": {
+    "synthetic": true,
+    "note": "сверить с реальным ответом",
+    "method": "GetSearch",
+    "args": { "text": "GDB1330" },
+    "covers": "два бренда с одним артикулом, deliveryStart/deliveryEnd со смещением, пустой deliveryEnd, цена с запятой, кратность 2"
+  },
+  "SearchResult": {
+    "success": true,
+    "message": "",
+    "PartsList": {
+      "Part": [
+        {
+          "guid": "synthetic-gdb1330-trw",
+          "brand": "TRW",
+          "partnumber": "GDB1330",
+          "name": "Колодки тормозные дисковые передние",
+          "stocks": {
+            "stock": [
+              {
+                "id": "ORB1",
+                "price": "1834.00",
+                "count": 2,
+                "multiplicity": 1,
+                "type": 1,
+                "delivery": 0,
+                "description": "Оренбург"
+              },
+              {
+                "id": "SPB3",
+                "price": "1712.40",
+                "count": 8,
+                "multiplicity": 1,
+                "type": 2,
+                "delivery": 5,
+                "deliveryStart": "2026-10-06T09:00:00+03:00",
+                "deliveryEnd": "2026-10-08T22:00:00+03:00",
+                "description": "Санкт-Петербург"
+              }
+            ]
+          }
+        },
+        {
+          "guid": "synthetic-gdb1330-lucas",
+          "brand": "LUCAS",
+          "partnumber": "GDB1330",
+          "name": "Колодки тормозные дисковые",
+          "stocks": {
+            "stock": {
+              "id": "MSK7",
+              "price": "1650,00",
+              "count": "3",
+              "multiplicity": "2",
+              "type": "2",
+              "delivery": "4",
+              "deliveryEnd": "",
+              "description": "Москва, центральный склад"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

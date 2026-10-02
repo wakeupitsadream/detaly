@@ -10,6 +10,7 @@ import {
   type OrderNotifyTemplate,
   type OrderStatus,
   type PaymentScheme,
+  type RecheckAlternative,
 } from '@detaly/domain';
 import {
   buildCallbackData,
@@ -216,7 +217,23 @@ const ETA_CODES: Record<(typeof ETA_MENU_DAYS)[number], MenuAction> = {
   14: 'eta14',
 };
 
-/** «Аналог»: options from the engine's menu (labels of the recheck alternatives, at most 3). */
+/**
+ * Label of a recheck alternative: «FILTRON OP 520 · маржа 30% · к 7 октября». The client price
+ * stays the price of the replaced item (RecheckAlternative), so the seller sees the margin at that
+ * price and the date (PLAN: «карточка проблемы с альтернативами из кроссов и маржой»).
+ */
+export function alternativeLabel(
+  alternative: Pick<RecheckAlternative, 'offer' | 'marginBp' | 'etaDate'>,
+): string {
+  const parts = [
+    `${alternative.offer.brand} ${alternative.offer.article}`,
+    `маржа ${Math.round(alternative.marginBp / 100)}%`,
+  ];
+  if (alternative.etaDate) parts.push(`к ${deadline(alternative.etaDate)}`);
+  return parts.join(' · ');
+}
+
+/** «Аналог»: options from the latest recheck alternatives (labels, at most 3, same order). */
 export function alternativeMenu(item: CardItem, labels: readonly string[]): CardMenu {
   return {
     itemId: item.id,

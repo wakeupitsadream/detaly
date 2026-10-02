@@ -120,6 +120,12 @@ export interface CardService extends SellerCardPort {
   redraw(cardId: string, menu?: CardMenu | null): Promise<RedrawResult | null>;
   /** The items of the card's order (menus need the brand and article). */
   item(orderId: string, itemId: string): Promise<CardItem | null>;
+  /**
+   * A stale press on the message of an order card: an open card is redrawn with its current
+   * buttons (its keyboard fell behind the nonce, e.g. an edit failed after a press), a closed one
+   * loses its keyboard again. Nothing else changes; failures are logged.
+   */
+  heal(chatId: string, messageId: number): Promise<void>;
 }
 
 export function createCardService(
@@ -403,6 +409,31 @@ export function createCardService(
         .orderBy(asc(orderItems.createdAt))
         .limit(1);
       return row ?? null;
+    },
+
+    async heal(chatId, messageId) {
+      const [card] = await db
+        .select()
+        .from(sellerCards)
+        .where(
+          and(
+            eq(sellerCards.chatId, chatId),
+            eq(sellerCards.messageId, messageId),
+            eq(sellerCards.kind, 'order'),
+          ),
+        )
+        .orderBy(desc(sellerCards.createdAt))
+        .limit(1);
+      if (!card) return;
+      try {
+        if (card.closedAt === null) await service.redraw(card.id);
+        else await stripKeyboard(card);
+      } catch (error) {
+        logger.warn(
+          { orderId: card.orderId, err: describeBotError(error, env.TG_SELLER_BOT_TOKEN) },
+          'seller card: redraw of a stale card failed',
+        );
+      }
     },
   };
   return service;

@@ -1,8 +1,9 @@
 // «Счёт оплачен» (owner, docs/phase-1b-implementation.md section 13.1 step 4): the press asks for
-// the number and date of the payment order with a ForceReply; the next text of the same user in
-// the same chat (within 10 minutes) is that reference and becomes
-// performStaffAction('invpaid', {paymentRef}). The wait lives in Redis, not in memory, so a
-// worker restart in between does not lose it.
+// the number and date of the payment order with a ForceReply; the reply of the same user to that
+// prompt (within 10 minutes) is the reference and becomes performStaffAction('invpaid',
+// {paymentRef}). Only a reply to the prompt counts: an ordinary message of the owner in the
+// sellers chat must not mark a supplier invoice as paid. The wait lives in Redis, not in memory,
+// so a worker restart in between does not lose it.
 import { performStaffAction } from '@detaly/orders';
 import type { Context, Middleware } from 'grammy';
 import type { WorkerDeps } from '../../deps';
@@ -20,6 +21,8 @@ export function awaitKey(keyPrefix: string, chatId: number, userId: number): str
 
 interface AwaitingInvoice {
   orderId: string;
+  /** message_id of the ForceReply prompt; the answer must reply to it. */
+  promptMessageId: number;
 }
 
 /** Sends the ForceReply prompt and remembers which order the next reply is about. */
@@ -31,14 +34,7 @@ export async function askInvoiceReference(
   const chatId = ctx.chat?.id;
   const userId = ctx.from?.id;
   if (chatId === undefined || userId === undefined) return;
-  const value: AwaitingInvoice = { orderId: order.id };
-  await deps.redis.set(
-    awaitKey(deps.keyPrefix, chatId, userId),
-    JSON.stringify(value),
-    'EX',
-    INVOICE_REPLY_TTL_SEC,
-  );
-  await ctx.api.sendMessage(
+  const prompt = await ctx.api.sendMessage(
     chatId,
     `${INVOICE_PROMPT} по заказу ${order.number}. Ответьте на это сообщение в течение 10 минут.`,
     {
@@ -48,20 +44,29 @@ export async function askInvoiceReference(
       },
     },
   );
+  const value: AwaitingInvoice = { orderId: order.id, promptMessageId: prompt.message_id };
+  await deps.redis.set(
+    awaitKey(deps.keyPrefix, chatId, userId),
+    JSON.stringify(value),
+    'EX',
+    INVOICE_REPLY_TTL_SEC,
+  );
 }
 
 function parseAwaiting(raw: string | null): AwaitingInvoice | null {
   if (raw === null) return null;
   try {
     const value = JSON.parse(raw) as Partial<AwaitingInvoice>;
-    return typeof value.orderId === 'string' ? { orderId: value.orderId } : null;
+    return typeof value.orderId === 'string' && typeof value.promptMessageId === 'number'
+      ? { orderId: value.orderId, promptMessageId: value.promptMessageId }
+      : null;
   } catch {
     return null;
   }
 }
 
 /**
- * Text messages of staff: the answer to a pending «Счёт оплачен» prompt, otherwise silence.
+ * Text messages of staff: a reply to a pending «Счёт оплачен» prompt, otherwise silence.
  * Commands are left to their handlers (an unknown command stays silent as in phase 0).
  */
 export function invoiceReplyHandler(input: {
@@ -75,11 +80,17 @@ export function invoiceReplyHandler(input: {
     const userId = ctx.from?.id;
     if (text === undefined || chatId === undefined || userId === undefined) return next();
     if (text.startsWith('/')) return next();
-    // GETDEL: the reference is taken once, a second message is ordinary chat text.
-    const awaiting = parseAwaiting(
-      await deps.redis.getdel(awaitKey(deps.keyPrefix, chatId, userId)),
-    );
-    if (awaiting === null) return next();
+    const key = awaitKey(deps.keyPrefix, chatId, userId);
+    const awaiting = parseAwaiting(await deps.redis.get(key));
+    // Not a reply to the prompt: ordinary chat text, the wait goes on until its TTL.
+    if (
+      awaiting === null ||
+      ctx.message?.reply_to_message?.message_id !== awaiting.promptMessageId
+    ) {
+      return next();
+    }
+    // GETDEL: the reference is taken once (a second reply is ordinary chat text).
+    if ((await deps.redis.getdel(key)) === null) return next();
     const staff = await loadStaffMember(deps.db, userId);
     if (staff === null || staff.role !== 'owner') return;
     const result = await performStaffAction(deps.engine, {

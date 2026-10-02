@@ -1,7 +1,8 @@
 // Button presses of the seller bot (docs/phase-1b-implementation.md section 13.1 step 3, table
 // 13.2, decisions Б17–Б19). callback_data = `a:<action>:<id>:<nonce>`:
 //
-//   parseCallbackData -> the card by its nonce (none or closed -> «Карточка устарела») -> the id
+//   parseCallbackData -> the card by its nonce (none or closed -> «Карточка устарела», and the
+//   message's own card is redrawn so its buttons catch up with the nonce) -> the id
 //   belongs to the card's order -> role (invpaid, dlq: owner only; a seller is refused and the
 //   card does not change) -> claim the card (the nonce rotates: a second press is stale) ->
 //   menu (aliases, new ETA, item problem, «Назад») or performStaffAction ->
@@ -28,6 +29,7 @@ import type { Context, Middleware } from 'grammy';
 import type { WorkerDeps } from '../../deps';
 import {
   ALTERNATIVE_CODES,
+  alternativeLabel,
   alternativeMenu,
   etaMenu,
   problemMenu,
@@ -42,6 +44,7 @@ import { loadStaffMember, type StaffMember } from './staff';
 export const STALE_CARD = 'Карточка устарела, откройте свежую';
 export const OWNER_ONLY_MESSAGE = 'Только владелец';
 export const ACTION_FAILED = 'Не получилось, попробуйте ещё раз';
+export const INVOICE_NOT_DUE = 'Счёт Rossko уже не ждёт оплаты';
 
 /** Event codes a staff member may press on a card (the client codes are not staff actions). */
 const STAFF_EVENT_CODES: ReadonlySet<string> = new Set<StaffActionCode>([
@@ -138,9 +141,14 @@ async function runPress(
         return { message: 'Выберите новый срок', menu: etaMenu(item, localDate(deps.now())) };
       }
       if (spec.menu === 'problem') return { message: 'Что случилось?', menu: problemMenu(item) };
-      // Aliases: the engine reads the last recheck_result and says when there are none.
+      // Aliases: the engine reads the last recheck_result and says when there are none; the
+      // labels come from the same alternatives the choice (alt1..3) reads by index.
       const result = await perform('ialt');
-      const labels = (result.menu ?? []).slice(0, ALTERNATIVE_CODES.length).map((m) => m.label);
+      const alternatives = await latestAlternatives(deps.db, card.orderId, item.id);
+      const labels =
+        (result.menu ?? []).length > 0
+          ? alternatives.slice(0, ALTERNATIVE_CODES.length).map(alternativeLabel)
+          : [];
       return labels.length > 0
         ? { message: result.message, menu: alternativeMenu(item, labels) }
         : { message: result.message, menu: null };
@@ -203,17 +211,27 @@ export function callbackHandler(input: {
       card.chatId !== String(message.chat.id) ||
       card.messageId !== message.message_id
     ) {
-      return answer(ctx, STALE_CARD);
+      await answer(ctx, STALE_CARD);
+      // The keyboard of this message is behind its card (a double press, an edit that failed
+      // after a press): show the current buttons so the next press works.
+      if (message !== undefined) await cards.heal(String(message.chat.id), message.message_id);
+      return;
     }
     if (!(await targetBelongs(cards, card, parsed))) return answer(ctx, STALE_CARD);
 
     if (parsed.action === 'invpaid') {
       // The card stays as it is until the payment reference arrives (invoice.ts).
       const [order] = await deps.db
-        .select({ id: orders.id, number: orders.number })
+        .select({ id: orders.id, number: orders.number, status: orders.status })
         .from(orders)
         .where(eq(orders.id, card.orderId));
       if (!order) return answer(ctx, STALE_CARD);
+      if (order.status !== 'awaiting_supplier_invoice') {
+        // Paid already (admin, another press) or the order moved on: no prompt, fresh buttons.
+        await answer(ctx, INVOICE_NOT_DUE);
+        if (await cards.claim(card)) await cards.redraw(card.id).catch(() => null);
+        return;
+      }
       await askInvoiceReference(ctx, deps, order);
       return answer(ctx, 'Ответьте номером и датой платёжного поручения');
     }

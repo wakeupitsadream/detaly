@@ -20,14 +20,14 @@ import {
   inArray,
 } from '@detaly/db';
 import { addDays, localDate, type Offer, type RecheckItemResult } from '@detaly/domain';
-import { CALLBACK_DATA_MAX_BYTES, parseCallbackData } from '@detaly/notify';
+import { CALLBACK_DATA_MAX_BYTES, deadline, parseCallbackData } from '@detaly/notify';
 import { recordJournalEvent } from '@detaly/orders';
 import { Api, type Bot, type Transformer } from 'grammy';
 import type { Update, UserFromGetMe } from 'grammy/types';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createSellerBot } from '../src/bots/seller/bot';
 import { createSellerCards } from '../src/bots/seller/cards';
-import { STALE_CARD } from '../src/bots/seller/callbacks';
+import { INVOICE_NOT_DUE, STALE_CARD } from '../src/bots/seller/callbacks';
 import { awaitKey } from '../src/bots/seller/invoice';
 import { hasTestDatabase } from './fixtures/databases';
 import { createTestDeps, type TestDeps } from './helpers/test-deps';
@@ -122,6 +122,8 @@ function keyboardOf(call: Call): Button[] {
 function lastRendering(messageId: number): { text: string; buttons: Button[] } {
   for (let i = rec.calls.length - 1; i >= 0; i -= 1) {
     const call = rec.calls[i] as Call;
+    // A refused edit changed nothing in the chat.
+    if ((call.result as { error?: string } | null)?.error !== undefined) continue;
     if (call.method === 'sendMessage' && sentMessageId(call) === messageId) {
       return { text: String(call.payload.text), buttons: keyboardOf(call) };
     }
@@ -183,20 +185,32 @@ async function press(
 
 async function sendText(
   text: string,
-  { from, chatId = SELLER_CHAT }: { from: number; chatId?: number },
+  { from, chatId = SELLER_CHAT, replyTo }: { from: number; chatId?: number; replyTo?: number },
 ): Promise<void> {
   const id = updateId++;
   const command = text.split(' ')[0] ?? text;
+  const chat =
+    chatId === SELLER_CHAT
+      ? { id: chatId, type: 'supergroup', title: 'Продавцы' }
+      : { id: chatId, type: 'private', first_name: 'Тест' };
   await bot.handleUpdate({
     update_id: id,
     message: {
       message_id: id,
       date: Math.floor(Date.now() / 1000),
-      chat:
-        chatId === SELLER_CHAT
-          ? { id: chatId, type: 'supergroup', title: 'Продавцы' }
-          : { id: chatId, type: 'private', first_name: 'Тест' },
+      chat,
       from: { id: from, is_bot: false, first_name: 'Тест' },
+      ...(replyTo === undefined
+        ? {}
+        : {
+            reply_to_message: {
+              message_id: replyTo,
+              date: Math.floor(Date.now() / 1000),
+              chat,
+              from: { ...BOT_INFO },
+              text: 'prompt',
+            },
+          }),
       text,
       ...(text.startsWith('/')
         ? { entities: [{ type: 'bot_command', offset: 0, length: command.length }] }
@@ -392,12 +406,43 @@ describe.skipIf(!hasTestDatabase)('seller cards', () => {
       after?.nonce,
     );
 
-    // Double press: the old nonce is gone, nothing happens again.
+    // Double press: the old nonce is gone, nothing happens again (the card is only redrawn).
     const again = rec.calls.length;
     await press(data, { messageId });
     expect(answersSince(again)).toEqual([STALE_CARD]);
-    expect(callsSince(again).filter((c) => c.method === 'editMessageText')).toHaveLength(0);
     expect(await eventTypes(seeded.orderId)).toEqual(['recheck_requested']);
+    const [healed] = await cardRows(seeded.orderId);
+    expect(parseCallbackData(buttonData(messageId, 'Проверить и заказать'))?.nonce).toBe(
+      healed?.nonce,
+    );
+  });
+
+  it('a card whose redraw failed after a press gets working buttons on the next press', async () => {
+    const seeded = await seed({ status: 'ready', scheme: 'pay_on_handover', itemState: 'arrived' });
+    const messageId = await postCard(seeded.orderId, null);
+    const data = buttonData(messageId, 'Клиент пришёл');
+    // Telegram refuses the edit after the action (flood limit): the message keeps old buttons.
+    rec.failWhen((call) =>
+      call.method === 'editMessageText' ? 'Too Many Requests: retry after 3' : null,
+    );
+    let before = rec.calls.length;
+    await press(data, { messageId });
+    expect(answersSince(before)).toEqual(['Отмечено: клиент пришёл']);
+    expect(lastRendering(messageId).buttons.map((b) => b.callback_data)).toContain(data);
+    rec.failWhen(null);
+
+    // The old button is stale, does nothing, and the card catches up with the order.
+    before = rec.calls.length;
+    await press(data, { messageId });
+    expect(answersSince(before)).toEqual([STALE_CARD]);
+    expect(
+      (await eventTypes(seeded.orderId)).filter((type) => type === 'client_arrived'),
+    ).toHaveLength(1);
+    expect(labels(messageId)).not.toContain('Клиент пришёл');
+    const [card] = await cardRows(seeded.orderId);
+    expect(card?.closedAt).toBeNull();
+    const fresh = lastRendering(messageId).buttons.find((b) => b.callback_data);
+    expect(parseCallbackData(fresh?.callback_data ?? '')?.nonce).toBe(card?.nonce);
   });
 
   it('a stranger gets an empty answer and changes nothing', async () => {
@@ -443,7 +488,7 @@ describe.skipIf(!hasTestDatabase)('seller cards', () => {
 
     before = rec.calls.length;
     await press(data, { from: OWNER_TG, messageId });
-    const prompt = callsSince(before).find((c) => c.method === 'sendMessage');
+    const prompt = callsSince(before).find((c) => c.method === 'sendMessage') as Call;
     expect(prompt?.payload).toMatchObject({
       chat_id: SELLER_CHAT,
       reply_markup: { force_reply: true },
@@ -453,12 +498,17 @@ describe.skipIf(!hasTestDatabase)('seller cards', () => {
       await t.deps.redis.ttl(awaitKey(t.deps.keyPrefix, SELLER_CHAT, OWNER_TG)),
     ).toBeGreaterThan(500);
 
+    const promptId = sentMessageId(prompt);
     // A seller's text is not the answer.
     before = rec.calls.length;
-    await sendText('№ 1 от 01.10.2026', { from: SELLER_TG });
+    await sendText('№ 1 от 01.10.2026', { from: SELLER_TG, replyTo: promptId });
     expect(callsSince(before)).toHaveLength(0);
+    // Nor is an ordinary message of the owner in the chat: only a reply to the prompt counts.
+    await sendText('ок, сейчас гляну', { from: OWNER_TG });
+    expect(callsSince(before)).toHaveLength(0);
+    expect(await status(seeded.orderId)).toBe('awaiting_supplier_invoice');
 
-    await sendText('№ 512 от 02.10.2026', { from: OWNER_TG });
+    await sendText('№ 512 от 02.10.2026', { from: OWNER_TG, replyTo: promptId });
     expect(await status(seeded.orderId)).toBe('ordered_at_supplier');
     const [event] = await t.deps.db
       .select({ payload: orderEvents.payload, actorId: orderEvents.actorId })
@@ -471,6 +521,14 @@ describe.skipIf(!hasTestDatabase)('seller cards', () => {
     expect(await t.deps.redis.exists(awaitKey(t.deps.keyPrefix, SELLER_CHAT, OWNER_TG))).toBe(0);
     // The card shows the new state.
     expect(lastRendering(messageId).text).toContain('заказан у Rossko');
+
+    // The old «Счёт оплачен» button of an order that moved on asks nothing.
+    const [card2] = await cardRows(seeded.orderId);
+    before = rec.calls.length;
+    await press(`a:invpaid:${seeded.orderId}:${card2?.nonce}`, { from: OWNER_TG, messageId });
+    expect(answersSince(before)).toEqual([INVOICE_NOT_DUE]);
+    expect(callsSince(before).filter((c) => c.method === 'sendMessage')).toHaveLength(0);
+    expect(await t.deps.redis.exists(awaitKey(t.deps.keyPrefix, SELLER_CHAT, OWNER_TG))).toBe(0);
   });
 
   it('«Аналог»: the menu lists the recheck alternatives; the choice asks the client', async () => {
@@ -542,8 +600,9 @@ describe.skipIf(!hasTestDatabase)('seller cards', () => {
     let before = rec.calls.length;
     await press(buttonData(messageId, 'Аналог: MANN W 914/2'), { messageId });
     expect(answersSince(before)).toEqual(['Выберите аналог']);
+    const eta = addDays(localDate(new Date()), 5);
     expect(labels(messageId)).toEqual([
-      expect.stringContaining('FILTRON OP 520'),
+      `FILTRON OP 520 · маржа 30% · к ${deadline(eta)}`,
       'Назад',
       'Открыть в админке',
     ]);

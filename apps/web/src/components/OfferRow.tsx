@@ -1,16 +1,25 @@
 import type { OfferView } from '@detaly/domain';
+import type { InstallPlanView } from '@/server/install/types';
 import { AddToCartForm } from './AddToCartForm';
+import { IconClock } from './icons';
+import { InstallLine } from './install/InstallLine';
 import { StockBadge } from './StockBadge';
+import { Badge } from './ui/Badge';
+import { cn } from './ui/cn';
+import { PartTile } from './ui/PartTile';
+import { Price } from './ui/Price';
 
 /**
- * One offer: a card on phones, a grid row from `md` up. Supplier price and markup never
- * reach this component (OfferView carries the client price only). Excluded (marked) goods
- * get no "В корзину" button.
+ * One offer. Desktop: a row of four columns (tile | brand, article, name | stock, date, lift
+ * slot | price and "В корзину"). Phones: tile beside the article, the dates under it and the
+ * price with the button as the last line. Supplier price and markup never reach this component
+ * (OfferView carries the client price only). Excluded (marked) goods get no "В корзину" button.
  */
 export function OfferRow({
   offer,
   searchArticleNorm,
   orderingOpen = true,
+  install,
 }: {
   offer: OfferView;
   /** Normalized article of the search query the offer was found by. */
@@ -20,52 +29,68 @@ export function OfferRow({
    * cart that cannot be checked out is a dead end, the page offers the phone instead.
    */
   orderingOpen?: boolean;
+  /** Nearest lift slot for this offer; undefined: the page does not plan installs. */
+  install?: InstallPlanView | null;
 }) {
   const canAdd = orderingOpen && !offer.excluded && offer.available >= offer.multiplicity;
+  const title = `${offer.brand} ${offer.article}`;
   return (
     <li
-      className="grid min-w-0 grid-cols-1 gap-3 rounded-card border border-line bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1.9fr)_auto] md:items-center md:gap-4"
+      className={cn(
+        'group/offer grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] gap-x-4 gap-y-4 rounded border bg-card p-4',
+        'transition-[border-color,transform] duration-150 hover:-translate-y-px hover:border-ink',
+        'md:grid-cols-[4.5rem_minmax(0,1.25fr)_minmax(0,1.4fr)_auto] md:items-center md:gap-x-6 md:p-5',
+        offer.excluded ? 'border-line border-dashed' : 'border-line',
+      )}
       data-testid="offer-row"
     >
-      <div className="min-w-0">
-        <div className="text-sm font-semibold tracking-wide text-muted uppercase wrap-anywhere">
-          {offer.brand}
-        </div>
-        <div className="font-mono text-lg font-semibold wrap-anywhere">{offer.article}</div>
-      </div>
-      <div className="min-w-0">
-        <div className="text-base wrap-anywhere">{offer.name}</div>
+      <PartTile name={offer.name} size="sm" className="md:size-18" />
+
+      <div className="min-w-0 self-center">
+        <p className="text-label text-muted wrap-anywhere">{offer.brand}</p>
+        <p className="mt-1 font-mono text-lg leading-tight font-semibold tracking-wide wrap-anywhere md:text-xl">
+          {offer.article}
+        </p>
+        <p className="mt-1 text-[0.9375rem] leading-snug wrap-anywhere">{offer.name}</p>
         {offer.multiplicity > 1 ? (
-          <div className="mt-1 text-sm text-muted">Продаётся по {offer.multiplicity} шт.</div>
+          <p className="mt-1 text-sm text-muted">Продаётся по {offer.multiplicity} шт.</p>
         ) : null}
       </div>
-      <div className="flex min-w-0 flex-col items-start gap-1.5">
+
+      <div className="col-span-2 flex min-w-0 flex-col items-start gap-2 border-t border-dashed border-line pt-3 md:col-span-1 md:border-0 md:pt-0">
         {offer.excluded ? (
-          <span className="inline-flex rounded-full bg-warn-soft px-2.5 py-1 text-xs font-medium text-warn">
-            Не продаём онлайн
-          </span>
+          <>
+            <Badge tone="danger">Не продаём онлайн</Badge>
+            <p className="text-sm text-muted">
+              {offer.excludedReason ?? 'Маркируемый товар'}. Спросите в сервисе
+            </p>
+          </>
         ) : (
-          <StockBadge isLocal={offer.isLocal} />
+          <>
+            <StockBadge isLocal={offer.isLocal} />
+            <p className="flex min-w-0 items-start gap-1.5 text-sm text-muted">
+              <IconClock size={16} className="mt-0.5 shrink-0 text-ink" />
+              <span className="min-w-0">
+                Получение <span className="font-semibold text-ink">{offer.promiseText}</span>
+              </span>
+            </p>
+            {install !== undefined ? <InstallLine plan={install} /> : null}
+          </>
         )}
-        <span className="text-sm text-muted">
-          {offer.excluded ? (
-            `${offer.excludedReason ?? 'Маркируемый товар'}. Спросите в сервисе`
-          ) : (
-            <>
-              Получение <span className="font-medium text-ink">{offer.promiseText}</span>
-            </>
-          )}
-        </span>
       </div>
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 md:flex-col md:items-end md:justify-center md:text-right">
+
+      <div className="col-span-2 flex min-w-0 items-center gap-4 md:col-span-1 md:w-44 md:flex-col md:items-stretch md:gap-3 md:text-right">
         {offer.excluded ? (
-          <span className="text-sm text-muted">Цена в сервисе</span>
+          <p className="text-sm text-muted">Цена в сервисе</p>
         ) : (
-          <div>
-            <div className="text-xl font-bold whitespace-nowrap" data-testid="offer-price">
+          <div className="shrink-0">
+            <Price
+              data-testid="offer-price"
+              className="[--price-size:1.5rem] md:[--price-size:1.75rem]"
+            >
               {offer.priceText}
-            </div>
-            <div className="text-xs text-muted">в наличии: {offer.available} шт.</div>
+            </Price>
+            <p className="mt-1.5 font-mono text-xs text-muted">в наличии: {offer.available} шт.</p>
           </div>
         )}
         {canAdd ? (
@@ -73,7 +98,8 @@ export function OfferRow({
             q={searchArticleNorm}
             offerId={offer.id}
             qty={offer.multiplicity}
-            title={`${offer.brand} ${offer.article}`}
+            title={title}
+            className="flex-1 md:flex-none"
           />
         ) : null}
       </div>

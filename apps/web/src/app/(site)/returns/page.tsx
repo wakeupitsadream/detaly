@@ -1,12 +1,22 @@
 import type { Metadata } from 'next';
+import { IconPhone, IconPin, IconShield } from '@/components/icons';
 import { LegalDocumentView } from '@/components/LegalDocumentView';
+import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
+import { buttonClass } from '@/components/ui/Button';
+import { cn } from '@/components/ui/cn';
+import { Eyebrow } from '@/components/ui/Eyebrow';
 import { getBrand, telHref } from '@/server/brand';
-import { getDb } from '@/server/db';
-import { getPublishedDocument, type LegalDocument } from '@/server/documents';
-import { serverEnv } from '@/server/env';
+import { loadPublishedDocument, type LegalDocument } from '@/server/documents';
 import { getLogger } from '@/server/logger';
 
 export const metadata: Metadata = { title: 'Возврат и обмен' };
+
+/** The three numbers a client asks about first, set large in the band. */
+const FACTS = [
+  { value: '7 дней', label: 'на возврат исправной детали' },
+  { value: '0 ₽', label: 'удержаний при самовывозе' },
+  { value: '10 дней', label: 'чтобы деньги вернулись' },
+] as const;
 
 const RULES = [
   {
@@ -33,7 +43,7 @@ const RULES = [
 
 async function loadMemo(): Promise<LegalDocument | null> {
   try {
-    return await getPublishedDocument('return_memo', { db: getDb(), env: serverEnv() });
+    return await loadPublishedDocument('return_memo');
   } catch (error) {
     getLogger().error({ err: error }, 'return memo unavailable');
     return null;
@@ -43,41 +53,79 @@ async function loadMemo(): Promise<LegalDocument | null> {
 export default async function ReturnsPage() {
   const brand = getBrand();
   const memo = await loadMemo();
+  const { pickup } = brand;
   return (
-    <div className="max-w-3xl space-y-8">
-      <section className="space-y-3">
-        <h1 className="text-2xl font-bold md:text-3xl">Возврат и обмен</h1>
-        <p className="text-lg text-muted">Коротко и по-человечески. Полная памятка — ниже.</p>
-      </section>
-      <ul className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
-        {RULES.map((rule) => (
-          <li key={rule.title} className="min-w-0 rounded-card border border-line bg-card p-4">
-            <h2 className="font-semibold">{rule.title}</h2>
-            <p className="mt-1 text-sm text-muted">{rule.text}</p>
-          </li>
-        ))}
-      </ul>
-      <section className="rounded-card border border-line bg-card p-5">
-        <h2 className="font-semibold">Как вернуть</h2>
-        <p className="mt-1 text-muted">
-          Принесите деталь в пункт выдачи{brand.pickup.address ? `: ${brand.pickup.address}` : ''}
-          {brand.contactPhone ? (
-            <>
-              {' '}
-              или позвоните{' '}
-              <a className="whitespace-nowrap underline" href={telHref(brand.contactPhone)}>
-                {brand.contactPhone}
+    <InnerPage>
+      <PageBand
+        eyebrow="Гарантии и возврат"
+        title="Возврат и обмен"
+        lead="Коротко и по-человечески. Полная памятка — ниже."
+      >
+        <dl className="grid min-w-0 grid-cols-1 border-t border-graphite-700 sm:grid-cols-3">
+          {FACTS.map((fact, index) => (
+            <div
+              key={fact.value}
+              className={cn(
+                'flex min-w-0 items-baseline gap-4 border-b border-graphite-700 py-4 sm:flex-col sm:items-start sm:gap-3 sm:border-b-0 sm:py-6',
+                index > 0 && 'sm:border-l sm:pl-6',
+              )}
+            >
+              <dt className="order-2 text-sm text-steel-400 md:text-base">{fact.label}</dt>
+              <dd className="order-1 shrink-0 font-display text-3xl leading-none font-bold text-paper tabular-nums md:text-5xl">
+                {fact.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </PageBand>
+
+      <PageBody className="space-y-12 md:space-y-16">
+        <ol className="grid min-w-0 gap-px overflow-hidden rounded border border-line bg-line md:grid-cols-2">
+          {RULES.map((rule, index) => (
+            <li key={rule.title} className="min-w-0 bg-card p-5 md:p-7">
+              <span className="font-mono text-xs font-semibold text-accent-ink">
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              <h2 className="mt-3 font-display text-lg leading-snug font-semibold">{rule.title}</h2>
+              <p className="mt-2 text-muted">{rule.text}</p>
+            </li>
+          ))}
+          <li className="grain-dark min-w-0 bg-graphite-900 p-5 text-steel-200 md:p-7">
+            <span className="inline-flex items-center gap-2 text-label text-steel-400">
+              <IconShield size={16} className="text-accent" />
+              Как вернуть
+            </span>
+            <h2 className="mt-3 font-display text-lg leading-snug font-semibold text-paper">
+              Принесите деталь в пункт выдачи
+            </h2>
+            <p className="mt-2 flex items-start gap-2">
+              <IconPin size={18} className="mt-0.5 shrink-0 text-steel-400" />
+              <span className="min-w-0 wrap-anywhere">
+                {pickup.address ?? 'Адрес уточните по телефону'}
+                {pickup.hours ? (
+                  <span className="block text-sm text-steel-400">{pickup.hours}</span>
+                ) : null}
+              </span>
+            </p>
+            {brand.contactPhone ? (
+              <a
+                className={cn(buttonClass({ variant: 'secondary', onDark: true }), 'mt-5')}
+                href={telHref(brand.contactPhone)}
+              >
+                <IconPhone size={17} />
+                Или позвоните {brand.contactPhone}
               </a>
-            </>
-          ) : null}
-          .
-        </p>
-      </section>
-      {memo ? (
-        <section className="rounded-card border border-line bg-card p-5 md:p-8">
-          <LegalDocumentView doc={memo} />
-        </section>
-      ) : null}
-    </div>
+            ) : null}
+          </li>
+        </ol>
+
+        {memo ? (
+          <section aria-label="Памятка о возврате" className="min-w-0">
+            <Eyebrow className="mb-4">Полная памятка</Eyebrow>
+            <LegalDocumentView doc={memo} sheet />
+          </section>
+        ) : null}
+      </PageBody>
+    </InnerPage>
   );
 }

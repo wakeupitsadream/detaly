@@ -2,6 +2,10 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { IconAlert } from '@/components/icons';
+import { buttonClass } from '@/components/ui/Button';
+import { cn } from '@/components/ui/cn';
+import { inputClass } from '@/components/ui/Input';
 
 interface CancelResponse {
   error?: string;
@@ -93,7 +97,7 @@ export function CancelOrderForm({
 
   if (done) {
     return (
-      <p className="font-medium" role="status" data-testid="cancel-done">
+      <p className="font-semibold text-danger" role="status" data-testid="cancel-done">
         Заказ отменён
       </p>
     );
@@ -101,9 +105,12 @@ export function CancelOrderForm({
 
   return (
     <section
-      className="rounded-card border border-line bg-card p-4 md:p-5"
+      className="min-w-0 rounded border border-dashed border-danger/40 bg-card p-5 md:p-6"
       data-testid="order-cancel"
     >
+      <p className="mb-4 text-sm text-muted">
+        Передумали? Пока заказ не оплачен и не подтверждён, его можно отменить здесь.
+      </p>
       <noscript>
         <p className="text-sm text-muted">
           Для отмены заказа включите JavaScript
@@ -113,7 +120,7 @@ export function CancelOrderForm({
       {!open ? (
         <button
           type="button"
-          className="inline-flex h-11 items-center rounded-xl border border-line px-5 font-medium text-ink hover:border-accent hover:text-accent"
+          className={buttonClass({ variant: 'danger' })}
           ref={openButtonRef}
           aria-expanded="false"
           onClick={() => {
@@ -126,7 +133,7 @@ export function CancelOrderForm({
         </button>
       ) : (
         <form onSubmit={(event) => void onSubmit(event)} noValidate className="space-y-3">
-          <label htmlFor={inputId} className="block font-medium">
+          <label htmlFor={inputId} className="block text-sm font-medium">
             Для подтверждения введите последние 4 цифры телефона
           </label>
           <input
@@ -143,24 +150,28 @@ export function CancelOrderForm({
             onChange={(e) => setLast4(e.target.value.replace(/\D/g, '').slice(0, 4))}
             aria-invalid={error !== null}
             aria-describedby={error !== null ? `${inputId}-error` : undefined}
-            className="block h-11 w-32 rounded-xl border border-line bg-card px-3 font-mono text-lg tracking-widest"
+            className={inputClass({
+              mono: true,
+              className: 'h-12 w-36 text-center text-lg tracking-[0.4em]',
+            })}
             data-testid="cancel-last4"
           />
           {error !== null ? (
             <p
               id={`${inputId}-error`}
-              className="text-sm text-accent-strong"
+              className="flex items-start gap-1.5 text-sm text-danger"
               role="alert"
               data-testid="cancel-error"
             >
-              {error}
+              <IconAlert size={16} className="mt-0.5 shrink-0" />
+              <span className="min-w-0">{error}</span>
             </p>
           ) : null}
           <div className="flex flex-wrap gap-2">
             <button
               type="submit"
               disabled={pending}
-              className="inline-flex h-11 items-center rounded-xl bg-accent px-5 font-semibold text-white hover:bg-accent-strong disabled:opacity-60"
+              className="inline-flex min-h-11 items-center justify-center rounded bg-danger px-5 font-semibold text-card transition-colors hover:bg-danger/90 disabled:opacity-60"
               data-testid="cancel-submit"
             >
               {pending ? 'Отменяем…' : 'Отменить заказ'}
@@ -168,7 +179,7 @@ export function CancelOrderForm({
             <button
               type="button"
               disabled={pending}
-              className="inline-flex h-11 items-center rounded-xl border border-line px-5 font-medium text-muted"
+              className={cn(buttonClass({ variant: 'ghost' }), 'text-muted')}
               onClick={() => {
                 focusNext.current = 'open';
                 setOpen(false);

@@ -5,13 +5,15 @@
  * /api/orders/<token>/actions (ClientActionForm).
  */
 import { formatRub } from '@detaly/domain';
+import { IconAlert, IconCheck, IconInfo } from '@/components/icons';
+import { buttonClass } from '@/components/ui/Button';
+import { cn } from '@/components/ui/cn';
 import type { OrderView } from '@/server/orders/order-view';
 import type { PayCheck, PayNotice } from '@/server/orders/pay-notice';
 import { ClientActionForm } from './ClientActionForm';
 import { Card } from './OrderSections';
 
-const PRIMARY_BUTTON =
-  'inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-accent px-5 py-2 font-semibold text-white hover:bg-accent-strong sm:w-auto';
+const PRIMARY_BUTTON = cn(buttonClass({ variant: 'primary', size: 'lg' }), 'w-full sm:w-auto');
 
 export const PAY_TEXTS = {
   checking: 'Проверяем оплату…',
@@ -26,7 +28,7 @@ export const PAY_TEXTS = {
 
 function PayForm({ token, totalKop, label }: { token: string; totalKop: number; label?: string }) {
   return (
-    <form method="post" action={`/api/orders/${token}/pay`} className="mt-3">
+    <form method="post" action={`/api/orders/${token}/pay`} className="mt-4">
       <button type="submit" className={PRIMARY_BUTTON} data-testid="pay-button">
         {label ?? `Оплатить ${formatRub(totalKop)}`}
       </button>
@@ -44,18 +46,16 @@ function Notice({
   testId: string;
 }) {
   const cls =
-    tone === 'error'
-      ? 'text-accent-strong'
-      : tone === 'success'
-        ? 'text-local font-medium'
-        : 'text-muted';
+    tone === 'error' ? 'text-danger' : tone === 'success' ? 'font-medium text-ok' : 'text-muted';
+  const Icon = tone === 'error' ? IconAlert : tone === 'success' ? IconCheck : IconInfo;
   return (
     <p
-      className={`mt-2 text-sm ${cls}`}
+      className={cn('mt-3 flex items-start gap-2 text-sm', cls)}
       role={tone === 'error' ? 'alert' : 'status'}
       data-testid={testId}
     >
-      {children}
+      <Icon size={16} className="mt-0.5 shrink-0" />
+      <span className="min-w-0">{children}</span>
     </p>
   );
 }
@@ -82,11 +82,15 @@ export function PaymentBlock({
     const waiting = status === 'awaiting_payment';
     return (
       <Card title="Оплата" testId="order-payment">
-        <p className="font-medium">Предоплата 100% онлайн</p>
+        <p className="font-display text-lg font-semibold">Предоплата 100% онлайн</p>
         {check?.kind === 'checking' ? (
           <>
             <meta httpEquiv="refresh" content={`${check.refreshSec};url=${check.refreshUrl}`} />
-            <p className="mt-3 text-lg font-semibold" role="status" data-testid="pay-checking">
+            <p
+              className="mt-3 font-display text-lg font-semibold"
+              role="status"
+              data-testid="pay-checking"
+            >
               {PAY_TEXTS.checking}
             </p>
             <p className="mt-1 text-sm text-muted">{PAY_TEXTS.checkingHint}</p>
@@ -121,7 +125,7 @@ export function PaymentBlock({
               type="button"
               disabled
               aria-disabled="true"
-              className="mt-3 inline-flex h-11 w-full cursor-not-allowed items-center justify-center rounded-xl bg-accent px-5 font-semibold text-white opacity-50 sm:w-auto"
+              className="mt-4 inline-flex min-h-13 w-full cursor-not-allowed items-center justify-center rounded bg-paper-2 px-7 font-semibold text-faint sm:w-auto"
               data-testid="pay-button"
             >
               Оплатить {formatRub(totalKop)}
@@ -134,7 +138,7 @@ export function PaymentBlock({
   }
   return (
     <Card title="Оплата" testId="order-payment">
-      <p className="font-medium">Оплата при получении картой или по QR</p>
+      <p className="font-display text-lg font-semibold">Оплата при получении картой или по QR</p>
       {status === 'awaiting_confirmation' && actions.confirm ? (
         <div className="mt-3 space-y-2">
           <p className="text-sm text-muted">
@@ -339,13 +343,14 @@ export function RefuseBlock({
     : 'Отказаться от заказа можно до получения. Оплаты не было — возвращать нечего.';
   return (
     <section
-      className="rounded-card border border-line bg-card p-4 md:p-5"
+      className="min-w-0 rounded border border-line bg-card p-5 md:p-6"
       data-testid="order-refuse"
     >
-      <p className="mb-3 text-sm text-muted">{text}</p>
+      <p className="mb-4 text-sm text-muted">{text}</p>
       <ClientActionForm
         token={view.token}
         action="refuse"
+        tone="danger"
         digits
         openLabel="Отказаться от заказа"
         confirmText={text}

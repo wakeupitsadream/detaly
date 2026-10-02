@@ -1,5 +1,8 @@
 import { hasTopHeading, Markdown } from '@/lib/markdown';
 import type { LegalDocument } from '@/server/documents';
+import { IconDocument } from './icons';
+import { Notice } from './page/Notice';
+import { cn } from './ui/cn';
 
 const DATE_FORMAT = new Intl.DateTimeFormat('ru-RU', {
   day: 'numeric',
@@ -8,22 +11,47 @@ const DATE_FORMAT = new Intl.DateTimeFormat('ru-RU', {
   timeZone: 'Asia/Yekaterinburg',
 });
 
-export function LegalDocumentView({ doc }: { doc: LegalDocument }) {
+/**
+ * A legal document as a sheet of paper: the edition line on top like the title block of a
+ * drawing, a draft notice when it is not published, then the text (.legal in globals.css).
+ * `sheet` frames it as a card (the /docs pages); without it the caller frames it (/returns).
+ */
+export function LegalDocumentView({
+  doc,
+  sheet = false,
+  className,
+}: {
+  doc: LegalDocument;
+  sheet?: boolean;
+  className?: string;
+}) {
   return (
-    <article className="min-w-0 space-y-4" data-testid="legal-document">
+    <article
+      className={cn(
+        'min-w-0',
+        sheet &&
+          'rounded border border-line bg-card px-5 py-6 sm:px-8 md:px-12 md:py-12 print:border-0 print:p-0',
+        className,
+      )}
+      data-testid="legal-document"
+    >
+      <div className="mb-7 flex min-w-0 flex-wrap items-center justify-between gap-x-6 gap-y-1 border-b border-ink pb-3 text-label text-muted md:mb-10">
+        <span className="inline-flex items-center gap-2">
+          <IconDocument size={15} className="shrink-0 text-ink" />
+          Редакция {doc.version}
+        </span>
+        <span>
+          {doc.publishedAt
+            ? `Опубликована ${DATE_FORMAT.format(doc.publishedAt)}`
+            : 'Не опубликована'}
+        </span>
+      </div>
       {doc.isDraft ? (
-        <p
-          className="rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn"
-          role="note"
-        >
+        <Notice tone="wait" role="note" className="mb-6">
           Черновик документа: действующая редакция ещё не опубликована.
-        </p>
+        </Notice>
       ) : null}
-      <p className="text-sm text-muted">
-        Редакция {doc.version}
-        {doc.publishedAt ? `, опубликована ${DATE_FORMAT.format(doc.publishedAt)}` : ''}
-      </p>
-      {hasTopHeading(doc.bodyMd) ? null : <h1 className="text-2xl font-bold">{doc.title}</h1>}
+      {hasTopHeading(doc.bodyMd) ? null : <h1 className="mb-6 text-h1">{doc.title}</h1>}
       <Markdown source={doc.bodyMd} className="legal" />
     </article>
   );

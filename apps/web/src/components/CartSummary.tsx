@@ -1,10 +1,15 @@
 import type { OrderMinimumsResult } from '@detaly/domain';
 import { telHref } from '@/server/brand';
+import { IconArrowRight, IconClock, IconPhone } from './icons';
+import { Notice } from './page/Notice';
+import { buttonClass } from './ui/Button';
+import { cn } from './ui/cn';
+import { Price } from './ui/Price';
 
 /**
  * Sum, the order's date, the minimum-order hint and "Оформить заказ" — or, while online
  * checkout is closed, the gate's text with a call button (every closed reason), so the client
- * who collected a cart still has a way to order.
+ * who collected a cart still has a way to order. A key card: drawing corner marks.
  */
 export function CartSummary({
   subtotalText,
@@ -21,60 +26,65 @@ export function CartSummary({
 }) {
   return (
     <section
-      className="space-y-3 rounded-card border border-line bg-card p-4"
+      className="corner-marks min-w-0 rounded border border-ink bg-card p-5 md:p-6"
       aria-label="Итого"
       data-testid="cart-summary"
     >
-      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-2">
-        <span className="text-muted">Итого, {itemsCount} шт.</span>
-        <span className="text-2xl font-bold whitespace-nowrap" data-testid="cart-total">
-          {subtotalText}
-        </span>
-      </div>
+      <p className="text-label text-muted">Итого, {itemsCount} шт.</p>
+      <Price size="lg" className="mt-3 block" data-testid="cart-total">
+        {subtotalText}
+      </Price>
       {promiseText ? (
-        <p className="text-sm text-muted">
-          Получение заказа <span className="font-medium text-ink">{promiseText}</span>
+        <p className="mt-4 flex items-start gap-2 border-t border-dashed border-line pt-4 text-sm text-muted">
+          <IconClock size={16} className="mt-0.5 shrink-0 text-ink" />
+          <span>
+            Получение заказа <span className="font-semibold text-ink">{promiseText}</span>
+          </span>
         </p>
       ) : null}
       {!minimums.ok ? (
-        <p
-          className="rounded-xl border border-warn/30 bg-warn-soft px-3 py-2 text-sm text-warn"
-          data-testid="cart-minimum"
-        >
+        <Notice tone="wait" className="mt-4" data-testid="cart-minimum">
           {minimums.message}
-        </p>
+        </Notice>
       ) : null}
-      {gate.open ? (
-        minimums.ok ? (
-          <a
-            href="/checkout"
-            className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-accent px-5 font-semibold text-white hover:bg-accent-strong"
-            data-testid="checkout-link"
-          >
-            Оформить заказ
-          </a>
-        ) : (
-          <span
-            className="inline-flex h-12 w-full cursor-not-allowed items-center justify-center rounded-xl bg-line px-5 font-semibold text-muted"
-            aria-disabled="true"
-          >
-            Оформить заказ
-          </span>
-        )
-      ) : (
-        <div className="space-y-3" data-testid="checkout-closed">
-          <p className="text-sm text-muted">{gate.message}</p>
-          {gate.phone ? (
+      <div className="mt-5">
+        {gate.open ? (
+          minimums.ok ? (
             <a
-              href={telHref(gate.phone)}
-              className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-accent px-5 font-semibold whitespace-nowrap text-white hover:bg-accent-strong"
-              data-testid="call-to-order"
+              href="/checkout"
+              className={buttonClass({ variant: 'primary', size: 'lg', block: true })}
+              data-testid="checkout-link"
             >
-              Позвонить {gate.phone}
+              Оформить заказ
+              <IconArrowRight size={18} />
             </a>
-          ) : null}
-        </div>
-      )}
+          ) : (
+            <span
+              className="inline-flex min-h-13 w-full cursor-not-allowed items-center justify-center rounded bg-paper-2 px-7 font-semibold text-faint"
+              aria-disabled="true"
+            >
+              Оформить заказ
+            </span>
+          )
+        ) : (
+          <div className="space-y-3" data-testid="checkout-closed">
+            <p className="text-sm text-muted">{gate.message}</p>
+            {gate.phone ? (
+              <a
+                href={telHref(gate.phone)}
+                className={cn(
+                  buttonClass({ variant: 'primary', size: 'lg', block: true }),
+                  'whitespace-nowrap',
+                )}
+                data-testid="call-to-order"
+              >
+                <IconPhone size={18} />
+                Позвонить {gate.phone}
+              </a>
+            ) : null}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

@@ -9,7 +9,7 @@
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",
-    "db:drift": "drizzle-kit generate && git diff --exit-code -- drizzle",
+    "db:drift": "drizzle-kit generate && git diff --exit-code -- drizzle && test -z \"$(git ls-files --others --exclude-standard -- drizzle)\"",
     "db:migrate": "node --import tsx src/migrate.ts",
     "db:seed": "node --import tsx src/seed-cli.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",

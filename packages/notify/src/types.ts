@@ -26,6 +26,11 @@ export interface RenderedMessage {
   text: string;
   /** Rows of buttons. */
   buttons: MessageButton[][];
+  /**
+   * Short text for SMS (no buttons, two segments at most): renderSmsText uses it instead of
+   * `text` and appends the URL buttons. Set by the SMS allowlisted templates.
+   */
+  smsText?: string;
 }
 
 /** One messenger_bindings row, reduced to what channel selection needs. */
@@ -79,6 +84,14 @@ export interface OrderTemplateData {
   deadlineDate?: IsoDate | null;
   /** Days since the order became ready (reminders 3/6/9). */
   readyDays?: number | null;
+  /**
+   * Instant the client must answer by: confirm_request (orders.expires_at), decision_needed
+   * (client_approvals.expires_at, or now + approval.timeout_h when sending). A Date or an ISO
+   * timestamp (job data is JSON); shown in Asia/Yekaterinburg.
+   */
+  replyBy?: Date | string | null;
+  /** Storage window by the offer (pickup.window_prepaid_days / pickup.window_cod_days). */
+  storageDays?: number | null;
 }
 
 export interface VinProposalData {

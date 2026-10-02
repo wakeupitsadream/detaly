@@ -53,6 +53,10 @@ export const FALLBACK_REASONS = {
   noPhone: 'no_messenger:no_phone',
   smsUnavailable: 'no_messenger:sms_unavailable',
   driverUnavailable: 'driver_unavailable',
+  /** SMS guard: 1 per number per 10 min, 3 per day (decision Б21). */
+  smsRateLimited: 'sms_rate_limited',
+  /** SMS guard: SMS_MONTHLY_BUDGET_RUB spent for the calendar month (decision Б21). */
+  smsBudgetExhausted: 'sms_budget_exhausted',
 } as const;
 
 export type ChannelSelection =
@@ -106,10 +110,32 @@ export function selectChannel(
   };
 }
 
-/** A driver: Telegram, MAX or SMS. Errors other than ChannelBlockedError are retried by the queue. */
+export interface DriverSendOptions {
+  /**
+   * notifications.dedupe_key of this message. A queue retry of the same notification passes the
+   * same key, so the SMS guard does not count it twice (and does not rate-limit the retry).
+   */
+  dedupeKey?: string;
+}
+
+export interface DriverSendResult {
+  externalId: string | null;
+  /** Price reported by the gateway (SMS), when it reports one. */
+  costKop?: number | null;
+}
+
+/**
+ * A driver: Telegram, MAX or SMS. ChannelBlockedError -> next channel; ChannelSkippedError ->
+ * `skipped` with its reason; other errors are retried by the queue (UnrecoverableSmsError and
+ * similar are mapped to UnrecoverableError by the worker).
+ */
 export interface ChannelDriver {
   readonly channel: NotificationChannel;
-  send(address: string, message: RenderedMessage): Promise<{ externalId: string | null }>;
+  send(
+    address: string,
+    message: RenderedMessage,
+    options?: DriverSendOptions,
+  ): Promise<DriverSendResult>;
 }
 
 /** The recipient blocked the bot (Telegram 403 and similar): try the next channel. */
@@ -123,11 +149,27 @@ export class ChannelBlockedError extends Error {
   }
 }
 
+/**
+ * The driver refused to send on purpose (SMS rate limit, SMS budget): the notification is
+ * `skipped` with `reason` as fallback_reason when no other channel is left.
+ */
+export class ChannelSkippedError extends Error {
+  override name = 'ChannelSkippedError';
+  constructor(
+    readonly channel: NotificationChannel,
+    readonly reason: string,
+  ) {
+    super(`${channel}: ${reason}`);
+  }
+}
+
 export type NotifyResult =
   | {
       status: 'sent';
       channel: NotificationChannel;
       externalId: string | null;
+      /** Gateway price when the driver reports it (SMS); undefined otherwise. */
+      costKop?: number | null;
       fallbackReason: string | null;
       /** Channels that turned out blocked; the caller sets messenger_bindings.blocked_at. */
       blocked: ChannelAddress[];
@@ -139,6 +181,7 @@ export interface Notifier {
     recipient: NotifyRecipient,
     template: T,
     data: TemplateDataMap[T],
+    options?: DriverSendOptions,
   ): Promise<NotifyResult>;
 }
 
@@ -148,22 +191,25 @@ export function createNotifier(options: { drivers: readonly ChannelDriver[] }): 
   const available = new Set(drivers.keys());
 
   return {
-    async send(recipient, template, data) {
+    async send(recipient, template, data, options = {}) {
       const message = renderTemplate(template, data);
       const exclude = new Set<NotificationChannel>();
       const blocked: ChannelAddress[] = [];
+      // A guard refusal (SMS rate limit or budget) explains the skip better than "unavailable".
+      let skipReason: string | null = null;
       for (;;) {
         const selection = selectChannel(recipient, template, available, exclude);
         if (selection.status === 'skipped') {
+          const reason = skipReason ?? selection.fallbackReason;
           const fallbackReason =
             blocked.length > 0
-              ? `blocked:${blocked.map((b) => b.channel).join(',')};${selection.fallbackReason}`
-              : selection.fallbackReason;
+              ? `blocked:${blocked.map((b) => b.channel).join(',')};${reason}`
+              : reason;
           return { status: 'skipped', fallbackReason, blocked };
         }
         const driver = drivers.get(selection.channel) as ChannelDriver;
         try {
-          const { externalId } = await driver.send(selection.address, message);
+          const sent = await driver.send(selection.address, message, options);
           const fallbackReason =
             blocked.length > 0
               ? `blocked:${blocked.map((b) => b.channel).join(',')}`
@@ -171,11 +217,17 @@ export function createNotifier(options: { drivers: readonly ChannelDriver[] }): 
           return {
             status: 'sent',
             channel: selection.channel,
-            externalId,
+            externalId: sent.externalId,
+            ...(sent.costKop === undefined ? {} : { costKop: sent.costKop }),
             fallbackReason,
             blocked,
           };
         } catch (error) {
+          if (error instanceof ChannelSkippedError) {
+            skipReason = error.reason;
+            exclude.add(selection.channel);
+            continue;
+          }
           if (!(error instanceof ChannelBlockedError)) throw error;
           blocked.push({ channel: selection.channel, address: selection.address });
           exclude.add(selection.channel);
@@ -183,10 +235,4 @@ export function createNotifier(options: { drivers: readonly ChannelDriver[] }): 
       }
     },
   };
-}
-
-/** Plain text for SMS: message text plus URLs of url buttons (action buttons are dropped). */
-export function renderSmsText(message: RenderedMessage): string {
-  const urls = message.buttons.flat().flatMap((b) => (b.kind === 'url' ? [b.url] : []));
-  return [message.text, ...urls].join('\n');
 }

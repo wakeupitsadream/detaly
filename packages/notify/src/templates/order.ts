@@ -2,10 +2,14 @@
  * Order notification templates, one per id in ORDER_NOTIFY_TEMPLATES (@detaly/domain).
  * Client texts carry only the order number, status, brand and article; staff cards show the
  * client phone masked and link to the admin for details (PLAN section 4, PD minimisation).
+ *
+ * SMS allowlisted templates (confirm_request, decision_needed, arrived, money_sent) also set
+ * `smsText`: SMS has no buttons, so it sends the client to /o/<token> (the URL button), and two
+ * UCS-2 segments (134 characters) leave about 65 characters next to a 65-character link. The sender name carries the brand.
  */
 import type { OrderNotifyTemplate } from '@detaly/domain';
 import type { CallbackAction } from '../actions';
-import { itemsLine, lines, maskPhone, promise, rub } from '../format';
+import { deadline, formatReplyBy, itemsLine, lines, maskPhone, promise, rub } from '../format';
 import type { MessageButton, OrderTemplateData, RenderedMessage } from '../types';
 
 type Render = (d: OrderTemplateData) => RenderedMessage;
@@ -28,6 +32,10 @@ const msg = (text: string, ...rows: MessageButton[][]): RenderedMessage => ({
   text,
   buttons: rows.filter((row) => row.length > 0),
 });
+const withSms = (message: RenderedMessage, smsText: string): RenderedMessage => ({
+  ...message,
+  smsText,
+});
 
 const head = (d: OrderTemplateData): string => `${d.brandName} · заказ ${d.orderNumber}`;
 const what = (d: OrderTemplateData): string | null => {
@@ -35,14 +43,43 @@ const what = (d: OrderTemplateData): string | null => {
   return text === '' ? null : text;
 };
 const refundPromise = 'Деньги вернутся в течение 10 дней.';
+const until = (d: OrderTemplateData, compact = false): string => {
+  const at = formatReplyBy(d.replyBy, { compact });
+  return at === null ? '' : ` до ${at}`;
+};
+/** SMS deadline: '14:30 03.10', so it fits next to a long order link. */
+const untilSms = (d: OrderTemplateData): string => until(d, true);
+
+/**
+ * The storage phrase goes into the last ready reminder: at most one day of the offer's storage
+ * window left (day 9 of 10 for prepay, day 6 of 7 for pay on handover).
+ */
+const STORAGE_WARN_DAYS_LEFT = 1;
+const storageEnding = (d: OrderTemplateData): boolean =>
+  typeof d.readyDays === 'number' &&
+  d.readyDays > 0 &&
+  typeof d.storageDays === 'number' &&
+  d.storageDays - d.readyDays <= STORAGE_WARN_DAYS_LEFT;
+const storagePhrase = (d: OrderTemplateData): string =>
+  d.scheme === 'prepay'
+    ? `По оферте заказ хранится ${d.storageDays} дн., затем возврат денег.`
+    : `По оферте заказ хранится ${d.storageDays} дн., затем заказ отменяется.`;
 
 export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
   // --- client ------------------------------------------------------------------------------
   confirm_request: (d) =>
-    msg(
-      lines(head(d), what(d), 'Подтвердите заказ. Оплата при получении в пункте выдачи.'),
-      [act(d, 'confirm', 'Подтверждаю')],
-      [orderLink(d)],
+    withSms(
+      msg(
+        lines(
+          head(d),
+          what(d),
+          `Подтвердите заказ${until(d)}. Оплата при получении в пункте выдачи.`,
+        ),
+        [act(d, 'confirm', 'Подтверждаю')],
+        [orderLink(d)],
+      ),
+      // The deadline goes before the filler: renderSmsText cuts from the end.
+      `Подтвердите заказ ${d.orderNumber}${untilSms(d)} на странице.`,
     ),
   payment_link: (d) =>
     msg(lines(head(d), what(d), `Сумма к оплате: ${rub(d.totalKop)}. Оплатите заказ по ссылке.`), [
@@ -68,10 +105,13 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
       orderLink(d),
     ]),
   decision_needed: (d) =>
-    msg(
-      lines(head(d), 'Нужно ваше решение по заказу.', d.note),
-      [act(d, 'approve', 'Согласен'), act(d, 'refund', 'Вернуть деньги')],
-      [orderLink(d, 'Подробнее')],
+    withSms(
+      msg(
+        lines(head(d), `Нужно ваше решение по заказу ${d.orderNumber}${until(d)}.`, d.note),
+        [act(d, 'approve', 'Согласен'), act(d, 'refund', 'Вернуть деньги')],
+        [orderLink(d, 'Подробнее')],
+      ),
+      `Нужно ваше решение по заказу ${d.orderNumber}${untilSms(d)}.`,
     ),
   refund_started: (d) => msg(lines(head(d), `Заказ отменён. ${refundPromise}`), [orderLink(d)]),
   order_cancelled: (d) =>
@@ -95,17 +135,30 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
       [orderLink(d)],
     ),
   arrived: (d) =>
-    msg(
-      lines(
-        head(d),
-        typeof d.readyDays === 'number' && d.readyDays > 0
-          ? `Заказ ждёт вас ${d.readyDays} дн.`
-          : 'Заказ приехал.',
-        d.pickupCode ? `Код выдачи: ${d.pickupCode}` : null,
-        d.pickup ? `${d.pickup.name}, ${d.pickup.address}. ${d.pickup.hours}` : null,
-        d.scheme === 'prepay' ? 'Заказ оплачен.' : 'Оплата при получении картой или по СБП.',
+    withSms(
+      msg(
+        lines(
+          head(d),
+          typeof d.readyDays === 'number' && d.readyDays > 0
+            ? `Заказ ждёт вас ${d.readyDays} дн.`
+            : 'Заказ приехал.',
+          storageEnding(d) ? storagePhrase(d) : null,
+          d.pickupCode ? `Код выдачи: ${d.pickupCode}` : null,
+          d.pickup ? `${d.pickup.name}, ${d.pickup.address}. ${d.pickup.hours}` : null,
+          d.scheme === 'prepay' ? 'Заказ оплачен.' : 'Оплата при получении картой или по СБП.',
+        ),
+        [orderLink(d, 'Код выдачи и запись на установку')],
       ),
-      [orderLink(d, 'Код выдачи и запись на установку')],
+      storageEnding(d)
+        ? `Заказ ${d.orderNumber}: хранение по оферте ${d.storageDays} дн., затем ${
+            d.scheme === 'prepay' ? 'возврат денег' : 'отмена'
+          }.`
+        : lines(
+            typeof d.readyDays === 'number' && d.readyDays > 0
+              ? `Заказ ${d.orderNumber} ждёт вас ${d.readyDays} дн.`
+              : `Заказ ${d.orderNumber} приехал.`,
+            d.pickupCode ? `Код выдачи ${d.pickupCode}.` : null,
+          ),
     ),
   partial_arrival: (d) =>
     msg(lines(head(d), `Часть заказа приехала, остальное ждём ${promise(d.promisedDate)}.`), [
@@ -151,7 +204,10 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
   claim_received: (d) =>
     msg(lines(head(d), 'Претензия принята. Ответим в течение 10 дней.'), [orderLink(d)]),
   money_sent: (d) =>
-    msg(lines(head(d), 'Деньги отправлены. Срок зачисления зависит от банка.'), [orderLink(d)]),
+    withSms(
+      msg(lines(head(d), 'Деньги отправлены. Срок зачисления зависит от банка.'), [orderLink(d)]),
+      `Заказ ${d.orderNumber}: деньги отправлены, зачисление зависит от банка.`,
+    ),
 
   // --- staff -------------------------------------------------------------------------------
   staff_new_order: (d) =>
@@ -200,6 +256,8 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
       [act(d, 'invpaid', 'Счёт оплачен')],
       adminLink(d),
     ),
+  // Aliases and a new ETA are per item (ialt/ieta menus with item ids): the seller bot card
+  // draws them from the database (decision Б17); the template keeps the order-level actions.
   staff_problem: (d) =>
     msg(
       lines(
@@ -208,7 +266,6 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
         d.note,
         `Клиент ${maskPhone(d.clientPhone)}`,
       ),
-      [act(d, 'alt', 'Аналог'), act(d, 'neweta', 'Новый срок')],
       [act(d, 'anyway', 'Заказать всё равно'), act(d, 'cancel', 'Отменить заказ')],
       adminLink(d),
     ),
@@ -229,7 +286,7 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
     msg(
       lines(
         `Заказ ${d.orderNumber} не выкуплен.`,
-        `Вернуть Rossko до ${d.deadlineDate ?? 'срока возврата'}.`,
+        `Вернуть Rossko до ${deadline(d.deadlineDate, 'срока возврата')}.`,
       ),
       adminLink(d),
     ),
@@ -243,7 +300,7 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
     ),
   staff_claim_deadline: (d) =>
     msg(
-      lines(`Претензия по заказу ${d.orderNumber}.`, `Ответить до ${d.deadlineDate ?? '—'}.`),
+      lines(`Претензия по заказу ${d.orderNumber}.`, `Ответить до ${deadline(d.deadlineDate)}.`),
       adminLink(d),
     ),
   staff_refund_failed: (d) =>
@@ -269,7 +326,7 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
       lines(
         `Заказ ${d.orderNumber}: чек не прошёл`,
         d.note,
-        'Выдача заблокирована до чека. Клиенту — «приходите позже»; проверьте настройки чеков и нажмите «Повторить чек».',
+        'Выдача заблокирована до чека. Клиенту — «приходите позже»; проверьте настройки чеков и нажмите «Повторить чек» в карточке заказа.',
       ),
       adminLink(d),
     ),
@@ -277,7 +334,7 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
     msg(
       lines(
         `Заказ ${d.orderNumber}: клиент не получил уведомление`,
-        'Нужно решение клиента, но написать ему некуда. Позвоните клиенту и отметьте решение в админке.',
+        'Нужно решение клиента, но написать ему некуда. Таймер ответа не запущен: позвоните клиенту и отметьте решение в админке.',
         `Клиент ${maskPhone(d.clientPhone)}`,
       ),
       adminLink(d),
@@ -286,7 +343,7 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
     msg(
       lines(
         `Заказ ${d.orderNumber}: срок возврата денег`,
-        `Вернуть до ${d.deadlineDate ?? '—'} (10 дней по закону). Возврат ещё не прошёл.`,
+        `Вернуть до ${deadline(d.deadlineDate)} (10 дней по закону). Возврат ещё не прошёл.`,
       ),
       adminLink(d),
     ),

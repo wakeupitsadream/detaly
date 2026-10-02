@@ -219,7 +219,29 @@ describe('mapSearchResult robustness', () => {
       part({ id: 'S', price: '1', count: 1, delivery: -1, deliveryEnd: '2026-10-08' }),
       local,
     );
-    expect(offer?.stock).toMatchObject({ deliveryDays: 0, deliveryEnd: '2026-10-08' });
+    expect(offer?.stock).toMatchObject({ deliveryDays: null, deliveryEnd: '2026-10-08' });
+  });
+
+  it('drops a stock without delivery days whose deliveryEnd is not a date (no fake "today")', () => {
+    for (const deliveryEnd of ['скоро', '08/10', '2026-13-01', '  ']) {
+      expect(
+        mapSearchResult(part({ id: 'S', price: '1', count: 1, deliveryEnd }), local),
+        deliveryEnd,
+      ).toEqual([]);
+    }
+    // still kept when the days are known: the date then comes from them
+    const [kept] = mapSearchResult(
+      part({ id: 'S', price: '1', count: 1, delivery: 2, deliveryEnd: 'скоро' }),
+      local,
+    );
+    expect(kept?.stock).toMatchObject({ deliveryDays: 2, deliveryEnd: 'скоро' });
+  });
+
+  it('keeps a stock whose deliveryEnd has an hour-only offset or slashes', () => {
+    for (const deliveryEnd of ['2026-10-08 22:00:00+03', '2026/10/08']) {
+      const [offer] = mapSearchResult(part({ id: 'S', price: '1', count: 1, deliveryEnd }), local);
+      expect(offer?.stock, deliveryEnd).toMatchObject({ deliveryDays: null, deliveryEnd });
+    }
   });
 
   it('uses deliveryEnd when delivery days are missing, Date values become ISO strings', () => {
@@ -234,7 +256,7 @@ describe('mapSearchResult robustness', () => {
       local,
     );
     expect(offer?.stock).toMatchObject({
-      deliveryDays: 0,
+      deliveryDays: null,
       deliveryEnd: '2026-10-08T19:00:00.000Z',
       multiplicity: 1,
     });

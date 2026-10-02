@@ -101,11 +101,21 @@ test('client-side navigation works through the proxy', async ({ page }) => {
   await expect(page.getByRole('heading', { level: 1 })).toContainText('О сервисе');
 });
 
-test('robots.txt closes search and service paths', async ({ request }) => {
+test('robots.txt closes service paths, search is closed by noindex instead', async ({
+  request,
+}) => {
   const response = await request.get('/robots.txt');
   expect(response.status()).toBe(200);
   const body = await response.text();
-  for (const path of ['/search', '/api/', '/o/', '/p/', '/admin']) {
+  for (const path of ['/o/', '/p/', '/admin']) {
     expect(body).toContain(`Disallow: ${path}`);
   }
+  // Disallow would hide the X-Robots-Tag noindex from crawlers
+  for (const path of ['/search', '/api/']) {
+    expect(body).not.toContain(`Disallow: ${path}`);
+  }
+  const search = await request.get('/search');
+  expect(search.headers()['x-robots-tag'] ?? '').toContain('noindex');
+  const api = await request.get('/api/health/live');
+  expect(api.headers()['x-robots-tag'] ?? '').toContain('noindex');
 });

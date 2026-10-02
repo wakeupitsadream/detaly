@@ -22,6 +22,11 @@ cat >"$T/bin/docker" <<'SHIM'
 T="$(dirname "$(dirname "$(readlink -f "$0")")")"
 printf 'IMAGE_TAG=%s STAGE_IMAGE_TAG=%s :: %s\n' "${IMAGE_TAG:-}" "${STAGE_IMAGE_TAG:-}" "$*" >>"$T/docker.log"
 args=" $* "
+# $T/up_fail_tag: `up -d web worker ...` with this IMAGE_TAG fails (container creation error)
+if [[ "$args" == *" up -d web worker "* && -s "$T/up_fail_tag" && "$(cat "$T/up_fail_tag")" == "${IMAGE_TAG:-}" ]]; then
+  echo "Error response from daemon: Conflict" >&2
+  exit 1
+fi
 if [[ "$args" == *" exec "* && "$args" == *" redis-cli "* ]]; then
   if [[ "$(cat "$T/hb_mode")" == fresh ]]; then
     us="${EPOCHREALTIME//[!0-9]/}"
@@ -135,6 +140,20 @@ check "DRY_RUN exits 0" test "$rc" -eq 0
 check "DRY_RUN leaves .env untouched" cmp -s "$ENV" "$T/env.before"
 check "DRY_RUN does not call docker" test "$(wc -l <"$T/docker.log")" -eq "$lines_before"
 check "DRY_RUN keeps current_tag" test "$(state current_tag)" = aaa111
+
+# 5b. `compose up` itself fails: auto-rollback, the failed tag never reaches .env
+echo fresh >"$T/hb_mode"
+echo 0 >"$T/health_rc"
+echo fff666 >"$T/up_fail_tag"
+rc=0
+deploy fff666 || rc=$?
+check "compose up failure: deploy exits 1" test "$rc" -eq 1
+check "compose up failure: current_tag stays aaa111" test "$(state current_tag)" = aaa111
+check "compose up failure: last up is aaa111 (auto-rollback)" test "$(last_up_tag)" = aaa111
+check "compose up failure: .env keeps aaa111" test "$(envv IMAGE_TAG)/$(envv GIT_SHA)" = aaa111/aaa111
+check "compose up failure: recorded in history" grep -q 'deploy fff666 failed' "$T/root/.deploy/history.log"
+: >"$T/up_fail_tag"
+lines_before="$(wc -l <"$T/docker.log")"
 
 # 6. preflight: default Postgres password refuses to deploy before any docker call
 sed -i 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=detaly/' "$ENV"

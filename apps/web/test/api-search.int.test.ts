@@ -6,6 +6,7 @@ import { createDb, type Db } from '@detaly/db';
 import type { OfferView } from '@detaly/domain';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { handleSearchRequest } from '@/server/api/search-handler';
+import { rosskoKeyPrefix } from '@/server/rossko';
 import { createSearchDeps } from '@/server/search';
 import { createSearchService, type SearchService } from '@/server/search-service';
 import { intEnv, webDatabaseUrl } from './helpers';
@@ -117,7 +118,8 @@ describe('GET /api/search', () => {
 
   it('answers 503 when the quota breaker is open and the cache is empty, cached articles still work', async () => {
     // Open the breaker: 70% of ROSSKO_DAILY_LIMIT already used today (Moscow day).
-    await redis.set(`${prefix}rossko:quota:${mskDayKey(new Date())}`, String(63_000), 'EX', 600);
+    const fx = rosskoKeyPrefix('fixtures', prefix);
+    await redis.set(`${fx}rossko:quota:${mskDayKey(new Date())}`, String(63_000), 'EX', 600);
 
     const uncached = await get('/api/search?q=GDB1330');
     expect(uncached.status).toBe(503);
@@ -129,6 +131,18 @@ describe('GET /api/search', () => {
       fromCache: true,
       quota: { breakerOpen: true, exhausted: false },
     });
+  });
+});
+
+describe('fixtures and live never share Redis keys', () => {
+  it('fixture searches use the fx: limiter and cache, the live quota and cache stay untouched', async () => {
+    expect(rosskoKeyPrefix('live', prefix)).toBe(prefix);
+    expect(rosskoKeyPrefix('fixtures', prefix)).toBe(`${prefix}fx:`);
+    const live = await redis.keys(`${prefix}rossko:*`);
+    expect(live).toEqual([]);
+    const fixtures = await redis.keys(`${prefix}fx:rossko:*`);
+    expect(fixtures.some((key) => key.includes('rossko:search:'))).toBe(true);
+    expect(fixtures.some((key) => key.includes('rossko:quota:'))).toBe(true);
   });
 });
 

@@ -1,10 +1,11 @@
 /**
  * Search rate limit (PLAN section 1, "Защита"): 20 requests per minute and 300 per 24 hours
- * per client. The bucket key is HMAC-SHA256(SESSION_SECRET, ip): the IP itself never reaches
- * Redis. Both windows use slidingWindowHit from @detaly/config (atomic Lua).
+ * per client. The bucket key is HMAC-SHA256(SESSION_SECRET, subject), where the subject is the
+ * IPv4 address or the IPv6 /64 prefix (rateLimitSubject): the IP itself never reaches Redis. Both windows use slidingWindowHit from @detaly/config (atomic Lua).
  */
 import { createHmac } from 'node:crypto';
 import { slidingWindowHit, type Redis } from '@detaly/config';
+import { rateLimitSubject } from './client-ip';
 
 export const SEARCH_LIMITS = {
   minute: { limit: 20, windowMs: 60_000 },
@@ -39,7 +40,7 @@ export async function hitSearchRateLimit(
   redis: Redis,
   { secret, ip, keyPrefix = '', now = Date.now() }: SearchRateLimitOptions,
 ): Promise<RateLimitDecision> {
-  const bucket = clientBucket(secret, ip);
+  const bucket = clientBucket(secret, rateLimitSubject(ip));
   const minute = await slidingWindowHit(redis, {
     key: `${keyPrefix}rl:search:min:${bucket}`,
     ...SEARCH_LIMITS.minute,

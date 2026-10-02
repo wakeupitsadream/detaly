@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { CachedSearch, SearchCache } from './cache';
-import { createRosskoClient, createRosskoCaller, type RosskoClientOptions } from './client';
+import { SEARCH_ERROR_CACHE_TTL_SEC, type CachedSearch, type SearchCache } from './cache';
+import {
+  createRosskoClient,
+  createRosskoCaller,
+  searchFailure,
+  type RosskoClientOptions,
+} from './client';
 import {
   CheckoutDisabledError,
   checkoutMayHaveExecuted,
@@ -28,16 +33,22 @@ function spyCaller(inner: RosskoCaller = createFixtureCaller()) {
   return { caller, calls };
 }
 
-function memoryCache(): SearchCache & { store: Map<string, CachedSearch> } {
+function memoryCache(): SearchCache & {
+  store: Map<string, CachedSearch>;
+  ttls: Map<string, number | undefined>;
+} {
   const store = new Map<string, CachedSearch>();
+  const ttls = new Map<string, number | undefined>();
   return {
     store,
-    key: (norm, deliveryId) => `rossko:search:v1:${norm}:${deliveryId ?? '-'}`,
+    key: (norm, deliveryId) => `rossko:search:v2:${norm}:${deliveryId ?? '-'}`,
     get: (key) => Promise.resolve(store.get(key) ?? null),
-    set: (key, value) => {
+    set: (key, value, ttlSec) => {
       store.set(key, structuredClone(value));
+      ttls.set(key, ttlSec);
       return Promise.resolve();
     },
+    ttls,
   };
 }
 
@@ -122,7 +133,41 @@ describe('createRosskoClient.search', () => {
     const { instance, events } = client();
     const result = await instance.search('NOTFOUND');
     expect(result).toMatchObject({ offers: [], message: 'Ничего не найдено' });
-    expect(events[0]).toMatchObject({ ok: true, supplierSuccess: false });
+    expect(events[0]).toMatchObject({ ok: true, supplierSuccess: false, error: null });
+  });
+
+  it('a success:false supplier error is reported ok=false and cached only briefly', async () => {
+    const cache = memoryCache();
+    const errorCaller: RosskoCaller = {
+      call: () =>
+        Promise.resolve({
+          SearchResult: { success: false, message: `Неверный ключ ${KEY1}` },
+        }),
+    };
+    const { instance, events } = client({ caller: errorCaller, cache });
+    const result = await instance.search('OC90');
+    expect(result).toMatchObject({ offers: [], fromCache: false });
+    expect(events[0]).toMatchObject({
+      ok: false,
+      supplierSuccess: false,
+      error: 'GetSearch success=false: Неверный ключ ***',
+    });
+    expect([...cache.ttls.values()]).toEqual([SEARCH_ERROR_CACHE_TTL_SEC]);
+
+    // "nothing found" keeps the full TTL
+    const notFound = memoryCache();
+    await client({ cache: notFound }).instance.search('NOTFOUND');
+    expect([...notFound.ttls.values()]).toEqual([undefined]);
+  });
+
+  it('searchFailure tells "nothing found" from supplier errors', () => {
+    expect(searchFailure({ success: true, message: null })).toBeNull();
+    expect(searchFailure({ success: false, message: 'Ничего не найдено' })).toBeNull();
+    expect(searchFailure({ success: false, message: 'Товар не найден' })).toBeNull();
+    expect(searchFailure({ success: false, message: null })).toMatch(/no message/);
+    expect(searchFailure({ success: false, message: 'Ошибка авторизации' })).toMatch(
+      /Ошибка авторизации/,
+    );
   });
 
   it('propagates limiter errors without calling the supplier or the hook', async () => {

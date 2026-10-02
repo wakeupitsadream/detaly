@@ -198,16 +198,22 @@ validate_tag() {
   [[ "$1" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || die "invalid image tag: '$1'"
 }
 
-# Starts the app services with a given tag (no migrations) and records the tag in the env file.
-# Sets UP_SINCE: the time (ms) after which a heartbeat can only come from the started worker.
+# Starts the app services with a given tag (no migrations). Only when `compose up` succeeded is
+# the tag recorded in the env file: a failed up must not leave an unverified tag there for the
+# next manual `docker compose up -d`. Returns 1 on failure (callers roll back), so call it in
+# an `if` / `&&` chain. Sets UP_SINCE: the time (ms) after which a heartbeat can only come from
+# the started worker.
 UP_SINCE=0
 up_tag() {
   local tag="$1"
   export IMAGE_TAG="$tag" GIT_SHA="$tag"
+  if ! compose up -d web worker backup caddy; then
+    log "compose up -d with $tag failed"
+    return 1
+  fi
+  UP_SINCE="$(now_ms)"
   set_env_value "$ENV_FILE" IMAGE_TAG "$tag"
   set_env_value "$ENV_FILE" GIT_SHA "$tag"
-  compose up -d web worker backup caddy
-  UP_SINCE="$(now_ms)"
 }
 
 deploy() {
@@ -225,9 +231,7 @@ deploy() {
   compose run --rm --no-deps worker "${MIGRATE_CMD[@]}"
   log "seed"
   compose run --rm --no-deps worker "${SEED_CMD[@]}"
-  up_tag "$tag"
-
-  if wait_ready web redis "$UP_SINCE"; then
+  if up_tag "$tag" && wait_ready web redis "$UP_SINCE"; then
     if [[ -n "$current" && "$current" != "$tag" ]]; then save_state prev_tag "$current"; fi
     save_state current_tag "$tag"
     history "deploy $tag ok"
@@ -238,8 +242,7 @@ deploy() {
   history "deploy $tag failed"
   if [[ -n "$current" && "$current" != "$tag" ]]; then
     log "rolling back to $current"
-    up_tag "$current"
-    if wait_ready web redis "$UP_SINCE"; then
+    if up_tag "$current" && wait_ready web redis "$UP_SINCE"; then
       history "auto-rollback to $current ok"
     else
       history "auto-rollback to $current: health still failing"
@@ -258,8 +261,7 @@ rollback() {
   validate_tag "$prev"
   preflight "$ENV_FILE"
   log "rollback $current -> $prev (no migrations; schema stays expanded)"
-  up_tag "$prev"
-  if wait_ready web redis "$UP_SINCE"; then
+  if up_tag "$prev" && wait_ready web redis "$UP_SINCE"; then
     save_state current_tag "$prev"
     if [[ -n "$current" ]]; then save_state prev_tag "$current"; fi
     history "rollback to $prev ok"
@@ -289,8 +291,8 @@ stage_up() {
   compose --profile stage up -d --wait postgres-stage redis-stage
   compose --profile stage run --rm --no-deps worker-stage "${MIGRATE_CMD[@]}"
   compose --profile stage run --rm --no-deps worker-stage "${SEED_CMD[@]}"
-  set_env_value "$ENV_FILE" STAGE_IMAGE_TAG "$tag"
   compose --profile stage up -d web-stage worker-stage
+  set_env_value "$ENV_FILE" STAGE_IMAGE_TAG "$tag"
   wait_ready web-stage redis-stage "$(now_ms)"
   history "stage $tag up"
 }

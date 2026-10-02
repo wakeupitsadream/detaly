@@ -8,6 +8,10 @@
  *   every real call is written to `api_calls`.
  *
  * Web never orders: allowCheckout is always false here (GetCheckout runs in the worker).
+ *
+ * Fixtures keep their limiter and cache under `fx:` (rosskoKeyPrefix): synthetic prices must
+ * never be served as live ones after switching ROSSKO_MODE, and demo searches must not spend
+ * the real daily Rossko quota (or open its 70% breaker for live calls).
  */
 import type { Env, Redis } from '@detaly/config';
 import { apiCalls, type Database } from '@detaly/db';
@@ -40,9 +44,15 @@ export interface WebRosskoOptions {
   onError?: (error: unknown, what: string) => void;
 }
 
+/** Redis key prefix of the limiter and cache for a mode: live keys are never shared. */
+export function rosskoKeyPrefix(mode: Env['ROSSKO_MODE'], keyPrefix = ''): string {
+  return mode === 'live' ? keyPrefix : `${keyPrefix}fx:`;
+}
+
 export function createWebRossko(options: WebRosskoOptions): WebRossko {
-  const { env, redis, db, settings, keyPrefix = '' } = options;
+  const { env, redis, db, settings } = options;
   const live = env.ROSSKO_MODE === 'live';
+  const keyPrefix = rosskoKeyPrefix(env.ROSSKO_MODE, options.keyPrefix);
   const limiter = createRosskoLimiter(redis, {
     rpm: env.ROSSKO_RPM_LIMIT,
     daily: env.ROSSKO_DAILY_LIMIT,

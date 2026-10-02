@@ -180,6 +180,15 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
       ),
       adminLink(d),
     ),
+  staff_unexpected_payment: (d) =>
+    msg(
+      lines(
+        `Заказ ${d.orderNumber}: неожиданный платёж`,
+        `Оплачено ${rub(d.paidAmountKop)}, сумма заказа ${rub(d.totalKop)}.`,
+        'Платёж прошёл, когда заказ не ждал оплаты (дубль или устаревшая ссылка). Проверьте и при необходимости верните деньги.',
+      ),
+      adminLink(d),
+    ),
   staff_supplier_invoice_due: (d) =>
     msg(
       lines(

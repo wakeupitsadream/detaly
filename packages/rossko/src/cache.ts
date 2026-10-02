@@ -1,12 +1,15 @@
 /**
- * GetSearch cache in Redis: `rossko:search:v1:<articleNorm>:<deliveryId>`, TTL 900 s.
- * Empty results ("nothing found") are cached too, so repeated junk queries cost nothing.
- * Bump `v1` when the cached shape (Offer) changes.
+ * GetSearch cache in Redis: `rossko:search:v2:<articleNorm>:<deliveryId>`, TTL 900 s.
+ * Empty results ("nothing found") are cached too, so repeated junk queries cost nothing;
+ * a supplier error reported as success:false is kept only SEARCH_ERROR_CACHE_TTL_SEC.
+ * Bump the version when the cached shape (Offer) changes (v2: deliveryDays may be null).
  */
 import type { Offer } from '@detaly/domain/types';
 import type { Redis } from 'ioredis';
 
 export const SEARCH_CACHE_TTL_SEC = 900;
+/** success:false with an unknown message (bad keys, supplier trouble): retry soon. */
+export const SEARCH_ERROR_CACHE_TTL_SEC = 60;
 
 export interface CachedSearch {
   offers: Offer[];
@@ -18,7 +21,8 @@ export interface CachedSearch {
 export interface SearchCache {
   key(articleNorm: string, deliveryId: string | null): string;
   get(key: string): Promise<CachedSearch | null>;
-  set(key: string, value: CachedSearch): Promise<void>;
+  /** `ttlSec` overrides the cache TTL for this entry (short-lived supplier errors). */
+  set(key: string, value: CachedSearch, ttlSec?: number): Promise<void>;
 }
 
 export interface SearchCacheOptions {
@@ -38,7 +42,7 @@ export function createSearchCache(redis: Redis, options: SearchCacheOptions = {}
   const prefix = options.keyPrefix ?? '';
   return {
     key(articleNorm, deliveryId) {
-      return `${prefix}rossko:search:v1:${articleNorm}:${deliveryId ?? '-'}`;
+      return `${prefix}rossko:search:v2:${articleNorm}:${deliveryId ?? '-'}`;
     },
     async get(key) {
       const raw = await redis.get(key);
@@ -50,8 +54,8 @@ export function createSearchCache(redis: Redis, options: SearchCacheOptions = {}
         return null;
       }
     },
-    async set(key, value) {
-      await redis.set(key, JSON.stringify(value), 'EX', ttlSec);
+    async set(key, value, entryTtlSec) {
+      await redis.set(key, JSON.stringify(value), 'EX', entryTtlSec ?? ttlSec);
     },
   };
 }

@@ -20,6 +20,30 @@
 		# X-Forwarded-For from clients. Enable only if a CDN/LB is put in front:
 		# trusted_proxies static private_ranges
 	}
+
+	# Every other log (http.log.error with the failed request, TLS, ...): the same filter as
+	# the access log in (common), so a 502 does not log the full IP, User-Agent or token.
+	log default {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>remote_ip ip_mask {
+					ipv4 24
+					ipv6 48
+				}
+				request>client_ip ip_mask {
+					ipv4 24
+					ipv6 48
+				}
+				request>headers>User-Agent delete
+				request>headers>Referer delete
+				request>headers>X-Real-Ip delete
+				request>headers>X-Forwarded-For delete
+				request>uri regexp ^/(o|p)/[^/?]+ /$1/[redacted]
+			}
+		}
+	}
 }
 
 (common) {
@@ -32,14 +56,42 @@
 		-Server
 	}
 
+	# Access log without personal data in clear form (152-FZ, privacy policy section 3):
+	# client IPs are truncated to the subnet (/24, /48), browser and forwarding headers are
+	# dropped, and secret order/proposal tokens in /o/<token> and /p/<token> are redacted
+	# (Caddy already omits Cookie and Authorization). Retention is the docker json-file
+	# rotation (10m x 3 per service, infra/docker-compose.yml).
 	log {
 		output stdout
-		format json
+		format filter {
+			wrap json
+			fields {
+				request>remote_ip ip_mask {
+					ipv4 24
+					ipv6 48
+				}
+				request>client_ip ip_mask {
+					ipv4 24
+					ipv6 48
+				}
+				request>headers>User-Agent delete
+				request>headers>Referer delete
+				request>headers>X-Real-Ip delete
+				request>headers>X-Forwarded-For delete
+				request>uri regexp ^/(o|p)/[^/?]+ /$1/[redacted]
+			}
+		}
 	}
 }
 
 {$SITE_DOMAIN:localhost} {
 	import common
+
+	# Health endpoints are for the container healthcheck and deploy.sh (both inside the
+	# Docker network): from the internet they would leak GIT_SHA and cost a DB/Redis query
+	# per call without any limit.
+	@health path /api/health /api/health/*
+	respond @health 404
 
 	reverse_proxy web:3000 {
 		# The client IP as seen by Caddy (TCP peer). The app trusts only this header

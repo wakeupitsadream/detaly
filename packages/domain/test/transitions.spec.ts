@@ -31,9 +31,17 @@ const PREPAY = { scheme: 'prepay', fulfillment: 'pickup' } as const;
 const COD = { scheme: 'pay_on_handover', fulfillment: 'pickup', paymentHeld: false } as const;
 /** pay_on_handover after the handover QR payment succeeded (money held). */
 const COD_PAID = { ...COD, paymentHeld: true } as const;
-/** Back to work after a problem: the supplier order exists or not yet (recheck failed). */
-const ORDERED = { supplierOrderCreated: true } as const;
-const NOT_ORDERED = { supplierOrderCreated: false } as const;
+/** Back to work after a problem: every live item is ordered at Rossko, nothing blocks shipping. */
+const ORDERED = { pendingSupplierItems: 0, prepayInvoice: false } as const;
+/** Some live items still need GetCheckout (recheck failed, itemErrors, approved alternative). */
+const NOT_ORDERED = { pendingSupplierItems: 1 } as const;
+/** Everything is ordered, but Rossko ships only after its invoice is paid, and it is not yet. */
+const INVOICE_DUE = { pendingSupplierItems: 0, prepayInvoice: true } as const;
+/** A payment event about the order's latest payment, confirmed not paid by GET /payments. */
+const CURRENT_CANCELED = {
+  eventPaymentIsCurrent: true,
+  providerPaymentStatus: 'canceled',
+} as const;
 const COURIER = { scheme: 'prepay', fulfillment: 'courier' } as const;
 
 const client = (extra: Partial<TransitionContext> = {}): TransitionContext => ({
@@ -68,6 +76,8 @@ const checkout = (extra: Partial<TransitionContext> = {}): TransitionContext => 
   allItemsLocal: true,
   totalKop: 1_499_900,
   minOrderTotalKop: 0,
+  orderMarginKop: 300_000,
+  minMarginKop: 0,
   onPickupMaxTotalKop: 1_500_000,
   noShowCount: 0,
   noShowLimit: 2,
@@ -79,6 +89,7 @@ const paid = (amount: number, extra: Partial<TransitionContext> = {}): Transitio
     totalKop: 500_000,
     paidAmountKop: amount,
     providerPaymentStatus: 'succeeded',
+    allLiveItemsArrived: false,
     ...extra,
   });
 
@@ -104,19 +115,38 @@ const EXPECTED: readonly Row[] = [
   ['awaiting_payment', 'payment_succeeded', paid(500_000), 'confirmed'],
   ['awaiting_payment', 'payment_succeeded', paid(499_900), 'needs_attention'],
   ['awaiting_payment', 'payment_succeeded', paid(500_000, { allLiveItemsArrived: true }), 'ready'],
-  ['awaiting_payment', 'payment_canceled', webhook(), 'cancelled'],
-  ['awaiting_payment', 'payment_canceled', webhook({ allLiveItemsArrived: true }), 'ready'],
   [
     'awaiting_payment',
-    'payment_ttl_expired',
-    system({ providerPaymentStatus: 'canceled' }),
+    'payment_canceled',
+    webhook({ ...CURRENT_CANCELED, allLiveItemsArrived: false }),
     'cancelled',
   ],
-  ['awaiting_payment', 'payment_ttl_expired', system({ providerPaymentStatus: null }), 'cancelled'],
+  [
+    'awaiting_payment',
+    'payment_canceled',
+    webhook({ ...CURRENT_CANCELED, allLiveItemsArrived: true }),
+    'ready',
+  ],
   [
     'awaiting_payment',
     'payment_ttl_expired',
-    system({ providerPaymentStatus: 'canceled', allLiveItemsArrived: true }),
+    system({ ...CURRENT_CANCELED, allLiveItemsArrived: false }),
+    'cancelled',
+  ],
+  [
+    'awaiting_payment',
+    'payment_ttl_expired',
+    system({
+      eventPaymentIsCurrent: true,
+      providerPaymentStatus: null,
+      allLiveItemsArrived: false,
+    }),
+    'cancelled',
+  ],
+  [
+    'awaiting_payment',
+    'payment_ttl_expired',
+    system({ ...CURRENT_CANCELED, allLiveItemsArrived: true }),
     'ready',
   ],
 
@@ -138,7 +168,7 @@ const EXPECTED: readonly Row[] = [
   [
     'ordering',
     'supplier_checkout_succeeded',
-    system({ supplierItemErrors: 0 }),
+    system({ supplierItemErrors: 0, prepayInvoice: false }),
     'ordered_at_supplier',
   ],
   [
@@ -162,6 +192,19 @@ const EXPECTED: readonly Row[] = [
   ],
   ['ordered_at_supplier', 'item_damaged_on_receipt', staff(), 'ordered_at_supplier'],
   ['ordered_at_supplier', 'eta_changed', system(), 'ordered_at_supplier'],
+  // "Жду до <дата>" / "Отменить позицию": partial refund of a delayed item
+  [
+    'ordered_at_supplier',
+    'item_cancelled',
+    client({ scope: 'item', liveItemsAfter: 1, allLiveItemsArrived: false }),
+    'ordered_at_supplier',
+  ],
+  [
+    'ordered_at_supplier',
+    'item_cancelled',
+    staff({ ...COD, scope: 'item', liveItemsAfter: 2, allLiveItemsArrived: true }),
+    'ready',
+  ],
 
   // needs_attention
   [
@@ -175,6 +218,18 @@ const EXPECTED: readonly Row[] = [
     'order_anyway',
     staff({ marginBp: 1000, marginFloorBp: 1000, ...NOT_ORDERED }),
     'ordering',
+  ],
+  [
+    'needs_attention',
+    'order_anyway',
+    staff({ marginBp: 1000, marginFloorBp: 1000, ...INVOICE_DUE }),
+    'awaiting_supplier_invoice',
+  ],
+  [
+    'needs_attention',
+    'order_anyway',
+    staff({ marginBp: 1000, marginFloorBp: 1000, ...INVOICE_DUE, supplierInvoicePaid: true }),
+    'ordered_at_supplier',
   ],
   [
     'needs_attention',
@@ -195,6 +250,12 @@ const EXPECTED: readonly Row[] = [
     'ordered_at_supplier',
   ],
   ['needs_attention', 'item_cancelled', staff({ liveItemsAfter: 1, ...NOT_ORDERED }), 'ordering'],
+  [
+    'needs_attention',
+    'item_cancelled',
+    staff({ liveItemsAfter: 1, ...INVOICE_DUE }),
+    'awaiting_supplier_invoice',
+  ],
   ['needs_attention', 'order_cancelled', staff(), 'refund_pending'],
   ['needs_attention', 'order_cancelled', staff({ ...COD }), 'cancelled'],
   ['needs_attention', 'order_cancelled', staff({ ...COD_PAID }), 'refund_pending'],
@@ -202,6 +263,12 @@ const EXPECTED: readonly Row[] = [
   // awaiting_client_approval
   ['awaiting_client_approval', 'client_approved', client({ ...ORDERED }), 'ordered_at_supplier'],
   ['awaiting_client_approval', 'client_approved', client({ ...NOT_ORDERED }), 'ordering'],
+  [
+    'awaiting_client_approval',
+    'client_approved',
+    client({ ...INVOICE_DUE }),
+    'awaiting_supplier_invoice',
+  ],
   [
     'awaiting_client_approval',
     'client_refund_requested',
@@ -223,6 +290,12 @@ const EXPECTED: readonly Row[] = [
   [
     'awaiting_client_approval',
     'client_refund_requested',
+    client({ scope: 'item', liveItemsAfter: 1, ...INVOICE_DUE }),
+    'awaiting_supplier_invoice',
+  ],
+  [
+    'awaiting_client_approval',
+    'client_refund_requested',
     client({ ...COD, scope: 'order' }),
     'cancelled',
   ],
@@ -238,6 +311,12 @@ const EXPECTED: readonly Row[] = [
     'approval_timeout',
     system({ scope: 'item', liveItemsAfter: 2, ...NOT_ORDERED }),
     'ordering',
+  ],
+  [
+    'awaiting_client_approval',
+    'approval_timeout',
+    system({ scope: 'item', liveItemsAfter: 2, ...INVOICE_DUE }),
+    'awaiting_supplier_invoice',
   ],
   ['awaiting_client_approval', 'approval_timeout', system({ ...COD, scope: 'order' }), 'cancelled'],
 
@@ -271,13 +350,35 @@ const EXPECTED: readonly Row[] = [
     staff({ ...COD, providerPaymentStatus: 'succeeded', settlementReceiptSucceeded: true }),
     'handed',
   ],
-  ['awaiting_handover_payment', 'payment_canceled', webhook({ ...COD }), 'ready'],
+  [
+    'awaiting_handover_payment',
+    'payment_canceled',
+    webhook({ ...COD, ...CURRENT_CANCELED }),
+    'ready',
+  ],
   [
     'awaiting_handover_payment',
     'payment_ttl_expired',
-    system({ ...COD, providerPaymentStatus: 'canceled' }),
+    system({ ...COD, ...CURRENT_CANCELED }),
     'ready',
   ],
+
+  // a payment that succeeds while the order does not wait for one is never dropped
+  ...(
+    [
+      'confirmed',
+      'ordering',
+      'awaiting_supplier_invoice',
+      'ordered_at_supplier',
+      'needs_attention',
+      'awaiting_client_approval',
+      'ready',
+      'out_for_delivery',
+    ] as const
+  ).map((status): Row => [status, 'payment_succeeded', paid(500_000), 'needs_attention']),
+  ['handed', 'payment_succeeded', paid(500_000), 'handed'],
+  ['completed', 'payment_succeeded', paid(500_000), 'completed'],
+  ['refund_pending', 'payment_succeeded', paid(500_000), 'refund_pending'],
 
   // out_for_delivery (phase 2, prepay + courier only)
   ['out_for_delivery', 'offset_receipt_requested', staff({ ...COURIER }), 'out_for_delivery'],
@@ -422,6 +523,32 @@ describe('guards', () => {
       });
     });
 
+    it('below MIN_MARGIN_RUB the checkout is refused, at the threshold it passes', () => {
+      expect(
+        resolveTransition(
+          'draft',
+          'checkout',
+          checkout({ orderMarginKop: 29_999, minMarginKop: 30_000 }),
+        ),
+      ).toEqual({ ok: false, reason: 'guard_failed', failed: ['min_order_margin'] });
+      const exact = resolveTransition(
+        'draft',
+        'checkout',
+        checkout({ orderMarginKop: 30_000, minMarginKop: 30_000 }),
+      );
+      expect(exact.ok && exact.rule.to).toBe('awaiting_confirmation');
+      const prepaid = resolveTransition(
+        'draft',
+        'checkout',
+        checkout({ allItemsLocal: false, orderMarginKop: 29_999, minMarginKop: 30_000 }),
+      );
+      expect(prepaid).toMatchObject({ ok: false, failed: ['min_order_margin'] });
+      // the margin must be passed
+      expect(
+        resolveTransition('draft', 'checkout', checkout({ orderMarginKop: undefined })),
+      ).toMatchObject({ ok: false, failed: ['min_order_margin'] });
+    });
+
     it('below MIN_ORDER_TOTAL the checkout is refused', () => {
       expect(
         resolveTransition(
@@ -501,6 +628,90 @@ describe('guards', () => {
     ]);
   });
 
+  it('an approved alternative is ordered at Rossko even when a supplier order exists', () => {
+    // the alternative replaces an ordered item: one live item is not covered by any order
+    const ctx = client({ pendingSupplierItems: 1, prepayInvoice: false });
+    const result = resolveTransition('awaiting_client_approval', 'client_approved', ctx);
+    expect(result.ok && result.rule.to).toBe('ordering');
+    expect(result.ok && effectsFor(result.rule, ctx)).toEqual(['supplier_checkout']);
+    // "Новый срок": nothing to reorder
+    const eta = client({ ...ORDERED });
+    const same = resolveTransition('awaiting_client_approval', 'client_approved', eta);
+    expect(same.ok && [same.rule.to, effectsFor(same.rule, eta)]).toEqual([
+      'ordered_at_supplier',
+      [],
+    ]);
+  });
+
+  it('"Заказать всё равно" after partial itemErrors re-sends the failed items', () => {
+    const ctx = staff({ marginBp: 1500, marginFloorBp: 1000, pendingSupplierItems: 2 });
+    const result = resolveTransition('needs_attention', 'order_anyway', ctx);
+    expect(result.ok && [result.rule.to, effectsFor(result.rule, ctx)]).toEqual([
+      'ordering',
+      ['supplier_checkout'],
+    ]);
+    // the caller must say how many items are still pending
+    expect(
+      resolveTransition(
+        'needs_attention',
+        'order_anyway',
+        staff({ marginBp: 1500, marginFloorBp: 1000, prepayInvoice: false }),
+      ),
+    ).toMatchObject({ ok: false, reason: 'guard_failed' });
+  });
+
+  it('the Rossko invoice step is not skipped after itemErrors with prepay_invoice', () => {
+    const errors = system({ supplierItemErrors: 1, prepayInvoice: true });
+    const first = resolveTransition('ordering', 'supplier_checkout_succeeded', errors);
+    expect(first.ok && first.rule.to).toBe('needs_attention');
+    // the failed item is cancelled, everything else is ordered, the invoice is not paid
+    const ctx = staff({ liveItemsAfter: 1, ...INVOICE_DUE });
+    const result = resolveTransition('needs_attention', 'item_cancelled', ctx);
+    expect(result.ok && result.rule.to).toBe('awaiting_supplier_invoice');
+    expect(result.ok && result.rule.notify).toContainEqual({
+      audience: 'owner',
+      template: 'staff_supplier_invoice_due',
+    });
+    // a missing supplierInvoicePaid means "not paid"; a missing prepayInvoice fails closed
+    const anyway = staff({ marginBp: 1500, marginFloorBp: 1000, pendingSupplierItems: 0 });
+    expect(resolveTransition('needs_attention', 'order_anyway', anyway)).toMatchObject({
+      ok: false,
+      reason: 'guard_failed',
+    });
+  });
+
+  it('a delayed item can be cancelled from ordered_at_supplier with a partial refund', () => {
+    const ctx = client({ scope: 'item', liveItemsAfter: 1, allLiveItemsArrived: false });
+    const result = resolveTransition('ordered_at_supplier', 'item_cancelled', ctx);
+    expect(
+      result.ok && [result.rule.to, receiptFor(result.rule, ctx), effectsFor(result.rule, ctx)],
+    ).toEqual([
+      'ordered_at_supplier',
+      'refund_prepayment',
+      ['create_refund', 'cancel_at_supplier_task'],
+    ]);
+    const cod = staff({ ...COD, scope: 'item', liveItemsAfter: 1, allLiveItemsArrived: true });
+    const ready = resolveTransition('ordered_at_supplier', 'item_cancelled', cod);
+    expect(
+      ready.ok && [ready.rule.to, receiptFor(ready.rule, cod), effectsFor(ready.rule, cod)],
+    ).toEqual(['ready', null, ['cancel_at_supplier_task', 'start_pickup_window']]);
+    // the whole order goes through client_refused, not through the last item
+    expect(
+      resolveTransition(
+        'ordered_at_supplier',
+        'item_cancelled',
+        client({ scope: 'item', liveItemsAfter: 0, allLiveItemsArrived: false }),
+      ),
+    ).toMatchObject({ ok: false, failed: ['live_items_remain'] });
+    expect(
+      resolveTransition(
+        'ordered_at_supplier',
+        'item_cancelled',
+        client({ scope: 'order', liveItemsAfter: 1, allLiveItemsArrived: false }),
+      ),
+    ).toMatchObject({ ok: false, failed: ['scope_item'] });
+  });
+
   it('a pay_on_handover order whose QR payment succeeded is refunded, not just cancelled', () => {
     const ctx = client({ ...COD_PAID });
     const result = resolveTransition('awaiting_handover_payment', 'client_refused', ctx);
@@ -519,15 +730,134 @@ describe('guards', () => {
 
   it('a stale cancel or expiry does not undo a succeeded handover payment', () => {
     expect(
-      resolveTransition('awaiting_handover_payment', 'payment_canceled', webhook({ ...COD_PAID })),
+      resolveTransition(
+        'awaiting_handover_payment',
+        'payment_canceled',
+        webhook({ ...COD_PAID, ...CURRENT_CANCELED }),
+      ),
     ).toMatchObject({ ok: false, reason: 'guard_failed', failed: ['!payment_held'] });
     expect(
       resolveTransition(
         'awaiting_handover_payment',
         'payment_ttl_expired',
-        system({ ...COD_PAID, providerPaymentStatus: 'canceled' }),
+        system({ ...COD_PAID, ...CURRENT_CANCELED }),
       ),
     ).toMatchObject({ ok: false, reason: 'guard_failed' });
+  });
+
+  describe('a late cancel of an earlier payment does not touch the current one', () => {
+    const stale = { eventPaymentIsCurrent: false, providerPaymentStatus: 'canceled' } as const;
+
+    it('QR #1 canceled after "Оплатить заранее" created link #2: order stays awaiting_payment', () => {
+      const ctx = webhook({ ...stale, allLiveItemsArrived: true });
+      expect(resolveTransition('awaiting_payment', 'payment_canceled', ctx)).toEqual({
+        ok: false,
+        reason: 'guard_failed',
+        failed: ['event_payment_is_current'],
+      });
+      expect(
+        resolveTransition(
+          'awaiting_payment',
+          'payment_ttl_expired',
+          system({ ...stale, allLiveItemsArrived: false }),
+        ),
+      ).toMatchObject({ ok: false, reason: 'guard_failed', failed: ['event_payment_is_current'] });
+    });
+
+    it('QR #1 canceled after QR #2 was issued: order stays awaiting_handover_payment', () => {
+      expect(
+        resolveTransition(
+          'awaiting_handover_payment',
+          'payment_canceled',
+          webhook({ ...COD, ...stale }),
+        ),
+      ).toMatchObject({ ok: false, reason: 'guard_failed', failed: ['event_payment_is_current'] });
+      expect(
+        resolveTransition(
+          'awaiting_handover_payment',
+          'payment_ttl_expired',
+          system({ ...COD, ...stale }),
+        ),
+      ).toMatchObject({ ok: false, reason: 'guard_failed', failed: ['event_payment_is_current'] });
+    });
+
+    it('a cancel is applied only once the provider confirmed the payment is not paid', () => {
+      for (const providerPaymentStatus of ['pending', 'succeeded', undefined] as const) {
+        expect(
+          resolveTransition(
+            'awaiting_payment',
+            'payment_canceled',
+            webhook({
+              eventPaymentIsCurrent: true,
+              providerPaymentStatus,
+              allLiveItemsArrived: false,
+            }),
+          ),
+        ).toMatchObject({ ok: false, reason: 'guard_failed' });
+      }
+    });
+
+    it('a payment that succeeds in ready is not lost: needs_attention and an owner alert', () => {
+      const result = resolveTransition('ready', 'payment_succeeded', paid(500_000, { ...COD }));
+      expect(result.ok && result.rule.to).toBe('needs_attention');
+      expect(result.ok && result.rule.notify).toEqual([
+        { audience: 'owner', template: 'staff_unexpected_payment' },
+      ]);
+      // only a payment confirmed by GET /payments counts
+      expect(
+        resolveTransition(
+          'ready',
+          'payment_succeeded',
+          webhook({ providerPaymentStatus: 'pending' }),
+        ),
+      ).toMatchObject({ ok: false, reason: 'guard_failed', failed: ['payment_succeeded'] });
+    });
+  });
+
+  describe('missing flags never pick the negative branch (fail closed)', () => {
+    it('payment of an order without allLiveItemsArrived is not applied', () => {
+      expect(
+        resolveTransition(
+          'awaiting_payment',
+          'payment_succeeded',
+          paid(500_000, { allLiveItemsArrived: undefined }),
+        ),
+      ).toMatchObject({ ok: false, reason: 'guard_failed' });
+      expect(
+        resolveTransition('awaiting_payment', 'payment_canceled', webhook({ ...CURRENT_CANCELED })),
+      ).toMatchObject({ ok: false, reason: 'guard_failed' });
+    });
+
+    it('item cancellation of a pay_on_handover order needs an explicit paymentHeld', () => {
+      const cod = { scheme: 'pay_on_handover', scope: 'item', liveItemsAfter: 1 } as const;
+      expect(
+        resolveTransition('needs_attention', 'item_cancelled', staff({ ...cod, ...ORDERED })),
+      ).toMatchObject({ ok: false, failed: ['payment_held_known'] });
+      expect(
+        resolveTransition(
+          'awaiting_client_approval',
+          'client_refund_requested',
+          client({ ...cod, ...ORDERED }),
+        ),
+      ).toMatchObject({ ok: false, failed: ['payment_held_known'] });
+      expect(
+        resolveTransition(
+          'ordered_at_supplier',
+          'item_cancelled',
+          client({ ...cod, allLiveItemsArrived: false }),
+        ),
+      ).toMatchObject({ ok: false, failed: ['payment_held_known'] });
+    });
+
+    it('GetCheckout success without the prepay_invoice setting is not applied', () => {
+      expect(
+        resolveTransition(
+          'ordering',
+          'supplier_checkout_succeeded',
+          system({ supplierItemErrors: 0 }),
+        ),
+      ).toMatchObject({ ok: false, reason: 'guard_failed' });
+    });
   });
 
   it('ready + prepay: payment at the point is forbidden', () => {
@@ -850,6 +1180,9 @@ describe('graph properties', () => {
                       totalKop: 500_000,
                       paidAmountKop,
                       providerPaymentStatus: 'canceled',
+                      eventPaymentIsCurrent: true,
+                      orderMarginKop: 100_000,
+                      minMarginKop: 0,
                       supplierItemErrors,
                       prepayInvoice,
                       priceDriftBp,
@@ -862,12 +1195,19 @@ describe('graph properties', () => {
                       noShowLimit: 2,
                       claimKind: 'delay',
                     });
-    // money held and supplier order flags double the variants for the splits that use them
+    // money held and supplier order flags multiply the variants for the splits that use them
     for (const variant of [...variants]) {
-      variants.push({ ...variant, paymentHeld: true, supplierOrderCreated: true });
-      variants.push({ ...variant, paymentHeld: false, supplierOrderCreated: false });
+      variants.push({ ...variant, paymentHeld: true, pendingSupplierItems: 0 });
+      variants.push({ ...variant, paymentHeld: false, pendingSupplierItems: 1 });
+      variants.push({
+        ...variant,
+        paymentHeld: false,
+        pendingSupplierItems: 0,
+        supplierInvoicePaid: true,
+      });
       variant.paymentHeld = true;
-      variant.supplierOrderCreated = false;
+      variant.pendingSupplierItems = 2;
+      variant.supplierInvoicePaid = false;
     }
     for (const status of ORDER_STATUSES) {
       for (const event of ORDER_EVENTS) {

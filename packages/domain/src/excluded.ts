@@ -87,6 +87,9 @@ export const DEFAULT_EXCLUDED_RULES: readonly ExcludedRule[] = [
   { kind: 'keyword', pattern: 'шины', reason: 'Маркируемый товар: шины' },
   { kind: 'keyword', pattern: 'антифриз*', reason: 'Маркируемый товар: антифризы' },
   { kind: 'keyword', pattern: 'тосол', reason: 'Маркируемый товар: антифризы' },
+  // Coolant without the word "антифриз". The exact nominative 'жидкость' keeps the parts
+  // named after it ("Датчик температуры охлаждающей жидкости", "Насос охлаждающей жидкости").
+  { kind: 'keyword', pattern: 'жидкость охлажд*', reason: 'Маркируемый товар: антифризы' },
   {
     kind: 'keyword',
     pattern: 'жидкость тормозн*',

@@ -20,8 +20,10 @@ require_env() {
 }
 
 # Telegram message to the sellers' chat. Never prints the token (curl errors are discarded:
-# some curl versions include the URL). Returns 1 when delivery failed so that callers can retry
-# later; returns 0 when no bot is configured (nothing to retry). TG_API_BASE is for local tests.
+# some curl versions include the URL) and never puts it into argv: the URL goes to curl as a
+# config on stdin (-K -), so ps, /proc/<pid>/cmdline and `docker top` do not show it. Returns 1
+# when delivery failed so that callers can retry later; returns 0 when no bot is configured
+# (nothing to retry). TG_API_BASE is for local tests.
 tg_alert() {
   local text="$1"
   if [[ -z "${TG_SELLER_BOT_TOKEN:-}" || -z "${TG_SELLER_CHAT_ID:-}" ]]; then
@@ -29,17 +31,35 @@ tg_alert() {
     return 0
   fi
   local rc=0
-  curl -fs -m 15 -o /dev/null \
+  curl -fs -m 15 -o /dev/null -K - \
     --data-urlencode "chat_id=${TG_SELLER_CHAT_ID}" \
     --data-urlencode "text=${text}" \
     --data-urlencode "disable_web_page_preview=true" \
-    "${TG_API_BASE:-https://api.telegram.org}/bot${TG_SELLER_BOT_TOKEN}/sendMessage" 2>/dev/null || rc=$?
+    2>/dev/null <<<"url = \"${TG_API_BASE:-https://api.telegram.org}/bot${TG_SELLER_BOT_TOKEN}/sendMessage\"" || rc=$?
   if ((rc == 0)); then
     log "alert sent"
     return 0
   fi
   log "alert delivery failed (curl exit $rc)"
   return 1
+}
+
+# Splits a postgres URL so that the password never reaches argv of pg_dump/pg_restore/psql
+# (visible to every process of the container through ps and to the host through `docker top`):
+# exports PGPASSWORD (percent-decoded; the environment is readable only by the same user) and
+# sets PG_URL to the same URL without the password. A URL without a password is kept as is.
+# Usage: pg_conn "$DATABASE_URL"; pg_dump ... "$PG_URL"
+pg_conn() {
+  local url="$1"
+  local re='^(postgres(ql)?://)([^:@/]*):([^@/]*)@(.*)$'
+  if [[ "$url" =~ $re ]]; then
+    local pass="${BASH_REMATCH[4]}"
+    PG_URL="${BASH_REMATCH[1]}${BASH_REMATCH[3]}@${BASH_REMATCH[5]}"
+    PGPASSWORD="$(printf '%b' "${pass//%/\\x}")"
+    export PGPASSWORD
+  else
+    PG_URL="$url"
+  fi
 }
 
 # Storage location for dumps: a local directory (STORAGE=local) or an rclone remote "s3:".

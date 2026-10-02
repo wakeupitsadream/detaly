@@ -20,6 +20,8 @@ describe('isExcluded with the default keyword rules', () => {
     'Антифризный концентрат',
     'Тормозная жидкость DOT-4',
     'Масла моторные, канистра 4 л',
+    'Жидкость охлаждающая G12',
+    'Охлаждающая жидкость зелёная 5 кг',
   ])('excludes "%s"', (name) => {
     const result = isExcluded({ name }, DEFAULT_EXCLUDED_RULES);
     expect(result.excluded).toBe(true);
@@ -35,6 +37,8 @@ describe('isExcluded with the default keyword rules', () => {
     'Шиномонтажный набор',
     'Жидкость стеклоомывающая',
     'Шланг тормозной',
+    'Датчик температуры охлаждающей жидкости',
+    'Насос охлаждающей жидкости',
   ])('keeps "%s"', (name) => {
     expect(isExcluded({ name }, DEFAULT_EXCLUDED_RULES)).toEqual({ excluded: false, reason: null });
   });

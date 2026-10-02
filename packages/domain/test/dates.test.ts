@@ -12,7 +12,7 @@ import {
 } from '../src';
 import type { StockInfo } from '../src/types';
 
-const stock = (deliveryDays: number, deliveryEnd: string | null = null): StockInfo => ({
+const stock = (deliveryDays: number | null, deliveryEnd: string | null = null): StockInfo => ({
   stockId: 'S1',
   isLocal: false,
   count: 5,
@@ -92,6 +92,14 @@ describe('etaDate', () => {
     expect(etaDate(stock(2, '2026-02-30'), now)).toBe('2026-10-03');
   });
 
+  it('never invents a date: no days and an unparseable deliveryEnd throw', () => {
+    const now = new Date('2026-10-02T05:00:00Z');
+    expect(() => etaDate(stock(null, 'скоро'), now)).toThrow(DateError);
+    expect(() => etaDate(stock(null, null), now)).toThrow(DateError);
+    expect(etaDate(stock(null, '2026-10-08 22:00:00+03'), now)).toBe('2026-10-09');
+    expect(etaDate(stock(null, '2026/10/08'), now)).toBe('2026-10-08');
+  });
+
   it('rejects negative or fractional delivery days', () => {
     expect(() => etaDate(stock(-1), new Date())).toThrow(DateError);
     expect(() => etaDate(stock(1.5), new Date())).toThrow(DateError);
@@ -108,6 +116,17 @@ describe('parseSupplierTimestamp', () => {
       kind: 'instant',
       instant: new Date('2026-10-08T19:00:00Z'),
     });
+    expect(parseSupplierTimestamp('2026-10-08 22:00:00+03')).toEqual({
+      kind: 'instant',
+      instant: new Date('2026-10-08T19:00:00Z'),
+    });
+    expect(parseSupplierTimestamp('2026-10-08T22:00-0130')).toEqual({
+      kind: 'instant',
+      instant: new Date('2026-10-08T23:30:00Z'),
+    });
+    expect(parseSupplierTimestamp('2026/10/08')).toEqual({ kind: 'date', date: '2026-10-08' });
+    expect(parseSupplierTimestamp('2026/10-08')).toBeNull();
+    expect(parseSupplierTimestamp('скоро')).toBeNull();
     expect(parseSupplierTimestamp('2026-10-08T25:00:00')).toBeNull();
   });
 });

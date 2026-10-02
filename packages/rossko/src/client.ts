@@ -17,7 +17,7 @@ import {
   parseSearchResponse,
 } from './mapper';
 import { normalizeArticle } from './normalize';
-import type { SearchCache, CachedSearch } from './cache';
+import { SEARCH_ERROR_CACHE_TTL_SEC, type SearchCache, type CachedSearch } from './cache';
 import { createSoapCaller } from './soap-caller';
 import type {
   CallPriority,
@@ -61,6 +61,20 @@ export interface RosskoClientOptions {
   now?: () => number;
 }
 
+/**
+ * GetSearch answers "nothing found" as success:false with a message. The wording is taken
+ * from the synthetic NOTFOUND fixture and must be re-checked against real responses
+ * (scripts/rossko-smoke.ts); any other success:false is treated as a supplier error.
+ */
+const SEARCH_NOT_FOUND_RE = /(?:ничего\s+)?не\s+найден|not\s+found/i;
+
+/** null for a usable GetSearch answer, else the error to report (and cache only briefly). */
+export function searchFailure(parsed: { success: boolean; message: string | null }): string | null {
+  if (parsed.success) return null;
+  if (parsed.message !== null && SEARCH_NOT_FOUND_RE.test(parsed.message)) return null;
+  return `GetSearch success=false: ${parsed.message ?? 'no message'}`;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -100,18 +114,21 @@ export function createRosskoClient(options: RosskoClientOptions): RosskoClient {
     args: Record<string, unknown>,
     priority: CallPriority,
     parse: (raw: unknown) => T,
+    /** Supplier-level failure inside a well-formed answer: reported as ok=false. */
+    failure: (parsed: T) => string | null = () => null,
   ): Promise<T> {
     await limiter.acquire({ priority, maxWaitMs: maxWait[priority] });
     const startedAt = now();
     try {
       const parsed = parse(await caller.call(method, args));
+      const failed = failure(parsed);
       emit({
         method,
         priority,
         durationMs: now() - startedAt,
-        ok: true,
+        ok: failed === null,
         supplierSuccess: parsed.success,
-        error: null,
+        error: failed === null ? null : maskSecrets(failed, [key1, key2]),
         timeout: false,
       });
       return parsed;
@@ -142,8 +159,12 @@ export function createRosskoClient(options: RosskoClientOptions): RosskoClient {
     if (deliveryId) args.delivery_id = deliveryId;
     if (addressId) args.address_id = addressId;
     // isLocal is re-applied on every read, so the ids at parse time do not matter here.
-    const parsed = await invoke('GetSearch', args, priority, (raw) =>
-      parseSearchResponse(raw, { localStockIds: [] }),
+    const parsed = await invoke(
+      'GetSearch',
+      args,
+      priority,
+      (raw) => parseSearchResponse(raw, { localStockIds: [] }),
+      searchFailure,
     );
     const value: CachedSearch = {
       offers: parsed.offers,
@@ -152,7 +173,12 @@ export function createRosskoClient(options: RosskoClientOptions): RosskoClient {
     };
     if (cache && cacheKey) {
       try {
-        await cache.set(cacheKey, value);
+        // A supplier error looks like "nothing found": keep it only briefly, then ask again.
+        await cache.set(
+          cacheKey,
+          value,
+          searchFailure(parsed) === null ? undefined : SEARCH_ERROR_CACHE_TTL_SEC,
+        );
       } catch {
         // A cache write failure must not lose a paid-for supplier answer.
       }

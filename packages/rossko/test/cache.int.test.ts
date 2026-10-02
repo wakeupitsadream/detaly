@@ -57,7 +57,7 @@ function setup(options: { delayMs?: number; daily?: number; breakerPct?: number 
 }
 
 describe('search cache', () => {
-  it('serves a repeated query from Redis for 900 s under rossko:search:v1:<norm>:<deliveryId>', async () => {
+  it('serves a repeated query from Redis for 900 s under rossko:search:v2:<norm>:<deliveryId>', async () => {
     const { client, calls, keyPrefix } = setup();
     const first = await client.search('OC90');
     const second = await client.search('oc 90');
@@ -67,7 +67,7 @@ describe('search cache', () => {
     expect(second.fetchedAt).toBe(first.fetchedAt);
     expect(calls).toHaveLength(1);
 
-    const key = `${keyPrefix}rossko:search:v1:OC90:000000001`;
+    const key = `${keyPrefix}rossko:search:v2:OC90:000000001`;
     const ttl = await redis.ttl(key);
     expect(ttl).toBeGreaterThan(SEARCH_CACHE_TTL_SEC - 10);
     expect(ttl).toBeLessThanOrEqual(900);
@@ -76,7 +76,7 @@ describe('search cache', () => {
   it('bypassCache goes to the supplier and refreshes the cached value', async () => {
     const { client, calls, keyPrefix } = setup();
     await client.search('W9142');
-    const key = `${keyPrefix}rossko:search:v1:W9142:000000001`;
+    const key = `${keyPrefix}rossko:search:v2:W9142:000000001`;
     await redis.set(
       key,
       JSON.stringify({ offers: [], message: 'stale', fetchedAt: '2000-01-01T00:00:00.000Z' }),
@@ -135,7 +135,7 @@ describe('search cache', () => {
 
   it('ignores a corrupted cache entry', async () => {
     const { client, calls, keyPrefix } = setup();
-    await redis.set(`${keyPrefix}rossko:search:v1:OC90:000000001`, '{not json', 'EX', 900);
+    await redis.set(`${keyPrefix}rossko:search:v2:OC90:000000001`, '{not json', 'EX', 900);
     expect((await client.search('OC90')).fromCache).toBe(false);
     expect(calls).toHaveLength(1);
   });

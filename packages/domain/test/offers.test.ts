@@ -126,6 +126,7 @@ describe('buildOfferViews', () => {
       [
         offer({ stock: { stockId: 'BAD1', deliveryDays: -1 } }),
         offer({ stock: { stockId: 'BAD2', deliveryDays: Number.NaN, deliveryEnd: 'скоро' } }),
+        offer({ stock: { stockId: 'BAD3', deliveryDays: null, deliveryEnd: 'скоро' } }),
         offer({ stock: { stockId: 'OK1', deliveryDays: 2 } }),
         // a parseable deliveryEnd wins over a broken day count
         offer({ stock: { stockId: 'OK2', deliveryDays: -1, deliveryEnd: '2026-10-05' } }),

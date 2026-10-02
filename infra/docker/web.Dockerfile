@@ -45,7 +45,10 @@ LABEL org.opencontainers.image.source="https://github.com/wakeupitsadream/detaly
       org.opencontainers.image.revision="${GIT_SHA}" \
       org.opencontainers.image.title="detaly-web"
 WORKDIR /app
-COPY --from=build --chown=node:node /app/apps/web/.next/standalone ./
+# The server is root-owned and read-only for `node`; only the Next cache (image optimizer,
+# fetch cache) is writable, so code execution in web cannot rewrite server.js or chunks.
+COPY --from=build /app/apps/web/.next/standalone ./
+RUN mkdir -p apps/web/.next/cache && chown node:node apps/web/.next/cache
 USER node
 EXPOSE 3000
 CMD ["node", "apps/web/server.js"]

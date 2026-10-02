@@ -6,6 +6,8 @@
 
 ```sh
 alias dc='docker compose -f infra/docker-compose.yml --env-file .env'
+# /api/health снаружи закрыт (Caddy отвечает 404): проверяем изнутри контейнера web.
+health() { dc exec -T web node -e "fetch('http://127.0.0.1:3000/api/health').then(async r=>console.log(r.status, await r.text()))"; }
 ```
 
 Состав: caddy (80/443) → web (Next.js, порт наружу не открыт) + worker (BullMQ, боты) + postgres
@@ -32,7 +34,8 @@ alias dc='docker compose -f infra/docker-compose.yml --env-file .env'
 5. Доступ к ghcr.io: PAT GitHub с правом `read:packages`, затем
    `echo <PAT> | docker login ghcr.io -u <github-user> --password-stdin`.
 6. Первый деплой: `infra/deploy.sh <git-sha>` (тег — полный SHA коммита из CI, раздел 2).
-7. Проверки: `curl -sS https://$SITE_DOMAIN/api/health | jq` → 200; сертификат выдан
+7. Проверки: `health` → 200 (снаружи `https://$SITE_DOMAIN/api/health` отвечает 404 — так и
+   задумано); сертификат выдан
    (`curl -vI https://$SITE_DOMAIN 2>&1 | grep -i 'issuer'`); `/ping` в боте продавца отвечает;
    `dc exec caddy caddy validate --config /etc/caddy/Caddyfile` → `Valid configuration`;
    раздел 9 про реальный IP.
@@ -116,7 +119,7 @@ dc exec backup restore.sh --list
 scp detaly-backup.key root@vps:/root/detaly-backup.key   # временно
 infra/deploy.sh stage <sha>                               # stage-база detaly_stage
 dc run --rm -v /root/detaly-backup.key:/key:ro -e BACKUP_AGE_IDENTITY=/key backup \
-  sh -c 'restore.sh latest "${DATABASE_URL%@*}@postgres-stage:5432/detaly_stage"'
+  sh -c 'RESTORE_TARGET_URL="${DATABASE_URL%@*}@postgres-stage:5432/detaly_stage" restore.sh latest'
 shred -u /root/detaly-backup.key
 ```
 
@@ -138,8 +141,8 @@ dc exec postgres psql -U detaly -d detaly -c "select count(*) from settings" -c 
 1. `dc stop web worker` — новые записи в базу не идут.
 2. Если старая база ещё читается, сделайте её копию: `dc exec backup backup.sh`.
 3. Восстановление в рабочую базу (защита требует `RESTORE_FORCE=1`):
-   `dc run --rm -v /root/detaly-backup.key:/key:ro -e BACKUP_AGE_IDENTITY=/key -e RESTORE_FORCE=1 backup sh -c 'restore.sh latest "$DATABASE_URL"'`
-4. `dc up -d web worker` и `curl https://$SITE_DOMAIN/api/health`.
+   `dc run --rm -v /root/detaly-backup.key:/key:ro -e BACKUP_AGE_IDENTITY=/key -e RESTORE_FORCE=1 backup sh -c 'RESTORE_TARGET_URL="$DATABASE_URL" restore.sh latest'`
+4. `dc up -d web worker` и `health`.
 5. Платежи за период между бэкапом и аварией нужно сверить вручную с ЛК ЮKassa: reconciliation
    догонит pending-платежи, но заказы, созданные после бэкапа, потеряны. Свяжитесь с клиентами
    по списку платежей ЮKassa.
@@ -171,7 +174,7 @@ infra/backup/selftest.sh "$DATABASE_URL"
      завершённые задачи нужно средствами BullMQ (`clean`), а не удалением ключей вручную.
      `FLUSHDB` и `FLUSHALL` запрещены: вместе с задачами пропадут кэш, лимиты и heartbeat;
    - ошибка конфигурации после деплоя: в логе `EnvError` со списком переменных.
-3. `dc restart worker`, через минуту проверьте `curl -s https://$SITE_DOMAIN/api/health | jq`.
+3. `dc restart worker`, через минуту проверьте `health`.
 4. Если сломал релиз — `infra/deploy.sh rollback`.
 5. После восстановления healthwatch пришлёт «worker снова работает». Задачи BullMQ при
    перезапуске не теряются. Проверьте `dead-letter` командой `/queues` в боте (фаза 1B).
@@ -257,8 +260,10 @@ Stage занимает ≈1,4 ГБ памяти. Держите его подн�
 Проверка после первого деплоя и после обновления Docker:
 1. С **внешнего** устройства (телефон в мобильной сети) откройте `https://$SITE_DOMAIN/`.
 2. На VPS: `dc logs --since 2m caddy | grep -o '"remote_ip":"[^"]*"' | sort | uniq -c`.
-3. Должен быть публичный адрес телефона. Узнать его можно на любом сайте «мой IP». Если
-   виден `172.` или `10.`, адрес подменяется. Тогда:
+   Журнал Caddy хранит адрес усечённым до подсети (IPv4 /24, IPv6 /48, требование политики ПД),
+   поэтому последний октет всегда `0`.
+3. Должна быть подсеть публичного адреса телефона: первые три октета совпадают с адресом на
+   любом сайте «мой IP». Если виден `172.x.x.0` или `10.x.x.0`, адрес подменяется. Тогда:
    - чаще всего это IPv6-клиент при выключенном `ip6tables`: его проксирует `docker-proxy`
      (userland-proxy). В `/etc/docker/daemon.json` укажите `{"ip6tables": true}` (в Docker 27+
      по умолчанию включено) или `{"userland-proxy": false}`, затем `systemctl restart docker`

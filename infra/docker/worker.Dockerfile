@@ -40,7 +40,10 @@ ENV NODE_ENV=production \
 LABEL org.opencontainers.image.source="https://github.com/wakeupitsadream/detaly" \
       org.opencontainers.image.revision="${GIT_SHA}" \
       org.opencontainers.image.title="detaly-worker"
-COPY --from=prod --chown=node:node /app /app
+# Code and node_modules stay root-owned (read-only for the `node` user): code execution in the
+# worker (e.g. through SOAP/XML parsing) must not be able to rewrite src/ or dependencies and
+# persist until the container is recreated. tsx caches into os.tmpdir(), not into /app.
+COPY --from=prod /app /app
 # tsx is resolved relative to the working directory for --import.
 WORKDIR /app/apps/worker
 USER node

@@ -16,8 +16,15 @@
  * - "refund or cancel" splits follow the money, not only the scheme: a pay_on_handover order
  *   whose handover payment already succeeded is refunded like a prepay one (`moneyHeld`);
  * - going back to work from needs_attention / awaiting_client_approval ("Заказать всё равно",
- *   "Согласен", cancelling one item) lands in `ordering` with GetCheckout when the problem was
- *   found by the recheck before any supplier order existed, else in `ordered_at_supplier`.
+ *   "Согласен", cancelling one item) lands in `ordering` with GetCheckout whenever some live item
+ *   is not covered by a created supplier order (recheck problem, itemErrors, an approved
+ *   alternative), in `awaiting_supplier_invoice` when everything is ordered but the Rossko
+ *   invoice is still unpaid (rossko.prepay_invoice), else in `ordered_at_supplier`;
+ * - payment cancel/expiry only applies to the order's current payment (eventPaymentIsCurrent);
+ *   a payment that succeeds while the order does not wait for one is never dropped: it sends
+ *   the order to needs_attention (before handover) or alerts the owner (after it);
+ * - the client (or staff) may cancel one delayed item in ordered_at_supplier ("Жду до" /
+ *   "Отменить позицию", order.eta_changed): partial refund, the order stays with the others.
  */
 import type { ActorType, OrderStatus, PaymentScheme, ReceiptKind } from '../statuses';
 import {
@@ -31,20 +38,25 @@ import {
   courier,
   type Guard,
   hasItemErrors,
+  eventPaymentIsCurrent,
   hasPdConsent,
   isOwner,
+  itemsNotArrived,
   liveItemsRemain,
   marginAboveFloor,
+  minMarginReached,
   minTotalReached,
   moneyHeld,
   noMoneyHeld,
   noItemErrors,
   noOpenClaims,
+  noPrepayInvoice,
   not,
   onPickupEligible,
   payOnHandover,
   paymentConfirmedUnpaid,
   paymentHeldFlag,
+  paymentHeldKnown,
   paymentSucceeded,
   prepay,
   prepayInvoice,
@@ -54,8 +66,10 @@ import {
   schemeKnown,
   scopeOrder,
   settlementReceiptSucceeded,
-  supplierOrderCreated,
-  supplierOrderMissing,
+  supplierInvoiceDue,
+  supplierInvoiceSettled,
+  supplierItemsCovered,
+  supplierItemsPending,
   type TransitionContext,
 } from './guards';
 
@@ -143,6 +157,7 @@ export const ORDER_NOTIFY_TEMPLATES = [
   // staff (sellers chat or owner)
   'staff_new_order',
   'staff_amount_mismatch',
+  'staff_unexpected_payment',
   'staff_supplier_invoice_due',
   'staff_problem',
   'staff_client_approved',
@@ -238,24 +253,51 @@ const resolveEffects = (effects: EffectsSpec | undefined, ctx: TransitionContext
   effects === undefined ? [] : typeof effects === 'function' ? effects(ctx) : effects;
 
 /**
- * A rule that resumes supplier work. When the supplier order already exists the order goes
- * back to `ordered_at_supplier`; when the problem came from the recheck before GetCheckout
- * (supplierOrderCreated = false) it goes to `ordering` and GetCheckout is sent.
+ * A rule that resumes supplier work (PLAN: "позиция replaced → новая").
+ * - some live items are not covered by a created supplier order (pendingSupplierItems > 0:
+ *   the recheck failed before GetCheckout, GetCheckout returned itemErrors, the client approved
+ *   an alternative) -> `ordering`, GetCheckout for these items (a new attempt);
+ * - everything is ordered, but rossko.prepay_invoice is on and the invoice is not paid ->
+ *   `awaiting_supplier_invoice` with the owner reminder (Rossko does not ship before payment);
+ * - everything is ordered and nothing blocks shipping -> `ordered_at_supplier`.
  */
 function resumeWork(rule: Omit<TransitionRule, 'to'>): TransitionRule[] {
-  const withGuard = (extra: Guard): Guard =>
-    rule.guard === undefined ? extra : all(rule.guard, extra);
+  const withGuard = (...extra: Guard[]): Guard =>
+    rule.guard === undefined ? all(...extra) : all(rule.guard, ...extra);
   return [
-    { ...rule, to: 'ordered_at_supplier', guard: withGuard(supplierOrderCreated) },
     {
       ...rule,
-      label: `${rule.label} (заказа у Rossko ещё нет)`,
+      to: 'ordered_at_supplier',
+      guard: withGuard(supplierItemsCovered, supplierInvoiceSettled),
+    },
+    {
+      ...rule,
+      label: `${rule.label} (ждём оплаты счёта Rossko)`,
+      to: 'awaiting_supplier_invoice',
+      guard: withGuard(supplierItemsCovered, supplierInvoiceDue),
+      notify: [...rule.notify, owner('staff_supplier_invoice_due')],
+    },
+    {
+      ...rule,
+      label: `${rule.label} (дозаказ у Rossko)`,
       to: 'ordering',
-      guard: withGuard(supplierOrderMissing),
+      guard: withGuard(supplierItemsPending),
       effects: (ctx) => [...resolveEffects(rule.effects, ctx), 'supplier_checkout'],
     },
   ];
 }
+
+/** Statuses before handover where a payment is not expected (a duplicate or stale link paid). */
+const UNEXPECTED_PAYMENT_STATUSES = [
+  'confirmed',
+  'ordering',
+  'awaiting_supplier_invoice',
+  'ordered_at_supplier',
+  'needs_attention',
+  'awaiting_client_approval',
+  'ready',
+  'out_for_delivery',
+] as const satisfies readonly OrderStatus[];
 
 /** A late payment can be a prepayment link or a handover QR payment. */
 const lateRefundReceipt = (ctx: TransitionContext): ReceiptKind | null =>
@@ -271,7 +313,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'checkout',
     to: 'awaiting_confirmation',
     actors: ['client'],
-    guard: all(hasPdConsent, minTotalReached, onPickupEligible),
+    guard: all(hasPdConsent, minTotalReached, minMarginReached, onPickupEligible),
     notify: [client('confirm_request')],
     effects: ['set_scheme_pay_on_handover'],
   },
@@ -281,7 +323,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'checkout',
     to: 'awaiting_payment',
     actors: ['client'],
-    guard: all(hasPdConsent, minTotalReached, not(onPickupEligible)),
+    guard: all(hasPdConsent, minTotalReached, minMarginReached, not(onPickupEligible)),
     notify: [client('payment_link')],
     effects: ['set_scheme_prepay', 'create_payment'],
   },
@@ -301,7 +343,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'payment_succeeded',
     to: 'confirmed',
     actors: PAYMENT_ACTORS,
-    guard: all(amountMatches, not(allLiveItemsArrived)),
+    guard: all(amountMatches, itemsNotArrived),
     receipt: 'prepayment',
     notify: [client('paid'), sellers('staff_new_order')],
   },
@@ -330,7 +372,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'payment_canceled',
     to: 'cancelled',
     actors: PAYMENT_ACTORS,
-    guard: not(allLiveItemsArrived),
+    guard: all(eventPaymentIsCurrent, paymentConfirmedUnpaid, itemsNotArrived),
     notify: [client('payment_expired')],
   },
   {
@@ -339,7 +381,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'payment_canceled',
     to: 'ready',
     actors: PAYMENT_ACTORS,
-    guard: allLiveItemsArrived,
+    guard: all(eventPaymentIsCurrent, paymentConfirmedUnpaid, allLiveItemsArrived),
     notify: [],
     effects: ['set_scheme_pay_on_handover'],
   },
@@ -349,7 +391,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'payment_ttl_expired',
     to: 'cancelled',
     actors: ['system'],
-    guard: all(paymentConfirmedUnpaid, not(allLiveItemsArrived)),
+    guard: all(eventPaymentIsCurrent, paymentConfirmedUnpaid, itemsNotArrived),
     notify: [client('payment_expired')],
   },
   {
@@ -358,7 +400,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'payment_ttl_expired',
     to: 'ready',
     actors: ['system'],
-    guard: all(paymentConfirmedUnpaid, allLiveItemsArrived),
+    guard: all(eventPaymentIsCurrent, paymentConfirmedUnpaid, allLiveItemsArrived),
     notify: [],
     effects: ['set_scheme_pay_on_handover'],
   },
@@ -419,7 +461,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'supplier_checkout_succeeded',
     to: 'ordered_at_supplier',
     actors: ['system'],
-    guard: all(noItemErrors, not(prepayInvoice)),
+    guard: all(noItemErrors, noPrepayInvoice),
     notify: [client('ordered')],
   },
   {
@@ -483,7 +525,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'item_arrived',
     to: 'ordered_at_supplier',
     actors: ['staff'],
-    guard: not(allLiveItemsArrived),
+    guard: itemsNotArrived,
     notify: [client('partial_arrival')],
   },
   {
@@ -502,6 +544,28 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     to: 'ordered_at_supplier',
     actors: ['system', 'staff'],
     notify: [client('eta_changed'), sellers('staff_delay_hint')],
+  },
+  {
+    label: 'Отменить задержанную позицию (частичный возврат)',
+    from: ['ordered_at_supplier'],
+    event: 'item_cancelled',
+    to: 'ordered_at_supplier',
+    actors: ['client', 'staff'],
+    guard: all(scopeItem, liveItemsRemain, paymentHeldKnown, itemsNotArrived),
+    receipt: refundReceipt,
+    notify: [client('item_cancelled'), sellers('staff_cancel_at_supplier_task')],
+    effects: refundEffects(['cancel_at_supplier_task']),
+  },
+  {
+    label: 'Отменить задержанную позицию: остальное уже приехало',
+    from: ['ordered_at_supplier'],
+    event: 'item_cancelled',
+    to: 'ready',
+    actors: ['client', 'staff'],
+    guard: all(scopeItem, liveItemsRemain, paymentHeldKnown, allLiveItemsArrived),
+    receipt: refundReceipt,
+    notify: [client('item_cancelled'), client('arrived'), sellers('staff_cancel_at_supplier_task')],
+    effects: refundEffects(['cancel_at_supplier_task', 'start_pickup_window']),
   },
 
   // --- needs_attention ---------------------------------------------------------------------
@@ -538,7 +602,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     from: ['needs_attention'],
     event: 'item_cancelled',
     actors: ['staff'],
-    guard: liveItemsRemain,
+    guard: all(liveItemsRemain, paymentHeldKnown),
     receipt: refundReceipt,
     notify: [client('item_cancelled')],
     effects: refundEffects([]),
@@ -604,7 +668,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
           from: ['awaiting_client_approval'],
           event,
           actors,
-          guard: all(scopeItem, liveItemsRemain),
+          guard: all(scopeItem, liveItemsRemain, paymentHeldKnown),
           receipt: refundReceipt,
           notify: [client('item_cancelled')],
           effects: refundEffects([]),
@@ -732,8 +796,8 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'payment_canceled',
     to: 'ready',
     actors: PAYMENT_ACTORS,
-    // A stale cancel of an earlier QR must not undo a payment that already succeeded.
-    guard: not(paymentHeldFlag),
+    // A stale cancel of an earlier QR must not undo a newer QR or a succeeded payment.
+    guard: all(eventPaymentIsCurrent, paymentConfirmedUnpaid, not(paymentHeldFlag)),
     notify: [],
   },
   {
@@ -742,9 +806,30 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'payment_ttl_expired',
     to: 'ready',
     actors: ['system'],
-    guard: all(paymentConfirmedUnpaid, not(paymentHeldFlag)),
+    guard: all(eventPaymentIsCurrent, paymentConfirmedUnpaid, not(paymentHeldFlag)),
     notify: [],
   },
+
+  // --- a payment succeeded while the order does not wait for one ---------------------------
+  {
+    label: 'Неожиданный платёж (дубль или устаревшая ссылка): владельцу',
+    from: UNEXPECTED_PAYMENT_STATUSES,
+    event: 'payment_succeeded',
+    to: 'needs_attention',
+    actors: PAYMENT_ACTORS,
+    guard: paymentSucceeded,
+    notify: [owner('staff_unexpected_payment')],
+  },
+  // After handover or while refunding the status must not move: the owner decides.
+  ...(['handed', 'completed', 'refund_pending'] as const).map((status): TransitionRule => ({
+    label: 'Неожиданный платёж после выдачи или в возврате: владельцу',
+    from: [status],
+    event: 'payment_succeeded',
+    to: status,
+    actors: PAYMENT_ACTORS,
+    guard: paymentSucceeded,
+    notify: [owner('staff_unexpected_payment')],
+  })),
 
   // --- out_for_delivery --------------------------------------------------------------------
   {

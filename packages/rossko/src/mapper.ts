@@ -6,10 +6,12 @@
  * Robustness rules (the input is never trusted):
  * - single objects and arrays are both accepted (toArray), key casing is ignored;
  * - prices are converted with rubToKop (no floats); a stock with a bad or zero price, zero
- *   quantity, no id or no delivery term at all is dropped, the rest of the response survives;
+ *   quantity, no id or no delivery term (no days and no parseable deliveryEnd) is dropped, the
+ *   rest of the response survives;
  * - multiplicity defaults to 1, missing deliveryStart/deliveryEnd become null;
  * - crosses are flagged isCross; duplicates (same article, brand, stock) are dropped.
  */
+import { parseSupplierTimestamp } from '@detaly/domain';
 import type { Offer, StockInfo } from '@detaly/domain/types';
 import { normalizeArticle, rubToKop } from './normalize';
 import { bool, field, firstField, int, isObject, listOf, str, toArray, unwrapResult } from './raw';
@@ -76,8 +78,11 @@ function mapStock(raw: unknown, localStockIds: ReadonlySet<string>) {
   const deliveryRaw = int(field(raw, 'delivery'));
   const delivery = deliveryRaw !== null && deliveryRaw >= 0 ? deliveryRaw : null;
   const deliveryEnd = str(field(raw, 'deliveryEnd'));
-  // Without any delivery term we cannot promise a date: skip the stock.
-  if (delivery === null && deliveryEnd === null) return null;
+  // Without a delivery term we cannot promise a date: skip the stock. A deliveryEnd that is
+  // not a date we understand ('скоро', '08/10') is no term either: never promise "today".
+  if (delivery === null && (deliveryEnd === null || parseSupplierTimestamp(deliveryEnd) === null)) {
+    return null;
+  }
   const multiplicity = int(field(raw, 'multiplicity'));
   const stock: StockInfo = {
     stockId,
@@ -85,7 +90,7 @@ function mapStock(raw: unknown, localStockIds: ReadonlySet<string>) {
     count,
     multiplicity: multiplicity === null || multiplicity < 1 ? 1 : multiplicity,
     type: str(field(raw, 'type')),
-    deliveryDays: delivery ?? 0,
+    deliveryDays: delivery,
     deliveryStart: str(field(raw, 'deliveryStart')),
     deliveryEnd,
     extra: str(field(raw, 'extra')),

@@ -30,6 +30,10 @@ export interface TransitionContext {
   totalKop?: Kop;
   /** settings pricing.min_order_total_kop (0 = no minimum). */
   minOrderTotalKop?: Kop;
+  /** Order margin: sum of (priceClient - priceSupplier) x quantity over the items (orderMarginKop). */
+  orderMarginKop?: Kop;
+  /** settings pricing.min_margin_kop (MIN_MARGIN_RUB; 0 = no minimum, must still be passed). */
+  minMarginKop?: Kop;
   /** settings order.on_pickup_max_total_kop (ON_PICKUP_MAX_TOTAL). */
   onPickupMaxTotalKop?: Kop;
   /** users.no_show_count of the client. */
@@ -42,7 +46,17 @@ export interface TransitionContext {
   paidAmountKop?: Kop;
   /** Status confirmed by GET /payments/{id}; null when no payment object exists at all. */
   providerPaymentStatus?: PaymentStatus | null;
-  /** Every live (not failed/replaced/refunded) item is `arrived`. */
+  /**
+   * The payment the event is about is the latest payment created for the order. A late
+   * cancel/expiry of an earlier payment (old QR, replaced link) must not touch the order:
+   * cancel and expiry rules require it, and the worker marks such webhooks `stale`.
+   */
+  eventPaymentIsCurrent?: boolean;
+  /**
+   * Every live (not failed/replaced/refunded) item is `arrived`. Pass `false` explicitly for
+   * "not yet": the negative branch never runs on a missing flag. For a partial cancellation it
+   * is computed over the items left after the cancellation.
+   */
   allLiveItemsArrived?: boolean;
   /**
    * A succeeded payment of this order exists and is not fully refunded. Prepay orders past
@@ -64,10 +78,17 @@ export interface TransitionContext {
   /** settings rossko.prepay_invoice. */
   prepayInvoice?: boolean;
   /**
-   * A supplier order (GetCheckout succeeded) already covers the live items. False when the
-   * problem was found by the recheck before ordering: going back to work then means GetCheckout.
+   * The Rossko invoice of the current supplier order is marked paid ("Счёт оплачен" in
+   * order_events). Only read when prepayInvoice is true; a missing flag means "not paid".
    */
-  supplierOrderCreated?: boolean;
+  supplierInvoicePaid?: boolean;
+  /**
+   * Live items that no successful supplier order covers yet (no supplier_order_items row of a
+   * created supplier order), counted after the decision being applied: an approved alternative
+   * is a new pending item, items failed in GetCheckout itemErrors stay pending, a cancelled item
+   * is not counted. > 0 when going back to work means GetCheckout for these items.
+   */
+  pendingSupplierItems?: number;
   /** Order margin after the change (marginBp of totals). */
   marginBp?: BasisPoints;
   /** settings pricing.margin_floor_pct in bp. */
@@ -147,6 +168,12 @@ export const minTotalReached = guard(
   (c) => isCount(c.totalKop) && c.totalKop > 0 && c.totalKop >= (c.minOrderTotalKop ?? 0),
 );
 
+/** PLAN section 4: checkout is refused below MIN_MARGIN_RUB ("добавьте позицию"). */
+export const minMarginReached = guard(
+  'min_order_margin',
+  (c) => isCount(c.orderMarginKop) && isCount(c.minMarginKop) && c.orderMarginKop >= c.minMarginKop,
+);
+
 /**
  * PLAN round 4: pay on handover only when every item is local, total <= ON_PICKUP_MAX_TOTAL,
  * no_show_count < NO_SHOW_LIMIT, and the order is picked up (courier is prepay only).
@@ -182,6 +209,22 @@ export const noMoneyHeld = guard(
 /** The order holds a succeeded payment (stale cancel/expiry of another payment is ignored). */
 export const paymentHeldFlag = guard('payment_held', (c) => c.paymentHeld === true);
 
+/**
+ * Whether money was taken is known: prepay, or pay_on_handover with an explicit paymentHeld.
+ * Rules whose refund depends on it (item cancellations) fail closed without it.
+ */
+export const paymentHeldKnown = guard(
+  'payment_held_known',
+  (c) =>
+    c.scheme === 'prepay' || (c.scheme === 'pay_on_handover' && typeof c.paymentHeld === 'boolean'),
+);
+
+/** The event's payment is the latest payment of the order (see eventPaymentIsCurrent). */
+export const eventPaymentIsCurrent = guard(
+  'event_payment_is_current',
+  (c) => c.eventPaymentIsCurrent === true,
+);
+
 export const amountMatches = guard(
   'amount_matches_total',
   (c) => isCount(c.paidAmountKop) && isCount(c.totalKop) && c.paidAmountKop === c.totalKop,
@@ -208,6 +251,9 @@ export const allLiveItemsArrived = guard(
   (c) => c.allLiveItemsArrived === true,
 );
 
+/** Explicit "some live item has not arrived"; a missing flag fails (not `!allLiveItemsArrived`). */
+export const itemsNotArrived = guard('items_not_arrived', (c) => c.allLiveItemsArrived === false);
+
 export const recheckPassed = guard(
   'recheck_passed',
   (c) =>
@@ -223,14 +269,29 @@ export const hasItemErrors = guard(
   (c) => isCount(c.supplierItemErrors) && c.supplierItemErrors > 0,
 );
 export const prepayInvoice = guard('prepay_invoice', (c) => c.prepayInvoice === true);
+/** Explicitly no prepay invoice (a missing setting never skips the invoice step). */
+export const noPrepayInvoice = guard('no_prepay_invoice', (c) => c.prepayInvoice === false);
 
-export const supplierOrderCreated = guard(
-  'supplier_order_created',
-  (c) => c.supplierOrderCreated === true,
+/** Every live item is covered by a created supplier order: nothing to (re)order. */
+export const supplierItemsCovered = guard(
+  'supplier_items_covered',
+  (c) => c.pendingSupplierItems === 0,
 );
-export const supplierOrderMissing = guard(
-  'supplier_order_missing',
-  (c) => c.supplierOrderCreated === false,
+/** Some live items still need GetCheckout (recheck problem, itemErrors, approved alternative). */
+export const supplierItemsPending = guard(
+  'supplier_items_pending',
+  (c) => isCount(c.pendingSupplierItems) && c.pendingSupplierItems > 0,
+);
+
+/** prepay_invoice is on and the current Rossko invoice is not marked paid yet. */
+export const supplierInvoiceDue = guard(
+  'supplier_invoice_due',
+  (c) => c.prepayInvoice === true && c.supplierInvoicePaid !== true,
+);
+/** The supplier ships without waiting for us: no prepay invoice, or it is already paid. */
+export const supplierInvoiceSettled = guard(
+  'supplier_invoice_settled',
+  (c) => c.prepayInvoice === false || (c.prepayInvoice === true && c.supplierInvoicePaid === true),
 );
 
 export const marginAboveFloor = guard(

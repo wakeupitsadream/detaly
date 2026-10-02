@@ -75,10 +75,16 @@ export function localDate(instant: Date, timeZone: string = CLIENT_TIME_ZONE): I
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
-const SUPPLIER_DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const SUPPLIER_DATE_ONLY_RE = /^(\d{4})([-/])(\d{2})\2(\d{2})$/;
 const SUPPLIER_RU_DATE_RE = /^(\d{2})\.(\d{2})\.(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/;
 const SUPPLIER_ISO_RE =
-  /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/;
+  /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}(?::?\d{2})?)?$/;
+
+/** '+03' -> '+03:00', '+0300' -> '+03:00'; 'Z' and '+03:00' stay as they are. */
+function normalizeOffset(zone: string): string {
+  if (zone === 'Z' || zone.includes(':')) return zone;
+  return zone.length === 3 ? `${zone}:00` : `${zone.slice(0, 3)}:${zone.slice(3)}`;
+}
 
 /**
  * Parses a supplier timestamp. Returns either an exact instant or, for a bare date, the
@@ -90,7 +96,10 @@ export function parseSupplierTimestamp(
 ): { kind: 'instant'; instant: Date } | { kind: 'date'; date: IsoDate } | null {
   const value = raw.trim();
   const dateOnly = SUPPLIER_DATE_ONLY_RE.exec(value);
-  if (dateOnly !== null) return isIsoDate(value) ? { kind: 'date', date: value } : null;
+  if (dateOnly !== null) {
+    const date = `${dateOnly[1]}-${dateOnly[3]}-${dateOnly[4]}`;
+    return isIsoDate(date) ? { kind: 'date', date } : null;
+  }
 
   const ru = SUPPLIER_RU_DATE_RE.exec(value);
   if (ru !== null) {
@@ -104,10 +113,8 @@ export function parseSupplierTimestamp(
   if (iso !== null) {
     const date = `${iso[1]}-${iso[2]}-${iso[3]}`;
     if (!isIsoDate(date)) return null;
-    const zone = iso[7] ?? SUPPLIER_DEFAULT_OFFSET;
-    const normalizedZone =
-      zone === 'Z' || zone.includes(':') ? zone : `${zone.slice(0, 3)}:${zone.slice(3)}`;
-    return toInstant(date, iso[4] ?? '00', iso[5] ?? '00', iso[6] ?? '00', normalizedZone);
+    const zone = normalizeOffset(iso[7] ?? SUPPLIER_DEFAULT_OFFSET);
+    return toInstant(date, iso[4] ?? '00', iso[5] ?? '00', iso[6] ?? '00', zone);
   }
   return null;
 }
@@ -126,7 +133,9 @@ function toInstant(
 
 /**
  * Expected arrival date of one stock offer in the client time zone: `deliveryEnd` when present
- * and parseable, otherwise the client's local date of `now` plus `deliveryDays`. A
+ * and parseable, otherwise the client's local date of `now` plus `deliveryDays`. Without both
+ * (deliveryDays null and deliveryEnd missing or not understood) it throws DateError: a date is
+ * never invented, buildOfferViews drops such stocks. A
  * `deliveryEnd` already in the past (a cached answer read after midnight) is clamped to today,
  * so a promise is never made for a date that has passed.
  */
@@ -149,6 +158,8 @@ export function etaDate(
     }
   }
   const days = stock.deliveryDays;
+  if (days === null)
+    throw new DateError('no delivery term: deliveryEnd is missing or not understood');
   if (!Number.isSafeInteger(days) || days < 0) {
     throw new DateError('deliveryDays must be a non-negative integer');
   }

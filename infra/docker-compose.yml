@@ -5,7 +5,8 @@
 #   docker compose -f infra/docker-compose.yml --env-file .env --profile stage up -d   # + stage
 # Normally via infra/deploy.sh (pull, migrations, seed, health wait, rollback).
 #
-# Interpolation (${...}) reads the --env-file; containers get the same file through env_file.
+# Interpolation (${...}) reads the --env-file; app containers get the same file through
+# env_file, the backup container only an explicit allowlist (least privilege).
 # DATABASE_URL and REDIS_URL inside containers are built here from POSTGRES_* so that the
 # database password lives in exactly one place; the values in .env are only for host tools.
 # Memory limits sum to ~2.6 GB for production; the stage profile adds ~1.4 GB on demand.
@@ -187,14 +188,29 @@ services:
       context: ./backup
     restart: always
     logging: *logging
-    env_file:
-      - path: ../.env
-        required: false
+    # No env_file: this container talks to the internet (rclone, curl) and gets only what its
+    # scripts read, never the payment, Rossko, session or client-bot secrets of .env.
+    # entrypoint.sh saves the same allowlist for cron jobs.
     environment:
       TZ: ${TZ:-Asia/Yekaterinburg}
       <<: *prod-db-env
       # s3 (rclone, S3_* from .env) or local (/backups volume; for checks only)
       STORAGE: ${BACKUP_STORAGE:-s3}
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:-}
+      BACKUP_PASSPHRASE: ${BACKUP_PASSPHRASE:-}
+      BACKUP_PREFIX: ${BACKUP_PREFIX:-}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-}
+      BACKUP_ON_START: ${BACKUP_ON_START:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_KEY: ${S3_KEY:-}
+      S3_SECRET: ${S3_SECRET:-}
+      S3_REGION: ${S3_REGION:-}
+      TG_SELLER_BOT_TOKEN: ${TG_SELLER_BOT_TOKEN:-}
+      TG_SELLER_CHAT_ID: ${TG_SELLER_CHAT_ID:-}
+      BRAND_NAME: ${BRAND_NAME:-}
+      HEARTBEAT_STALE_SEC: ${HEARTBEAT_STALE_SEC:-}
+      HEALTHWATCH_REPEAT_MIN: ${HEALTHWATCH_REPEAT_MIN:-}
     volumes:
       - backups_local:/backups
     depends_on:

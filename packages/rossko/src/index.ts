@@ -4,12 +4,14 @@ export {
   createRosskoCaller,
   createRosskoClient,
   ORDERS_BATCH_SIZE,
+  searchFailure,
   type RosskoCallerConfig,
   type RosskoClientOptions,
 } from './client';
 export {
   createSearchCache,
   SEARCH_CACHE_TTL_SEC,
+  SEARCH_ERROR_CACHE_TTL_SEC,
   type CachedSearch,
   type SearchCache,
   type SearchCacheOptions,

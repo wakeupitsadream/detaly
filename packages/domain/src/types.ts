@@ -35,8 +35,11 @@ export interface StockInfo {
   multiplicity: number;
   /** Rossko offer `type` as received (meaning to be confirmed against real responses). */
   type: string | null;
-  /** Delivery term in days (Rossko `delivery`), >= 0. */
-  deliveryDays: number;
+  /**
+   * Delivery term in days (Rossko `delivery`), >= 0; null when Rossko gave no term (the date
+   * then comes from `deliveryEnd` only).
+   */
+  deliveryDays: number | null;
   /** Raw Rossko `deliveryStart`; a value without offset is assumed Moscow time. */
   deliveryStart: string | null;
   /** Raw Rossko `deliveryEnd`; preferred over `deliveryDays` when present. */

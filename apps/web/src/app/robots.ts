@@ -9,12 +9,15 @@ export default function robots(): MetadataRoute.Robots {
   if (env.NOINDEX_ALL) {
     return { rules: [{ userAgent: '*', disallow: '/' }] };
   }
+  // /search and /api/ are NOT disallowed: they carry X-Robots-Tag noindex (proxy.ts,
+  // next.config), and a crawler that may not fetch a page never sees that header, so an
+  // externally linked /search?q=… could be indexed as a bare URL. Private paths stay closed.
   return {
     rules: [
       {
         userAgent: '*',
         allow: '/',
-        disallow: ['/search', '/api/', '/o/', '/p/', '/admin'],
+        disallow: ['/o/', '/p/', '/admin'],
       },
     ],
   };

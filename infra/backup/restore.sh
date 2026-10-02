@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Restore a dump made by backup.sh into a target database, then print row counts per table.
 #
-# Usage: restore.sh <object|latest> <target_database_url>
+# Usage: restore.sh <object|latest> [<target_database_url>]
 #        restore.sh --list            dump names in the storage, oldest first
+#   target   omitted: RESTORE_TARGET_URL from the environment (keeps the password out of argv,
+#            e.g. sh -c 'RESTORE_TARGET_URL="$DATABASE_URL" restore.sh latest'); the password
+#            is passed to pg_restore/psql through PGPASSWORD, never on their command line
 #   object   dump name (detaly-20261002T213000Z.dump.age), or a path to a local file
 #   latest   newest dump in the storage (STORAGE=s3|local, same settings as backup.sh)
 #
@@ -25,9 +28,11 @@ if [[ "${1:-}" == "--list" ]]; then
   exit 0
 fi
 
-[[ $# -eq 2 ]] || die "usage: restore.sh <object|latest> <target_database_url> | restore.sh --list"
+[[ $# -eq 1 || $# -eq 2 ]] ||
+  die "usage: restore.sh <object|latest> [<target_database_url>] | restore.sh --list"
 OBJECT="$1"
-TARGET="$2"
+TARGET="${2:-${RESTORE_TARGET_URL:-}}"
+[[ -n "$TARGET" ]] || die "no target: pass <target_database_url> or set RESTORE_TARGET_URL"
 
 if [[ "$TARGET" == "${DATABASE_URL:-}" && "${RESTORE_FORCE:-}" != "1" ]]; then
   die "target equals DATABASE_URL (live database); set RESTORE_FORCE=1 if this is intended"
@@ -83,12 +88,13 @@ pg_restore --list "$DUMP" >/dev/null || die "decrypted file is not a pg_dump arc
 
 # --- restore ---
 log "restoring $NAME"
+pg_conn "$TARGET"
 pg_restore --clean --if-exists --no-owner --no-acl --single-transaction --exit-on-error \
-  --dbname="$TARGET" "$DUMP"
+  --dbname="$PG_URL" "$DUMP"
 log "restore ok: $NAME"
 
 # --- row counts (exact) for every user table, schema.table<TAB>rows ---
-psql "$TARGET" -X -v ON_ERROR_STOP=1 -At -F $'\t' <<'SQL'
+psql "$PG_URL" -X -v ON_ERROR_STOP=1 -At -F $'\t' <<'SQL'
 select format('select %L, count(*) from %I.%I', n.nspname || '.' || c.relname, n.nspname, c.relname)
 from pg_class c
 join pg_namespace n on n.oid = c.relnamespace

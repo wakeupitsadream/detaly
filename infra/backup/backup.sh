@@ -72,7 +72,8 @@ encrypt() {
 
 STEP=dump
 log "dump started (mode=$MODE, storage=$STORAGE)"
-pg_dump --format=custom --compress=6 --no-password "$DATABASE_URL" | encrypt
+pg_conn "$DATABASE_URL"
+pg_dump --format=custom --compress=6 --no-password "$PG_URL" | encrypt
 [[ -s "$OUT" ]]
 (cd "$WORK" && sha256sum "$NAME" >"$NAME.sha256")
 SIZE="$(stat -c %s "$OUT")"

@@ -123,6 +123,13 @@ describe.skipIf(!DB_URL)('staff and client actions', () => {
       status: 'ordered_at_supplier',
       attentionReason: null,
     });
+    // Verification 17: the reason stays in order_events with both transitions.
+    const journal = (await eventsOf(db, seeded.orderId)).filter((e) => e.fromStatus !== null);
+    expect(journal.map((e) => [e.type, e.fromStatus, e.toStatus, e.actorType])).toEqual([
+      ['item_problem', 'ordered_at_supplier', 'needs_attention', 'staff'],
+      ['order_anyway', 'needs_attention', 'ordered_at_supplier', 'staff'],
+    ]);
+    expect(journal[0]?.payload).toMatchObject({ problem: 'delay', itemId });
   });
 
   it('«Новый срок» without a date offers +2/+5/+7/+14 days', async () => {

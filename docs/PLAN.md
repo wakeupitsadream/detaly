@@ -95,7 +95,7 @@ Env (дефолты перекрываются `settings`):
 | receipts | чек зачёта POST /receipts по «Клиент пришёл», опрос до succeeded | тот же Idempotence-Key каждые 2 мин до 15 мин, затем алерт |
 | rossko | recheck перед заказом, checkout (GetCheckout), orders-recovery (GetOrders после таймаута checkout), checkout-details (ежесуточно), poll-orders (ф2), settlements (ф4) | 3 попытки, пауза на 429; checkout — ровно один job на supplier_order |
 | notify | отправка через адаптер, фолбэк SMS по allowlist | 5 попыток, backoff; jobId = `${order_event_id}:${channel}`, запись в notifications до отправки |
-| reconciliation | каждые 10 мин: GET /payments по pending старше 10 мин, GET /refunds по незавершённым; ночью сверка за сутки | без ретраев |
+| reconciliation | каждые 10 мин: GET /payments и GET /refunds по всем pending с id ЮKassa (потерянный вебхук закрывается не позже чем через 10 мин), повтор потерянного POST — по строкам без id старше 10 мин; ночью сверка за сутки | без ретраев |
 | housekeeping | expire-unpaid (только после подтверждённого статуса), напоминания (оплата; подтверждение; выдача на 3/6/9 день; срок возврата поставщику за 3 дня; 10 дней на деньги; VIN-заявка без ответа 4 ч; needs_attention каждые 4 ч; awaiting_client_approval 24 ч; оплата счёта Rossko каждые 4 ч), утренний дайджест продавца (ф2), алерт при 80% SMS_MONTHLY_BUDGET_RUB, ретенция ПД (фото VIN 90 дней) | 1 попытка |
 | dead-letter | упавшие задачи; алерт в чат продавцов; `/queues` в боте | ручной повтор |
 
@@ -208,7 +208,7 @@ Env (дефолты перекрываются `settings`):
 2. Вебхуки payment.succeeded, payment.canceled, refund.succeeded → запись, 200, воркер перечитывает объект и доверяет только ему. Сверить: список IP, срок ретраев, доставка уведомлений тестового магазина.
 3. Чек зачёта: POST /receipts {type payment, payment_id, send true, customer, items с payment_mode full_payment, settlements [{type prepayment, amount}], tax_system_code} → GET /receipts/{id} до succeeded. **Гейт фазы 0:** письменный ответ ЮKassa, доступен ли POST /receipts с settlements prepayment в «Чеках от ЮKassa», как тарифицируется второй чек, оформлена ли касса на ИНН ИП (не агентская модель — от этого зависит, попадает ли доход в АУСН через ОФД). Если недоступно или дорого — план Б: ЮKassa только платёжка (receipt в платёж не передаётся) + своя облачная ККТ за `ReceiptProvider`; порог оборота, с которого своя ККТ дешевле, — в `docs/budget.md`.
 4. Возврат: POST /refunds {payment_id, amount, receipt с возвращаемыми позициями и тем же payment_mode, что в исходном чеке}; частичный по строкам; при полном — включая строку доставки. Сверить: чек в теле возврата, срок зачисления, возвраты по СБП.
-5. Reconciliation: GET /payments/{id} и /refunds/{id} по pending старше 10 мин; expire-unpaid только после подтверждённого canceled.
+5. Reconciliation: GET /payments/{id} и /refunds/{id} по pending каждые 10 мин (повтор потерянного POST — старше 10 мин); expire-unpaid только после подтверждённого canceled.
 
 ### Уведомления MAX + Telegram + SMS
 

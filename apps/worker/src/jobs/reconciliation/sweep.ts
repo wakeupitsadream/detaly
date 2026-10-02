@@ -1,8 +1,11 @@
-// reconciliation/sweep (every 10 minutes, PLAN section 1): payments and refunds still pending
-// 10 minutes after they were created. A payment with a provider id is re-read and applied
-// (source 'reconciliation') — this closes a webhook that never came; one without a provider id
-// gets its lost POST repeated with the same Idempotence-Key (decision Б7). Refunds the same way.
-// Errors are logged and the row waits for the next pass: the job itself is never retried.
+// reconciliation/sweep (every 10 minutes, PLAN section 1): payments and refunds still pending.
+// A row with a provider id is re-read on every pass, whatever its age, and applied (source
+// 'reconciliation'): a webhook that never came is closed by the next pass, at most 10 minutes
+// after the payment (Verification «Фаза 1B» step 4; with an age limit too it took up to 20).
+// A row without a provider id gets its lost POST repeated with the same Idempotence-Key
+// (decision Б7) only once it is older than 10 minutes, so an answer still in flight is not
+// raced. Refunds the same way. Errors are logged and the row waits for the next pass: the job
+// itself is never retried.
 import { and, desc, eq, gt, inArray, isNotNull, lt, or, payments, refunds } from '@detaly/db';
 import { TIMERS } from '@detaly/domain';
 import type { PaymentRow } from '@detaly/orders';
@@ -53,10 +56,13 @@ export async function runSweep(deps: WorkerDeps, options: SweepOptions = {}): Pr
       and(
         inArray(payments.status, ['pending', 'waiting_for_capture']),
         eq(payments.provider, 'yookassa'),
-        lt(payments.createdAt, cutoff),
-        // A row without provider id past the Idempotence-Key lifetime is never repeated
-        // (repeatPaymentPost): it would only take a place of the batch on every pass.
-        or(isNotNull(payments.providerPaymentId), gt(payments.createdAt, keyCutoff)),
+        or(
+          // GET is read-only and idempotent: every pass, whatever the age.
+          isNotNull(payments.providerPaymentId),
+          // A repeated POST only after 10 minutes, and never past the Idempotence-Key lifetime
+          // (repeatPaymentPost would skip it, taking a place of the batch on every pass).
+          and(lt(payments.createdAt, cutoff), gt(payments.createdAt, keyCutoff)),
+        ),
         scope ? inArray(payments.orderId, [...scope]) : undefined,
       ),
     )
@@ -97,7 +103,8 @@ export async function runSweep(deps: WorkerDeps, options: SweepOptions = {}): Pr
     .where(
       and(
         eq(refunds.status, 'pending'),
-        lt(refunds.createdAt, cutoff),
+        // GET with a provider id on every pass; a repeated POST (no id yet) after 10 minutes.
+        or(isNotNull(refunds.providerRefundId), lt(refunds.createdAt, cutoff)),
         scope ? inArray(refunds.orderId, [...scope]) : undefined,
       ),
     )

@@ -1,5 +1,5 @@
 // Full order cycles on the queues (docs/phase-1b-implementation.md section 16.1 and 16.3;
-// Verification «Фаза 1B» steps 1, 6, 9, 10): the real worker (runWorker) on PostgreSQL and
+// Verification «Фаза 1B» steps 1, 6, 8, 9, 10, 18): the real worker (runWorker) on PostgreSQL and
 // Redis, the web handlers in-process, YooKassa and SMS Aero on msw, Rossko on fixtures and the
 // seller bot with a recording Telegram transport (see harness.ts). Each scenario runs from the
 // checkout to «Выдал» with only client clicks, YooKassa answers and seller presses as input.
@@ -9,7 +9,9 @@
 // - pay on handover: «Подтверждаю» -> «Клиент пришёл» -> «Выставить оплату» -> the QR photo
 //   in the sellers chat only -> paid -> one receipt (full) -> «Выдал»;
 // - partial: GetCheckout itemErrors -> «Отменить позицию» -> a refund with a receipt of that
-//   line only -> the rest arrives -> the offset receipt for what is left.
+//   line only -> the rest arrives -> the offset receipt for what is left;
+// - «Оплатить заранее»: a ready pay-on-handover order switches to prepay, is paid online and
+//   is then handed as prepay (prepayment + offset receipts).
 import { Buffer } from 'node:buffer';
 import { CALLBACK_DATA_MAX_BYTES } from '@detaly/notify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -182,6 +184,9 @@ describe.skipIf(!hasTestDatabase)('full order cycle on the queues', () => {
         'paid:skipped',
         'staff_new_order:sent',
         'ordered:skipped',
+        // Verification 8: the first «Приехало» tells the client the rest is awaited (on /o/<token>
+        // «Жду до» and «Отменить позицию»); not an SMS template, so skipped without a messenger.
+        'partial_arrival:skipped',
         'arrived:sent',
       ]),
     );
@@ -385,6 +390,78 @@ describe.skipIf(!hasTestDatabase)('full order cycle on the queues', () => {
       'receipt_succeeded',
       'handed_over:ready->handed',
     ]);
+    await expectNotificationsOnce(h, order.orderId);
+  }, 90_000);
+
+  it('«Оплатить заранее» (Verification 18): ready pay on handover -> prepay -> two receipts as prepay', async () => {
+    const order = await checkout(h, OK_LINES);
+    expect(await orderStatus(h, order.orderId)).toBe('awaiting_confirmation');
+    expect(await clientAction(h, order, 'confirm')).toBe(200);
+    await waitForStatus(h, order.orderId, 'confirmed');
+    await settled(h);
+    await press(h, order.orderId, 'recheck');
+    await waitForStatus(h, order.orderId, 'ordered_at_supplier');
+    await settled(h);
+    for (const itemId of order.itemIds) await press(h, order.orderId, 'iarr', itemId);
+    await waitForStatus(h, order.orderId, 'ready');
+    await settled(h);
+
+    // The client wants to pay remotely: the order switches to prepay and waits for the money.
+    expect(await clientAction(h, order, 'prepay_now')).toBe(200);
+    await waitForStatus(h, order.orderId, 'awaiting_payment');
+    await settled(h);
+    await payOnline(h, order);
+    const providerPaymentId = await providerPaymentOf(h, order.orderId);
+    const created = h.apis.mock.requests.find(
+      (r) =>
+        r.method === 'POST' &&
+        r.path === '/payments' &&
+        (r.body?.metadata as Record<string, string> | undefined)?.order_id === order.orderId,
+    );
+    const body = created?.body as {
+      confirmation: { type: string };
+      receipt: { items: { payment_mode: string }[] };
+    };
+    expect(body.confirmation.type).toBe('redirect');
+    expect(body.receipt.items.every((i) => i.payment_mode === 'full_prepayment')).toBe(true);
+    await clientPays(h, providerPaymentId);
+    // The parts are already here: paid -> back to ready, now as a prepaid order.
+    await waitForStatus(h, order.orderId, 'ready');
+    await settled(h);
+
+    // From here on as prepay: «Клиент пришёл» -> offset receipt -> «Выдал».
+    expect(await cardActions(h, order.orderId)).not.toContain('qr');
+    await press(h, order.orderId, 'came');
+    await waitFor('«Выдал» on the card', async () =>
+      (await cardActions(h, order.orderId)).includes('handed'),
+    );
+    await press(h, order.orderId, 'handed');
+    await waitForStatus(h, order.orderId, 'handed');
+    await settled(h);
+
+    const rows = await receiptsOf(h, order.orderId);
+    expect(rows.map((r) => [r.kind, r.status])).toEqual([
+      ['prepayment', 'succeeded'],
+      ['offset', 'succeeded'],
+    ]);
+    expect(await refundsOf(h, order.orderId)).toEqual([]);
+    expect((await paymentsOf(h, order.orderId)).map((p) => p.status)).toEqual(['succeeded']);
+    expect(mockReceiptsOf(providerPaymentId)).toHaveLength(2);
+    const offsetPost = h.apis.mock.requests.find(
+      (r) =>
+        r.method === 'POST' && r.path === '/receipts' && r.body?.payment_id === providerPaymentId,
+    );
+    expect(offsetPost?.body?.settlements).toEqual([
+      { type: 'prepayment', amount: { value: rub(order.totalKop), currency: 'RUB' } },
+    ]);
+    const steps = await journal(h, order.orderId);
+    expect(steps).toEqual(
+      expect.arrayContaining([
+        'switch_to_prepay:ready->awaiting_payment',
+        'payment_succeeded:awaiting_payment->ready',
+        'handed_over:ready->handed',
+      ]),
+    );
     await expectNotificationsOnce(h, order.orderId);
   }, 90_000);
 

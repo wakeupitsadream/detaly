@@ -12,9 +12,13 @@ export const TIMERS = {
   receiptPollEveryMs: 2 * MINUTE,
   /** ... until 15 minutes after the first attempt, then an alert («Выдал» stays blocked). */
   receiptGiveUpMs: 15 * MINUTE,
-  /** Reconciliation looks at pending payments and refunds older than 10 minutes ... */
+  /**
+   * Reconciliation repeats a lost POST /payments or /refunds answer (a pending row without a
+   * provider id) only for rows older than 10 minutes; rows with a provider id are re-read on
+   * every pass. The nightly check leaves payments younger than this to the sweep.
+   */
   reconcilePendingAgeMs: 10 * MINUTE,
-  /** ... every 10 minutes. */
+  /** The sweep runs every 10 minutes: a lost webhook is closed at most 10 minutes later. */
   reconcileEveryMs: 10 * MINUTE,
   /** «Оплатить счёт Rossko» reminder to the owner. */
   invoiceReminderEveryMs: 4 * HOUR,

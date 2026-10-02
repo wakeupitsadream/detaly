@@ -1553,6 +1553,7 @@ describe('graph properties', () => {
       variant.pendingSupplierItems = 2;
       variant.supplierInvoicePaid = false;
     }
+    const overlaps = new Set<string>();
     for (const status of ORDER_STATUSES) {
       for (const event of ORDER_EVENTS) {
         const rules = rulesFor(status, event);
@@ -1563,12 +1564,14 @@ describe('graph properties', () => {
             const passing = rules.filter(
               (r) => r.actors.includes(actor) && (r.guard === undefined || r.guard.test(ctx)),
             );
-            expect(passing.length, `${status} + ${event}`).toBeLessThanOrEqual(1);
+            // expect() inside this hot loop costs seconds; collect overlaps and assert once
+            if (passing.length > 1) overlaps.add(`${status} + ${event} (${actor})`);
           }
         }
       }
     }
-  });
+    expect([...overlaps]).toEqual([]);
+  }, 30_000);
 
   it('every notify template is a known template id', () => {
     for (const rule of TRANSITIONS) {
@@ -1585,11 +1588,15 @@ describe('graph properties', () => {
   });
 });
 
-describe('side effects (implemented with the worker in phase 1B)', () => {
-  it.todo('prepayment receipt (full_prepayment) is sent inside POST /payments, not separately');
-  it.todo('"Выдал" stays blocked until the offset/full receipt is succeeded at the provider');
-  it.todo('receipt lines are commodity only plus at most one service line (delivery)');
-  it.todo('claim refund (except kind=delay) is created only after claims.return_accepted_at');
-  it.todo('partial refund changes item state only, the order status stays the same');
-  it.todo('refund receipt repeats the lines and payment_mode of the original receipt');
-});
+// The money side effects that phase 0 left here as todos are covered since phase 1B:
+// - the prepayment receipt (full_prepayment) rides inside POST /payments: `receiptFor` above,
+//   apps/worker/test/payments-webhook.int.test.ts and the flow tests (apps/worker/test/flow);
+// - «Выдал» blocked until the offset/full receipt succeeded: '"Выдал" is blocked until the
+//   settlement receipt succeeded' above, receipts-offset.int, seller-bot-cards.int, admin-orders.int;
+// - commodity lines plus at most one service line: receipts.test.ts ('two service lines...');
+// - claim refund only after an accepted return or an owner override: 'claim refund needs an
+//   accepted return...' above (the claims themselves are phase 1C);
+// - a partial refund keeps the order status: 'partial refunds keep the status...' above and
+//   packages/orders/test/engine.int.test.ts;
+// - refund receipts repeat the lines and payment_mode of the original receipt: refunds.test.ts
+//   ('refund receipts mirror the receipt that took the money').

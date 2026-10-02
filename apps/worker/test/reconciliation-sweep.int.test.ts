@@ -1,8 +1,9 @@
 // reconciliation/sweep and reconciliation/nightly on the msw emulation of YooKassa and the
-// `_worker` database: Verification «Фаза 1B» step 4 (the webhook never came), a POST /payments
-// answer lost before recordPaymentCreated (decision Б7), a lost refund answer, and the nightly
-// list check that only alerts. The database is shared with other test files, so the sweep and
-// the nightly check run scoped to this file's orders.
+// `_worker` database: Verification «Фаза 1B» step 4 (the webhook never came: closed by the next
+// pass, at most 10 minutes after the payment), a POST /payments answer lost before
+// recordPaymentCreated (decision Б7), a lost refund answer, and the nightly list check that only
+// alerts. The database is shared with other test files, so the sweep and the nightly check run
+// scoped to this file's orders.
 import { eq, payments, refunds } from '@detaly/db';
 import { performStaffAction, preparePayment } from '@detaly/orders';
 import type { CreateRefundRequest } from '@detaly/payments';
@@ -45,19 +46,23 @@ async function paymentRows(orderId: string) {
 }
 
 describe('reconciliation/sweep: pending payments (Verification 4)', () => {
-  it('paid without a webhook: nothing before 10 minutes, confirmed after', async () => {
+  it('paid without a webhook: the next pass confirms it, whatever the age of the payment', async () => {
     const seeded = await seedOrder(t.deps.db);
     const { providerPaymentId } = await createOnlinePayment(t, seeded.orderId);
-    mock.setPaymentStatus(providerPaymentId, 'succeeded');
 
-    clock.advance(5 * MINUTE);
-    expect(await runSweep(t.deps, { orderIds: [seeded.orderId] })).toEqual({
-      payments: {},
-      refunds: {},
+    // A pass while the client is still on the payment page: re-read, nothing changes.
+    clock.advance(MINUTE);
+    const journalBefore = (await eventsOf(t.deps.db, seeded.orderId)).map((e) => e.type);
+    expect((await runSweep(t.deps, { orderIds: [seeded.orderId] })).payments).toEqual({
+      applied: 1,
     });
     expect((await orderRow(t.deps.db, seeded.orderId)).status).toBe('awaiting_payment');
+    expect((await eventsOf(t.deps.db, seeded.orderId)).map((e) => e.type)).toEqual(journalBefore);
 
-    clock.advance(6 * MINUTE);
+    // Paid right after, the webhook never comes: the next pass (10 minutes later at most, the
+    // payment only 3 minutes old) confirms it — no 10-minute age limit for a GET.
+    mock.setPaymentStatus(providerPaymentId, 'succeeded');
+    clock.advance(2 * MINUTE);
     const report = await runSweep(t.deps, { orderIds: [seeded.orderId] });
     expect(report.payments).toEqual({ applied: 1 });
     expect((await orderRow(t.deps.db, seeded.orderId)).status).toBe('confirmed');

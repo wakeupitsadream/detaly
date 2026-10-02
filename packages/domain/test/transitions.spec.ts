@@ -1274,7 +1274,18 @@ describe('phase 1B rules (docs/phase-1b-implementation.md section 3.4)', () => {
         'payment_ttl_expired',
         system({ ...current, providerPaymentStatus: 'succeeded' }),
       ),
-    ).toEqual({ ok: false, reason: 'guard_failed', failed: ['!payment_succeeded'] });
+    ).toEqual({ ok: false, reason: 'guard_failed', failed: ['no_payment_succeeded'] });
+    // fails closed: a forgotten provider status or a held (two-stage) payment never drops a QR
+    for (const providerPaymentStatus of [undefined, 'waiting_for_capture'] as const) {
+      expect(
+        resolveTransition(
+          'awaiting_handover_payment',
+          'payment_ttl_expired',
+          system({ ...current, providerPaymentStatus }),
+        ),
+        String(providerPaymentStatus),
+      ).toMatchObject({ ok: false, reason: 'guard_failed', failed: ['no_payment_succeeded'] });
+    }
   });
 
   it('an old QR paid in ready returns the order to awaiting_handover_payment silently', () => {

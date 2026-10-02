@@ -3,7 +3,7 @@
 // under test:<uuid>:.
 import { createRedis, type Redis } from '@detaly/config';
 import { deleteKeysByPrefix, testKeyPrefix, testRedisUrl } from '@detaly/config/testing';
-import { cartItems, carts, createDb, eq, sql, type Db } from '@detaly/db';
+import { cartItems, carts, createDb, eq, type Db } from '@detaly/db';
 import { MAX_ORDER_TOTAL_KOP } from '@detaly/domain';
 import { createFixtureCaller, RosskoCallError, type RosskoCaller } from '@detaly/rossko';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';

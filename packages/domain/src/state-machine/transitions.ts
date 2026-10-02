@@ -879,13 +879,15 @@ export const TRANSITIONS: readonly TransitionRule[] = [
   {
     // Decision Б9: YooKassa gives no way to cancel a pending payment, so the QR TTL does not
     // wait for a confirmed cancel. If the old QR is paid later, `ready + payment_succeeded`
-    // (late handover payment) brings the order back here with the money.
+    // (late handover payment) brings the order back here with the money. The provider status
+    // must still be known and not taken (null, pending or canceled): a missing status or a
+    // waiting_for_capture payment fails closed instead of dropping a paid QR.
     label: 'QR истёк',
     from: ['awaiting_handover_payment'],
     event: 'payment_ttl_expired',
     to: 'ready',
     actors: ['system'],
-    guard: all(eventPaymentIsCurrent, not(paymentSucceeded), not(paymentHeldFlag)),
+    guard: all(eventPaymentIsCurrent, noPaymentSucceeded, not(paymentHeldFlag)),
     notify: [],
   },
 

@@ -7,9 +7,12 @@
  * - `reuse`: a live pending payment with its link -> 303 to it (a second click never creates a
  *   second payment);
  * - `create`: POST /payments with the row's Idempotence-Key (timeout 15 s) -> recordPaymentCreated
- *   -> 303 to confirmation_url. A provider error -> 303 /o/<token>?pay=error; the payments row
- *   stays pending without a provider id, so the next click (or reconciliation) repeats the same
- *   key and body and YooKassa answers with the same payment.
+ *   -> 303 to confirmation_url. A provider error -> 303 /o/<token>?pay=error; after a network
+ *   error, a timeout or a 5xx the payments row stays pending without a provider id, so the next
+ *   click (or reconciliation) repeats the same key and body and YooKassa answers with the same
+ *   payment. A final rejection (HTTP 4xx, or a request refused before sending) proves no payment
+ *   exists: the row is closed (recordPaymentRejected, owner alerted) and the next click takes a
+ *   new row with a new key instead of repeating a refused body.
  * return_url = APP_BASE_URL/o/<token>?paid=1 («Проверяем оплату…»); YOOKASSA_RETURN_URL is not
  * used: the return address must carry the order token. VERIFY: Ю11 — YooKassa keeps the query
  * string of return_url as given.
@@ -18,8 +21,13 @@
  * confirmation link.
  */
 import type { Logger } from '@detaly/config';
-import { preparePayment, recordPaymentCreated, type EngineDeps } from '@detaly/orders';
-import { PaymentProviderError, type PaymentProvider } from '@detaly/payments';
+import {
+  preparePayment,
+  recordPaymentCreated,
+  recordPaymentRejected,
+  type EngineDeps,
+} from '@detaly/orders';
+import { PaymentProviderError, PaymentRequestError, type PaymentProvider } from '@detaly/payments';
 import { errorInfo } from '../errors';
 import { isOrderToken } from '../orders/access';
 import { isSameOrigin } from '../request-guards';
@@ -129,6 +137,31 @@ function providerErrorInfo(error: unknown): Record<string, unknown> {
   return errorInfo(error);
 }
 
+/**
+ * The error proves the provider did not create the payment: a final HTTP 4xx answer, or a
+ * request refused locally before sending. Returns the code for payments.cancellation_reason;
+ * null for errors after which the payment may exist (network, timeout, 5xx, 429, unreadable).
+ */
+export function paymentRejection(error: unknown): string | null {
+  if (
+    error instanceof PaymentRequestError ||
+    (error as Error | null)?.name === 'PaymentRequestError'
+  ) {
+    return 'PaymentRequestError';
+  }
+  if (
+    error instanceof PaymentProviderError ||
+    (error as Error | null)?.name === 'PaymentProviderError'
+  ) {
+    const details = (error as PaymentProviderError).details;
+    const status = details?.status ?? null;
+    if (details?.retryable === false && status !== null && status >= 400 && status < 500) {
+      return `${details.code ?? 'error'} (HTTP ${status})`;
+    }
+  }
+  return null;
+}
+
 async function pay(token: string, deps: PayHandlerDeps): Promise<Outcome> {
   const { engine, appBaseUrl, logger } = deps;
   if (deps.payments === null) {
@@ -208,6 +241,18 @@ async function pay(token: string, deps: PayHandlerDeps): Promise<Outcome> {
       { order: order.number, paymentId: prepared.paymentRowId, ...providerErrorInfo(error) },
       'pay: payment creation failed',
     );
+    const rejection = paymentRejection(error);
+    if (rejection !== null) {
+      try {
+        await recordPaymentRejected(engine, prepared.paymentRowId, rejection);
+      } catch (recordError) {
+        // Reconciliation repeats the POST, gets the same refusal and closes the row then.
+        logger?.error(
+          { order: order.number, paymentId: prepared.paymentRowId, ...errorInfo(recordError) },
+          'pay: recording the rejection failed',
+        );
+      }
+    }
     return failure(appBaseUrl, token, 'error', 502, 'payment_failed', PAY_MESSAGES.failed);
   }
   try {

@@ -1,7 +1,9 @@
-// receipts/payment-receipt {receiptId} (decision Б23): the receipt sent inside a payment
-// (prepayment online, full at the pickup point). Its state comes from the payment object
+// receipts/payment-receipt {receiptId, restart?} (decision Б23): the receipt sent inside a
+// payment (prepayment online, full at the pickup point). Its state comes from the payment object
 // (`receipt_registration`), the receipt itself from GET /receipts?payment_id=; polled like the
 // offset receipt. A succeeded `full` receipt unlocks «Выдал», so the seller card is redrawn.
+// The receipt cannot be sent again, so polling does not stop at the 15-minute alert: it goes on
+// every 10 minutes for a day, and «Повторить чек» (restart: true) opens a new window.
 import { RECEIPTS_JOBS } from '@detaly/config';
 import { applyReceiptObject, type PaymentRow, type ReceiptRow } from '@detaly/orders';
 import type { ProviderPayment, ProviderReceipt, ReceiptProvider } from '@detaly/payments';
@@ -22,6 +24,7 @@ import {
   alertReceiptFailed,
   loadReceiptRow,
   schedulePoll,
+  slowPollsOver,
   startAttempt,
   windowElapsed,
 } from './polling';
@@ -29,7 +32,7 @@ import {
 export type PaymentReceiptJobResult =
   | { skipped: string }
   | { status: 'succeeded' | 'canceled'; alerted?: boolean }
-  | { status: 'pending'; nextPollAt?: string; alerted?: boolean };
+  | { status: 'pending'; nextPollAt?: string | null; alerted?: boolean };
 
 const MODE_BY_KIND = { prepayment: 'full_prepayment', full: 'full_payment' } as const;
 
@@ -103,7 +106,11 @@ export async function processPaymentReceipt(
   const payments = requirePayments(deps);
   const receipts = requireReceipts(deps);
   const log = { orderId: row.orderId, receiptId, kind: row.kind };
-  const windowStart = await startAttempt(deps, row.id, { restart: false });
+  // «Повторить чек» after the alert: a new window with its own alert.
+  const restart = (job.data as { restart?: unknown } | undefined)?.restart === true;
+  const windowStart = await startAttempt(deps, row.id, {
+    restart: restart && row.alertedAt !== null,
+  });
 
   let found: ProviderReceipt | null = null;
   let registration: ProviderPayment['receiptRegistration'] = null;
@@ -158,9 +165,20 @@ export async function processPaymentReceipt(
       code: 'timeout',
       note: 'Чек в составе платежа не зарегистрирован за 15 минут.',
     });
-    if (alerted && row.kind === 'full') await refreshCard(deps, row);
-    deps.logger.error(log, 'payment receipt not registered in 15 minutes');
-    return { status: 'pending', alerted };
+    if (alerted) {
+      if (row.kind === 'full') await refreshCard(deps, row);
+      deps.logger.error(log, 'payment receipt not registered in 15 minutes');
+    }
+    // The money is taken and the receipt cannot be sent again: keep asking, rarely.
+    if (slowPollsOver(deps, windowStart)) return { status: 'pending', alerted, nextPollAt: null };
+    const nextPollAt = await schedulePoll(deps, {
+      receipt: row,
+      windowStart,
+      name: RECEIPTS_JOBS.paymentReceipt,
+      keyPrefix: 'payment-receipt-poll',
+      slow: true,
+    });
+    return { status: 'pending', alerted, nextPollAt: nextPollAt.toISOString() };
   }
   const nextPollAt = await schedulePoll(deps, {
     receipt: row,

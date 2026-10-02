@@ -229,6 +229,19 @@ describe('staff templates of phase 1B', () => {
     );
   });
 
+  it('audit fixes: a refused payment, a missing refund receipt, «Повторить возврат»', () => {
+    const rejected = renderTemplate(
+      'staff_payment_rejected',
+      data({ note: 'Ответ ЮKassa: invalid_request (HTTP 400).' }),
+    ).text;
+    expect(rejected).toContain('Заказ DT-000123: ЮKassa не создала платёж');
+    expect(rejected).toContain('invalid_request (HTTP 400)');
+    expect(renderTemplate('staff_refund_receipt_failed', data()).text).toContain(
+      'чек возврата не зарегистрирован',
+    );
+    expect(renderTemplate('staff_refund_failed', data()).text).toContain('«Повторить возврат»');
+  });
+
   it('staff_problem keeps order-level actions only (item menus live in the bot card)', () => {
     const actions = renderTemplate('staff_problem', data())
       .buttons.flat()

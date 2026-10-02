@@ -82,6 +82,7 @@ export const HIDDEN_TIMELINE_EVENTS: ReadonlySet<OrderEvent | JournalEvent> = ne
   'payment_created',
   'payment_status',
   'receipt_failed',
+  'receipt_retry_requested',
   'refund_created',
   'approval_created',
   'approval_notified',
@@ -254,6 +255,7 @@ function journalPhrase(event: PhraseInput): string | null {
     case 'payment_created':
     case 'payment_status':
     case 'receipt_failed':
+    case 'receipt_retry_requested':
     case 'refund_created':
     case 'approval_created':
     case 'approval_notified':

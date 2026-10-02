@@ -13,6 +13,7 @@ import {
   orders,
   payments,
   receipts,
+  refunds,
   sellerCards,
   staff,
   and,
@@ -529,6 +530,68 @@ describe.skipIf(!hasTestDatabase)('seller cards', () => {
     expect(answersSince(before)).toEqual([INVOICE_NOT_DUE]);
     expect(callsSince(before).filter((c) => c.method === 'sendMessage')).toHaveLength(0);
     expect(await t.deps.redis.exists(awaitKey(t.deps.keyPrefix, SELLER_CHAT, OWNER_TG))).toBe(0);
+  });
+
+  it('«Повторить возврат»: owner only, sends the failed refund again with its deadline', async () => {
+    const seeded = await seed({ status: 'refund_pending', itemState: 'refund_pending' });
+    const [payment] = await t.deps.db
+      .insert(payments)
+      .values({
+        orderId: seeded.orderId,
+        kind: 'prepayment',
+        status: 'succeeded',
+        amountKop: seeded.totalKop,
+        idempotenceKey: randomUUID(),
+        providerPaymentId: `pay-${randomUUID()}`,
+        confirmationType: 'redirect',
+        request: {},
+      })
+      .returning({ id: payments.id });
+    const deadlineAt = new Date(Date.now() + 5 * 86_400_000);
+    const [failed] = await t.deps.db
+      .insert(refunds)
+      .values({
+        orderId: seeded.orderId,
+        paymentId: payment!.id,
+        amountKop: seeded.totalKop,
+        reason: 'refusal',
+        status: 'failed',
+        scope: 'order',
+        error: 'invalid_request (HTTP 400)',
+        idempotenceKey: randomUUID(),
+        requestedAt: new Date(Date.now() - 5 * 86_400_000),
+        deadlineAt,
+      })
+      .returning({ id: refunds.id });
+    const messageId = await postCard(seeded.orderId, null);
+    expect(labels(messageId)).toContain('Повторить возврат (владелец)');
+    const data = buttonData(messageId, 'Повторить возврат');
+    expect(parseCallbackData(data)).toMatchObject({ action: 'rrefund', orderId: seeded.orderId });
+
+    let before = rec.calls.length;
+    await press(data, { from: SELLER_TG, messageId });
+    expect(answersSince(before)).toEqual(['Только владелец']);
+    const rows = () =>
+      t.deps.db
+        .select()
+        .from(refunds)
+        .where(eq(refunds.orderId, seeded.orderId))
+        .orderBy(asc(refunds.createdAt), asc(refunds.id));
+    expect(await rows()).toHaveLength(1);
+
+    before = rec.calls.length;
+    await press(data, { from: OWNER_TG, messageId });
+    expect(answersSince(before)).toEqual(['Возврат отправлен повторно']);
+    const [, retry] = await rows();
+    expect(retry).toMatchObject({
+      status: 'pending',
+      scope: 'order',
+      retryOfRefundId: failed!.id,
+      amountKop: seeded.totalKop,
+    });
+    expect(retry!.deadlineAt.getTime()).toBe(deadlineAt.getTime());
+    // Redrawn without the button: the refund is on its way again.
+    expect(labels(messageId)).not.toContain('Повторить возврат (владелец)');
   });
 
   it('«Аналог»: the menu lists the recheck alternatives; the choice asks the client', async () => {

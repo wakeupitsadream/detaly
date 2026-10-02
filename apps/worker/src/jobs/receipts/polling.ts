@@ -1,8 +1,10 @@
 // The polling window of a receipt (decision Б22): attempts every 2 minutes up to 15 minutes
 // after the first one, then one alert (staff_receipt_failed to the sellers and the owner) while
-// «Выдал» stays blocked. Polls are delayed outbox rows, so they survive a Redis loss.
+// «Выдал» stays blocked. A receipt that cannot be sent again (inside a payment or a refund) is
+// then polled every 10 minutes up to a day (schedulePoll `slow`), so a late registration still
+// unlocks the handover. Polls are delayed outbox rows, so they survive a Redis loss.
 import { and, desc, eq, orderEvents, receipts, sql } from '@detaly/db';
-import { TIMERS } from '@detaly/domain';
+import { TIMERS, type OrderNotifyTemplate } from '@detaly/domain';
 import {
   enqueueOutbox,
   loadOrderSnapshot,
@@ -61,21 +63,30 @@ export async function schedulePoll(
     windowStart: Date;
     name: string;
     keyPrefix: string;
+    /** After the window: every 10 minutes up to a day after the window opened. */
+    slow?: boolean;
   },
 ): Promise<Date> {
   const now = deps.now().getTime();
   const start = input.windowStart.getTime();
-  const at = new Date(Math.min(now + TIMERS.receiptPollEveryMs, start + TIMERS.receiptGiveUpMs));
-  const slot = Math.ceil((at.getTime() - start) / TIMERS.receiptPollEveryMs);
+  const every = input.slow ? TIMERS.receiptSlowPollEveryMs : TIMERS.receiptPollEveryMs;
+  const until = input.slow ? TIMERS.receiptSlowPollUntilMs : TIMERS.receiptGiveUpMs;
+  const at = new Date(Math.min(now + every, start + until));
+  const slot = Math.ceil((at.getTime() - start) / every);
   await enqueueOutbox(deps.db, {
     queue: 'receipts',
     name: input.name,
-    key: `${input.keyPrefix}:${input.receipt.id}:${start}:${slot}`,
+    key: `${input.keyPrefix}${input.slow ? '-slow' : ''}:${input.receipt.id}:${start}:${slot}`,
     data: { receiptId: input.receipt.id, orderId: input.receipt.orderId },
     availableAt: at,
   });
   nudgeOutbox(deps);
   return at;
+}
+
+/** The slow polls after the window are over (a day since it opened): nothing is scheduled. */
+export function slowPollsOver(deps: Pick<WorkerDeps, 'now'>, windowStart: Date): boolean {
+  return deps.now().getTime() - windowStart.getTime() >= TIMERS.receiptSlowPollUntilMs;
 }
 
 /**
@@ -86,7 +97,13 @@ export async function schedulePoll(
 export async function alertReceiptFailed(
   deps: WorkerDeps,
   receiptId: string,
-  input: { code: string; note: string },
+  input: {
+    code: string;
+    note: string;
+    /** Default staff_receipt_failed to the sellers and the owner (the handover is blocked). */
+    template?: OrderNotifyTemplate;
+    audiences?: readonly ('sellers' | 'owner')[];
+  },
 ): Promise<boolean> {
   const alerted = await deps.db.transaction(async (tx) => {
     const [found] = await tx.select().from(receipts).where(eq(receipts.id, receiptId));
@@ -121,12 +138,12 @@ export async function alertReceiptFailed(
         })
       ).orderEventId;
     await tx.update(receipts).set({ alertedAt: at, updatedAt: at }).where(eq(receipts.id, row.id));
-    for (const audience of ['sellers', 'owner'] as const) {
+    for (const audience of input.audiences ?? (['sellers', 'owner'] as const)) {
       await enqueueStaffNotify(tx, {
         orderId: row.orderId,
         orderEventId,
         audience,
-        template: 'staff_receipt_failed',
+        template: input.template ?? 'staff_receipt_failed',
         keyByAudience: true,
       });
     }

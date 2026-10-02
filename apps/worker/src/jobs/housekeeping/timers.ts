@@ -4,7 +4,9 @@
 // - awaiting_payment past its deadline (expires_at; 1A orders have null there: created_at +
 //   order.payment_ttl_min): no payment or a canceled one -> payment_ttl_expired; a pending
 //   payment at the provider -> payments/payment-recheck only (cancel only after the provider
-//   confirms, PLAN section 4); a pending row without a provider id is left to reconciliation;
+//   confirms, PLAN section 4); a pending row without a provider id is left to reconciliation
+//   while its Idempotence-Key lives (24 h); after that no payment can come of it: it counts as
+//   canceled for the TTL (the row itself stays as it is) and the owner is alerted;
 // - awaiting_confirmation -> confirmation_timeout (1A: created_at + on_pickup_confirm_ttl_h);
 // - awaiting_handover_payment (QR TTL) -> payment_ttl_expired (Б9);
 // - ready past the storage window -> storage_expired (pickupWindowElapsed);
@@ -29,9 +31,12 @@ import {
   applyTransition,
   enqueueOutbox,
   loadOrderSettings,
+  loadOrderSnapshot,
+  recordJournalEvent,
   type TransitionFacts,
 } from '@detaly/orders';
 import type { WorkerDeps } from '../../deps';
+import { IDEMPOTENCE_KEY_TTL_MS } from '../payments/money';
 import { refreshCard } from '../receipts/offset';
 import { BATCH, HOUR_MS, HOUSEKEEPING_ACTOR, MINUTE_MS, notAfter, nudge } from './common';
 
@@ -87,6 +92,44 @@ async function fire(
   }
 }
 
+/**
+ * The owner learns that a payment row never got a provider payment (every POST failed for a
+ * day): journal payment_status and staff_payment_rejected, once per payment row.
+ */
+async function alertNoProviderPayment(
+  deps: WorkerDeps,
+  orderId: string,
+  paymentId: string,
+): Promise<void> {
+  try {
+    await deps.db.transaction(async (tx) => {
+      await loadOrderSnapshot(tx, orderId, { lock: true });
+      const { orderEventId } = await recordJournalEvent(tx, {
+        orderId,
+        type: 'payment_status',
+        actor: HOUSEKEEPING_ACTOR,
+        payload: { paymentId, status: 'pending', note: 'no_provider_payment' },
+        at: deps.now(),
+      });
+      await enqueueOutbox(tx, {
+        queue: 'notify',
+        name: 'order',
+        key: `notify:${orderEventId}:staff_payment_rejected`,
+        data: {
+          orderId,
+          orderEventId,
+          audience: 'owner',
+          template: 'staff_payment_rejected',
+          note: 'Ответа ЮKassa на создание платежа не было сутки: срок оплаты закрыт.',
+        },
+      });
+    });
+    nudge(deps);
+  } catch (error) {
+    deps.logger.error({ orderId, err: (error as Error).name }, 'housekeeping alert failed');
+  }
+}
+
 export async function runTimers(deps: WorkerDeps): Promise<TimersResult> {
   const now = deps.now();
   const settings = await loadOrderSettings(deps.db, deps.env);
@@ -126,6 +169,7 @@ export async function runTimers(deps: WorkerDeps): Promise<TimersResult> {
         id: payments.id,
         status: payments.status,
         providerPaymentId: payments.providerPaymentId,
+        createdAt: payments.createdAt,
       })
       .from(payments)
       .where(eq(payments.orderId, id))
@@ -143,7 +187,20 @@ export async function runTimers(deps: WorkerDeps): Promise<TimersResult> {
       continue;
     }
     if (payment.status === 'succeeded') continue; // the webhook / reconciliation applies it
-    if (payment.providerPaymentId === null) continue; // reconciliation repeats the POST
+    if (payment.providerPaymentId === null) {
+      // Reconciliation repeats the POST while the Idempotence-Key lives; after that the POST
+      // is never repeated, so no payment can come of the row: it counts as canceled.
+      if (now.getTime() - payment.createdAt.getTime() < IDEMPOTENCE_KEY_TTL_MS) continue;
+      const outcome = await fire(deps, {
+        orderId: id,
+        event: 'payment_ttl_expired',
+        facts: { paymentId: payment.id, providerPaymentStatus: 'canceled' },
+        expected: 'awaiting_payment',
+      });
+      count(outcome);
+      if (outcome === 'transition') await alertNoProviderPayment(deps, id, payment.id);
+      continue;
+    }
     const slot = Math.floor(now.getTime() / PAYMENT_RECHECK_EVERY_MS);
     const queued = await enqueueOutbox(deps.db, {
       queue: 'payments',

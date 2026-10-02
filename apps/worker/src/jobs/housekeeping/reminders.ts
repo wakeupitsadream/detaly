@@ -183,7 +183,9 @@ export async function runReminders(deps: WorkerDeps): Promise<RemindersResult> {
     );
   }
 
-  // 6. refunds not done 2 days before the 10-day legal deadline (a failed one too).
+  // 6. refunds not done 2 days before the 10-day legal deadline: pending ones, failed ones and
+  // refund tasks (needs_owner) nobody took over yet («Повторить возврат» / «Вернуть платёж»
+  // write a new row with retry_of and the same deadline, which is reminded instead).
   const late = await deps.db
     .select({ id: refunds.id, orderId: refunds.orderId, deadline: refunds.deadlineAt })
     .from(refunds)
@@ -191,6 +193,7 @@ export async function runReminders(deps: WorkerDeps): Promise<RemindersResult> {
       and(
         inArray(refunds.status, ['pending', 'failed']),
         notAfter(refunds.deadlineAt, new Date(nowMs + TIMERS.refundDeadlineWarnMs)),
+        sql`not exists (select 1 from refunds as taken where taken.retry_of_refund_id = ${refunds.id})`,
       ),
     )
     .orderBy(asc(refunds.deadlineAt))

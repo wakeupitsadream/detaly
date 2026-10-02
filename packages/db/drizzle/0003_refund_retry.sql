@@ -1,0 +1,3 @@
+ALTER TABLE "refunds" ADD COLUMN "retry_of_refund_id" uuid;--> statement-breakpoint
+ALTER TABLE "refunds" ADD CONSTRAINT "refunds_retry_of_refund_id_refunds_id_fk" FOREIGN KEY ("retry_of_refund_id") REFERENCES "public"."refunds"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "refunds_retry_of_refund_id_unique" ON "refunds" USING btree ("retry_of_refund_id");

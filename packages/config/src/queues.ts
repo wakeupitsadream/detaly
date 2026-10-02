@@ -80,6 +80,8 @@ export const RECEIPTS_JOBS = {
   offset: 'offset',
   offsetPoll: 'offset-poll',
   paymentReceipt: 'payment-receipt',
+  /** The refund receipt, registered after refund.succeeded (receipt_registration of the refund). */
+  refundReceipt: 'refund-receipt',
 } as const;
 
 /** Job names of the rossko queue (decisions Б12–Б15). */

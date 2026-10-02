@@ -10,6 +10,7 @@ import {
   unique,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { createdAt, id, kop, namedCheck, tstz, updatedAt } from './columns';
 import {
@@ -147,8 +148,13 @@ export const refunds = pgTable(
     idempotenceKey: text().notNull(),
     /** Body of POST /refunds (decision Б7), repeated with the same key by reconciliation. */
     request: jsonb(),
-    /** Last error without PD. */
+    /** Last error without PD; `needs_owner` marks a refund task (no provider call made). */
     error: text(),
+    /**
+     * The failed refund (or refund task) this one takes over: «Повторить возврат» and «Вернуть
+     * платёж» keep its deadline_at, and the reminders stop asking about the old row.
+     */
+    retryOfRefundId: uuid().references((): AnyPgColumn => refunds.id),
     /** The failure / deadline alert was sent. */
     alertedAt: tstz(),
     requestedAt: tstz().notNull(),
@@ -163,6 +169,7 @@ export const refunds = pgTable(
     index('refunds_status_deadline_at_idx').on(t.status, t.deadlineAt),
     index('refunds_order_id_idx').on(t.orderId),
     index('refunds_payment_id_idx').on(t.paymentId),
+    uniqueIndex('refunds_retry_of_refund_id_unique').on(t.retryOfRefundId),
     namedCheck('refunds', 'amount_kop', sql`${t.amountKop} > 0`),
   ],
 );

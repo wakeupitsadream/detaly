@@ -5,7 +5,7 @@
  * payloads and rule labels, and the action forms.
  */
 import type { IsoDate } from '@detaly/domain';
-import type { StaffActionView } from '@detaly/orders';
+import { REFUND_TASK_ERROR, type StaffActionView } from '@detaly/orders';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import type { AdminQr } from '@/server/admin/handover-qr';
@@ -306,7 +306,10 @@ export function AdminOrderCard({
                         className={ADMIN_INPUT_CLASS}
                       />
                       <span className="text-xs text-warn">
-                        Вся сумма платежа; статус заказа не меняется
+                        {payment.id === card.orderPaymentId &&
+                        (order.status === 'handed' || order.status === 'completed')
+                          ? 'Возврат всего заказа: заказ перейдёт в «возврат денег»'
+                          : 'Вся сумма платежа; статус заказа не меняется'}
                       </span>
                     </ActionForm>
                   ) : null}
@@ -356,9 +359,16 @@ export function AdminOrderCard({
             {card.refunds.map((refund) => (
               <tr key={refund.id} className="border-b border-line last:border-0">
                 <Cell className="whitespace-nowrap">{rub(refund.amountKop)}</Cell>
-                <Cell>{refund.scope}</Cell>
+                <Cell>
+                  {refund.scope}
+                  {refund.retryOfRefundId ? (
+                    <span className="block text-xs text-muted">повтор</span>
+                  ) : null}
+                </Cell>
                 <Cell>{refund.reason}</Cell>
-                <Cell>{refund.status}</Cell>
+                <Cell>
+                  {refund.error === REFUND_TASK_ERROR ? 'решение владельца' : refund.status}
+                </Cell>
                 <Cell className="whitespace-nowrap">{dateTime(refund.deadlineAt)}</Cell>
                 <Cell className="whitespace-nowrap">{dateTime(refund.succeededAt)}</Cell>
                 <Cell className="wrap-anywhere">{refund.error ?? '—'}</Cell>

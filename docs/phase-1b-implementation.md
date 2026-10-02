@@ -520,10 +520,11 @@ notify: dedupe (одна задача дважды → одно SMS), лимит
 | `iarr` | Приехало | ordered_at_supplier | позиция | `item_arrived` |
 | `invpaid` | Счёт оплачен (владелец) | awaiting_supplier_invoice | заказ | `supplier_invoice_paid` |
 | `came` | Клиент пришёл | ready | заказ | `client_arrived` |
-| `rcpt` | Повторить чек | ready, чек не succeeded | заказ | `offset_receipt_requested` |
+| `rcpt` | Повторить чек | ready, чек не succeeded; awaiting_handover_payment, QR оплачен, чек `full` pending | заказ | `offset_receipt_requested`; для QR — новое окно опроса `payment-receipt` (`restart`) |
 | `qr` | Выставить оплату | ready (pay_on_handover, клиент пришёл) | заказ | `handover_payment_requested` |
 | `handed` | Выдал | ready / awaiting_handover_payment при succeeded чеке | заказ | `handed_over` |
 | `noshow` | Клиент не пришёл | ready после окна | заказ | `storage_expired` (staff) |
+| `rrefund` | Повторить возврат (владелец) | любой статус, есть упавший возврат order/item | заказ | действие `retry_refund` (не событие) |
 | `back` | Назад | меню | заказ/позиция | вернуть основную клавиатуру |
 
 Тесты (`test/seller-bot-*.test.ts`, подмена транспорта grammY, база `_worker`): карточка нового
@@ -786,6 +787,44 @@ Env для e2e (дополнительно к разделу 15 документ
 `ROSSKO_ALLOW_CHECKOUT=true`, `ROSSKO_DELIVERY_ID=fx-delivery`, `ROSSKO_PAYMENT_ID=fx-payment`,
 `SMS_PROVIDER=none`. Ручная проверка: `curl -X POST -H 'X-Real-IP: 203.0.113.9' …/api/webhooks/yookassa`
 → 403; `curl -I …/admin` → 401 с `WWW-Authenticate`.
+
+## 23а. Исправления аудита фазы 1B
+
+- **Упавший возврат** (4xx на `POST /refunds` или `refund.canceled`): действие владельца
+  `retry_refund` («Повторить возврат», бот `rrefund`, админка с галочкой) под блокировкой заказа
+  создаёт возврат с тем же scope, позициями, платежом и причиной и новым Idempotence-Key
+  (старый ничего не создал или отменён провайдером). `deadline_at` переносится, связь —
+  `refunds.retry_of_refund_id` (миграция `0003_refund_retry`) и `retryOf` в журнале. Успех
+  повтора двигает заказ (`refund_succeeded` / `partial_refund_succeeded`). «Вернуть платёж» по
+  платежу с упавшим возвратом order/item отказывает и направляет на повтор.
+- **Отказ ЮKassa на `POST /payments`** (HTTP 4xx или запрос отвергнут до отправки):
+  `recordPaymentRejected` закрывает строку (`canceled`, `rejected:<код>`), чек строки —
+  `canceled`, журнал `payment_status`, владельцу один раз `staff_payment_rejected`. Так делают
+  `/api/orders/<token>/pay`, `repeatPaymentPost` (sweep) и `payment-create` (QR). TTL заказа
+  отменяет его, следующий клик берёт новую строку и ключ. Строка без provider id старше 24 часов
+  (ключ мог истечь) для TTL считается отменённой (сама строка не трогается) + алерт владельцу.
+- **Чек в составе платежа**: после 15-минутного алерта опрос продолжается каждые 10 минут до
+  суток; `rcpt` на `awaiting_handover_payment` открывает новое окно (ключ
+  `payment-receipt:<id>:retry:<event>`, `restart: true`).
+- **Два QR**: `handoverPaymentHeld` (держится QR-платёж `full` на сумму заказа) вместо статуса
+  последнего платежа в guard «Выдал»; чек проверяется у того же платежа. Оплата старого QR
+  закрывает более новые pending QR как `superseded` (локально): их ответ провайдера всё равно
+  применяется, sweep перечитывает их, пока провайдер не закроет.
+- **Чек возврата `orphan`** зеркалит последний чек, взявший деньги: после чека зачёта —
+  `refund_full` со строками чека зачёта. «Вернуть платёж» после выдачи (handed/completed) по
+  собственному платежу заказа — возврат всего заказа (`claim_refund_approved` с причиной
+  владельца как override): `refund_full`, заказ → refund_pending → refunded.
+- **Чек зачёта** привязывается к самому старому удерживаемому платежу предоплаты (с него же идут
+  возвраты) и не превышает его остаток (`offset_exceeds_prepayment`).
+- **Чек возврата**: если `refund.succeeded` пришёл без `receipt_registration = succeeded`,
+  job `receipts/refund-receipt` опрашивает `GET /refunds/{id}` и `GET /receipts?refund_id=`
+  (окно 15 минут, алерт владельцу `staff_refund_receipt_failed`, затем раз в 10 минут до суток).
+- **Деньги вне правил**: платёж в refund_pending возвращается сам (orphan, как в refunded).
+  Платёж после выдачи, дубль, принятый правилом, и платёж без правила (draft,
+  awaiting_confirmation) оставляют задачу владельцу — строку `refunds` `failed` с
+  `error = needs_owner`, scope `orphan`, `deadline_at` +10 дней (напоминание за 2 дня). «Вернуть
+  платёж» забирает задачу (`retry_of`), напоминания по забранным строкам не идут.
+- **Caddy**: токен вырезается и из `/api/orders/<token>/…` (тест `apps/web/test/caddyfile.test.ts`).
 
 ## 24. Что не входит в 1B (честно)
 

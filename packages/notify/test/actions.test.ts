@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   actionTarget,
   buildCallbackData,
+  callbackCodeForStaffAction,
   CALLBACK_ACTIONS,
   CALLBACK_DATA_MAX_BYTES,
   CLIENT_ACTIONS,
@@ -50,6 +51,7 @@ const TABLE_13_2: Record<string, string | null> = {
   noshow: 'storage_expired',
   back: null,
   dlq: null,
+  rrefund: null,
 };
 
 /** Phase 0 CALLBACK_ACTIONS: eventForAction keeps returning the same events. */
@@ -103,6 +105,7 @@ describe('callback actions', () => {
         'pdmg',
         'pdelay',
         'dlq',
+        'rrefund',
       ].sort(),
     );
     for (const code of Object.keys(EVENT_ACTIONS)) {
@@ -157,9 +160,23 @@ describe('callback actions', () => {
     expect(actionTarget('nope')).toBeNull();
   });
 
+  it('«Повторить возврат» is an owner staff action with a short code on the order', () => {
+    expect(menuAction('rrefund')).toEqual({
+      kind: 'staff',
+      action: 'retry_refund',
+      label: 'Повторить возврат',
+    });
+    expect(actionTarget('rrefund')).toBe('order');
+    expect(eventForAction('rrefund')).toBeNull();
+    expect(callbackCodeForStaffAction('retry_refund')).toBe('rrefund');
+    // Event codes are their own callback codes.
+    expect(callbackCodeForStaffAction('handed')).toBe('handed');
+  });
+
   it('owner-only and client codes', () => {
     expect(isOwnerOnlyAction('invpaid')).toBe(true);
     expect(isOwnerOnlyAction('dlq')).toBe(true);
+    expect(isOwnerOnlyAction('rrefund')).toBe(true);
     expect(isOwnerOnlyAction('handed')).toBe(false);
     expect([...CLIENT_ACTIONS]).toEqual(['confirm', 'approve', 'refund', 'refused']);
   });

@@ -307,7 +307,7 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
     msg(
       lines(
         `Заказ ${d.orderNumber}: возврат не прошёл.`,
-        'Срок 10 дней продолжает идти, проверьте возврат в ЛК ЮKassa.',
+        'Срок 10 дней продолжает идти. Проверьте причину в ЛК ЮKassa и нажмите «Повторить возврат» в карточке заказа.',
       ),
       adminLink(d),
     ),
@@ -316,7 +316,7 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
     msg(
       lines(
         `Заказ ${d.orderNumber}: оплата после возврата`,
-        `Оплачено ${rub(d.paidAmountKop)} по заказу, деньги за который уже возвращены.`,
+        `Оплачено ${rub(d.paidAmountKop)} по заказу, деньги за который уже возвращены или возвращаются.`,
         'Платёж возвращается автоматически, статус заказа не меняется. Проверьте возврат в ЛК ЮKassa.',
       ),
       adminLink(d),
@@ -344,6 +344,24 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
       lines(
         `Заказ ${d.orderNumber}: срок возврата денег`,
         `Вернуть до ${deadline(d.deadlineDate)} (10 дней по закону). Возврат ещё не прошёл.`,
+      ),
+      adminLink(d),
+    ),
+  staff_payment_rejected: (d) =>
+    msg(
+      lines(
+        `Заказ ${d.orderNumber}: ЮKassa не создала платёж`,
+        d.note,
+        `Платёж на ${rub(d.totalKop)} не создан, клиент не может оплатить. Проверьте настройки ЮKassa и чека; заказ отменится по сроку оплаты, QR на точке — выставите заново.`,
+      ),
+      adminLink(d),
+    ),
+  staff_refund_receipt_failed: (d) =>
+    msg(
+      lines(
+        `Заказ ${d.orderNumber}: чек возврата не зарегистрирован`,
+        d.note,
+        'Деньги клиенту отправлены, но чека возврата нет (54-ФЗ). Проверьте чек в ЛК ЮKassa и при необходимости пробейте чек коррекции.',
       ),
       adminLink(d),
     ),

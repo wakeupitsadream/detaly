@@ -19,7 +19,13 @@ import type { ProviderReceipt, ProviderRefund } from '@detaly/payments';
 import { heldPayments, planItemChanges } from './context';
 import { applyTransitionInTx, clock, nudge, writeItemChanges } from './engine';
 import { enqueueNotify, enqueueOutbox, recordJournalEvent } from './journal';
-import { createPaymentRows, createRefund, EngineError, paymentsEnabled } from './rows';
+import {
+  createPaymentRows,
+  createRefund,
+  createRefundTask,
+  EngineError,
+  paymentsEnabled,
+} from './rows';
 import { isUuid, loadOrderSnapshot } from './snapshot';
 import type {
   ActorRef,
@@ -65,6 +71,20 @@ async function lockOrder(tx: Tx, orderId: string): Promise<OrderSnapshot> {
 // ---------------------------------------------------------------------------------------------
 
 const PENDING_PAYMENT: readonly PaymentStatus[] = ['pending', 'waiting_for_capture'];
+
+/**
+ * payments.cancellation_reason of a QR row we closed ourselves because an older QR of the order
+ * was paid. The provider still has it pending: a later provider answer is applied as usual.
+ */
+export const SUPERSEDED_REASON = 'superseded';
+
+/** payments.cancellation_reason prefix of a POST /payments the provider refused (4xx). */
+export const REJECTED_REASON_PREFIX = 'rejected:';
+
+/** A row closed by us, not by the provider (superseded QR): its provider outcome still counts. */
+function closedLocally(row: Pick<PaymentRow, 'status' | 'cancellationReason'>): boolean {
+  return row.status === 'canceled' && row.cancellationReason === SUPERSEDED_REASON;
+}
 
 /**
  * Under the lock: awaiting_payment (prepayment) or awaiting_handover_payment (full); reuses a
@@ -160,8 +180,11 @@ export async function recordPaymentCreated(
         expiresAt: p.expiresAt ? new Date(p.expiresAt) : current.expiresAt,
         method: p.method ?? current.method,
         raw: p.raw,
-        // Final statuses are applied by applyPaymentObject (transitions), never here.
-        ...(PENDING_PAYMENT.includes(p.status) ? { status: p.status } : {}),
+        // Final statuses are applied by applyPaymentObject (transitions), never here; a row
+        // closed meanwhile (superseded QR) stays closed.
+        ...(PENDING_PAYMENT.includes(p.status) && PENDING_PAYMENT.includes(current.status)
+          ? { status: p.status }
+          : {}),
         updatedAt: at,
       })
       .where(eq(payments.id, current.id));
@@ -182,6 +205,66 @@ export async function recordPaymentCreated(
     return p.status === 'succeeded' || p.status === 'canceled';
   });
   if (final) await applyPaymentObject(deps, p, { source: 'web' });
+}
+
+/**
+ * The provider finally refused POST /payments (HTTP 4xx, or the request was refused before it was
+ * sent): no payment object exists, so the row can never be paid and is closed as canceled with
+ * `rejected:<code>`. The order keeps its status: the TTL of awaiting_payment (latest payment
+ * canceled) or of the QR ends it, and the next «Оплатить» / «Выставить оплату» takes a new row
+ * with a new Idempotence-Key. The owner is alerted once per order (staff_payment_rejected).
+ * Returns false when the row is not a pending row without a provider id any more.
+ */
+export async function recordPaymentRejected(
+  deps: EngineDeps,
+  paymentRowId: string,
+  code: string,
+): Promise<boolean> {
+  const changed = await deps.db.transaction(async (tx) => {
+    const found = await paymentById(tx, paymentRowId);
+    if (found === null) return false;
+    const snapshot = await lockOrder(tx, found.orderId);
+    const row = (await paymentById(tx, paymentRowId)) as PaymentRow;
+    if (!PENDING_PAYMENT.includes(row.status) || row.providerPaymentId !== null) return false;
+    const at = clock(deps);
+    const reason = `${REJECTED_REASON_PREFIX}${code}`.slice(0, 200);
+    await tx
+      .update(payments)
+      .set({ status: 'canceled', canceledAt: at, cancellationReason: reason, updatedAt: at })
+      .where(eq(payments.id, row.id));
+    // The receipt that was to go inside the payment was never sent.
+    await tx
+      .update(receipts)
+      .set({ status: 'canceled', error: 'payment rejected', updatedAt: at })
+      .where(and(eq(receipts.paymentId, row.id), eq(receipts.status, 'pending')));
+    const { orderEventId } = await recordJournalEvent(tx, {
+      orderId: row.orderId,
+      type: 'payment_status',
+      actor: { type: 'system', id: YOOKASSA },
+      payload: { paymentId: row.id, status: 'canceled', note: 'rejected', code },
+      at,
+    });
+    const alerted = snapshot.payments.some(
+      (p) => p.id !== row.id && (p.cancellationReason ?? '').startsWith(REJECTED_REASON_PREFIX),
+    );
+    if (!alerted) {
+      await enqueueOutbox(tx, {
+        queue: 'notify',
+        name: 'order',
+        key: `notify:${orderEventId}:staff_payment_rejected`,
+        data: {
+          orderId: row.orderId,
+          orderEventId,
+          audience: 'owner',
+          template: 'staff_payment_rejected',
+          note: `Ответ ЮKassa: ${code}.`,
+        },
+      });
+    }
+    return true;
+  });
+  if (changed) nudge(deps);
+  return changed;
 }
 
 async function paymentById(tx: Executor, id: string): Promise<PaymentRow | null> {
@@ -227,7 +310,10 @@ export async function applyPaymentObject(
     const row = (await paymentById(tx, found.id)) as PaymentRow;
     const prev = row.status;
     const next = p.status;
-    const settled = prev === 'succeeded' || prev === 'canceled';
+    // A QR we closed ourselves (superseded) is still alive at the provider: its outcome counts.
+    const local = closedLocally(row);
+    const settled = prev === 'succeeded' || (prev === 'canceled' && !local);
+    const keepStatus = settled || (local && PENDING_PAYMENT.includes(next));
 
     await tx
       .update(payments)
@@ -237,7 +323,7 @@ export async function applyPaymentObject(
         confirmationUrl: row.confirmationUrl ?? p.confirmationUrl,
         confirmationData: row.confirmationData ?? p.confirmationData,
         raw: p.raw,
-        ...(settled
+        ...(keepStatus
           ? {}
           : {
               status: next,
@@ -302,8 +388,9 @@ async function onPaymentSucceeded(
     }
   }
 
-  if (snapshot.order.status === 'refunded') {
-    // Б11: a payment of an already refunded order goes back whole; the status stays.
+  if (snapshot.order.status === 'refunded' || snapshot.order.status === 'refund_pending') {
+    // Б11: a payment of an order whose money is (being) returned goes back whole; the status
+    // stays and the refund carries the 10-day deadline like any other.
     let refund: { refundId: string; amountKop: number } | null = null;
     let refundError: string | null = null;
     try {
@@ -357,9 +444,23 @@ async function onPaymentSucceeded(
     { snapshot },
   );
   if (transition.ok) {
-    // A second payment the rule accepted silently (both QR of a handover paid, say): the
-    // order now holds money twice, so the owner is told even though the status is right.
+    if (transition.to === 'awaiting_handover_payment' && row.kind === 'full') {
+      await supersedeNewerQr(tx, snapshot, row, actor, at);
+    }
+    // A second payment (both QR of a handover paid, two tabs) or a payment after handover: the
+    // order holds money it does not need. The owner decides; a refund task keeps the 10-day
+    // deadline of ст. 22 in the reminders until «Вернуть платёж».
     const duplicate = heldPayments(snapshot).some((held) => held.id !== row.id);
+    const afterHandover = transition.from === 'handed' || transition.from === 'completed';
+    if (duplicate || afterHandover) {
+      await createRefundTask(tx, snapshot, {
+        paymentId: row.id,
+        reason: 'other',
+        requestedAt: at,
+        actor,
+        note: afterHandover ? 'payment_after_handover' : 'duplicate_payment',
+      });
+    }
     if (duplicate && !transition.rule.notify.some((spec) => spec.audience === 'owner')) {
       const { orderEventId } = await recordJournalEvent(tx, {
         orderId: row.orderId,
@@ -380,7 +481,15 @@ async function onPaymentSucceeded(
       transition,
     };
   }
-  // Money arrived where no rule expects it (e.g. before confirmation): the owner decides.
+  // Money arrived where no rule expects it (e.g. before confirmation): the owner decides, with
+  // a refund task carrying the 10-day deadline.
+  await createRefundTask(tx, snapshot, {
+    paymentId: row.id,
+    reason: 'other',
+    requestedAt: at,
+    actor,
+    note: 'unexpected_payment',
+  });
   const { orderEventId } = await recordJournalEvent(tx, {
     orderId: row.orderId,
     type: 'payment_status',
@@ -400,6 +509,42 @@ async function onPaymentSucceeded(
     template: 'staff_unexpected_payment',
   });
   return { result: 'ignored', transition };
+}
+
+/**
+ * An older QR of the order was paid while newer ones are still shown (QR expired, a new one was
+ * issued, the client paid the first): the newer pending QR rows are closed as `superseded`, so
+ * nothing waits for them. Their provider outcome is still applied if it ever comes.
+ */
+async function supersedeNewerQr(
+  tx: Tx,
+  snapshot: OrderSnapshot,
+  paid: PaymentRow,
+  actor: ActorRef,
+  at: Date,
+): Promise<void> {
+  const index = snapshot.payments.findIndex((p) => p.id === paid.id);
+  const newer = snapshot.payments
+    .slice(index + 1)
+    .filter((p) => p.kind === 'full' && PENDING_PAYMENT.includes(p.status));
+  for (const qr of newer) {
+    await tx
+      .update(payments)
+      .set({
+        status: 'canceled',
+        canceledAt: at,
+        cancellationReason: SUPERSEDED_REASON,
+        updatedAt: at,
+      })
+      .where(eq(payments.id, qr.id));
+    await recordJournalEvent(tx, {
+      orderId: paid.orderId,
+      type: 'payment_status',
+      actor,
+      payload: { paymentId: qr.id, status: 'canceled', note: SUPERSEDED_REASON, paidBy: paid.id },
+      at,
+    });
+  }
 }
 
 async function onPaymentCanceled(
@@ -530,14 +675,36 @@ export async function applyRefundObject(
           updatedAt: at,
         })
         .where(eq(refunds.id, refund.id));
-      if (
-        next === 'succeeded' &&
-        (r.receiptRegistration ?? refundReceiptRegistration(r.raw)) === 'succeeded'
-      ) {
-        await tx
-          .update(receipts)
-          .set({ status: 'succeeded', updatedAt: at })
+      if (next === 'succeeded') {
+        const registration = r.receiptRegistration ?? refundReceiptRegistration(r.raw);
+        const pending = await tx
+          .select({ id: receipts.id, kind: receipts.kind })
+          .from(receipts)
           .where(and(eq(receipts.refundId, refund.id), eq(receipts.status, 'pending')));
+        for (const receipt of pending) {
+          if (registration === 'succeeded') {
+            await tx
+              .update(receipts)
+              .set({ status: 'succeeded', updatedAt: at })
+              .where(eq(receipts.id, receipt.id));
+            await recordJournalEvent(tx, {
+              orderId: refund.orderId,
+              type: 'receipt_succeeded',
+              actor,
+              payload: { receiptId: receipt.id, kind: receipt.kind, refundId: refund.id },
+              at,
+            });
+          } else {
+            // The refund receipt is registered after the money moved: polled like the
+            // receipt of a payment (receipts/refund-receipt), alert when it does not come.
+            await enqueueOutbox(tx, {
+              queue: 'receipts',
+              name: 'refund-receipt',
+              key: `refund-receipt:${receipt.id}`,
+              data: { receiptId: receipt.id, orderId: refund.orderId },
+            });
+          }
+        }
       }
       out = await onRefundSettled(tx, deps, refund, next, actor, at);
     }

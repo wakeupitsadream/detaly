@@ -1,4 +1,5 @@
-// reconciliation/sweep (every 10 minutes, PLAN section 1): payments and refunds still pending.
+// reconciliation/sweep (every 10 minutes, PLAN section 1): payments and refunds still pending,
+// and QR payments we closed as superseded while the provider still has them open.
 // A row with a provider id is re-read on every pass, whatever its age, and applied (source
 // 'reconciliation'): a webhook that never came is closed by the next pass, at most 10 minutes
 // after the payment (Verification «Фаза 1B» step 4; with an age limit too it took up to 20).
@@ -8,7 +9,7 @@
 // itself is never retried.
 import { and, desc, eq, gt, inArray, isNotNull, lt, or, payments, refunds } from '@detaly/db';
 import { TIMERS } from '@detaly/domain';
-import type { PaymentRow } from '@detaly/orders';
+import { SUPERSEDED_REASON, type PaymentRow } from '@detaly/orders';
 import { PaymentProviderError } from '@detaly/payments';
 import type { WorkerDeps } from '../../deps';
 import { IDEMPOTENCE_KEY_TTL_MS, recheckPayment, submitRefund } from '../payments/money';
@@ -54,14 +55,25 @@ export async function runSweep(deps: WorkerDeps, options: SweepOptions = {}): Pr
     .from(payments)
     .where(
       and(
-        inArray(payments.status, ['pending', 'waiting_for_capture']),
         eq(payments.provider, 'yookassa'),
         or(
-          // GET is read-only and idempotent: every pass, whatever the age.
-          isNotNull(payments.providerPaymentId),
-          // A repeated POST only after 10 minutes, and never past the Idempotence-Key lifetime
-          // (repeatPaymentPost would skip it, taking a place of the batch on every pass).
-          and(lt(payments.createdAt, cutoff), gt(payments.createdAt, keyCutoff)),
+          and(
+            inArray(payments.status, ['pending', 'waiting_for_capture']),
+            or(
+              // GET is read-only and idempotent: every pass, whatever the age.
+              isNotNull(payments.providerPaymentId),
+              // A repeated POST only after 10 minutes, and never past the Idempotence-Key
+              // lifetime (repeatPaymentPost would skip it, taking a place of the batch).
+              and(lt(payments.createdAt, cutoff), gt(payments.createdAt, keyCutoff)),
+            ),
+          ),
+          // A QR closed by us because an older one was paid: re-read until the provider
+          // settles it (a payment of it is money to return, its cancel ends the polling).
+          and(
+            eq(payments.status, 'canceled'),
+            eq(payments.cancellationReason, SUPERSEDED_REASON),
+            isNotNull(payments.providerPaymentId),
+          ),
         ),
         scope ? inArray(payments.orderId, [...scope]) : undefined,
       ),

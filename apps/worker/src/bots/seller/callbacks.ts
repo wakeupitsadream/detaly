@@ -3,8 +3,9 @@
 //
 //   parseCallbackData -> the card by its nonce (none or closed -> «Карточка устарела», and the
 //   message's own card is redrawn so its buttons catch up with the nonce) -> the id
-//   belongs to the card's order -> role (invpaid, dlq: owner only; a seller is refused and the
-//   card does not change) -> claim the card (the nonce rotates: a second press is stale) ->
+//   belongs to the card's order -> role (invpaid, dlq, rrefund: owner only; a seller is
+//   refused and the card does not change) -> claim the card (the nonce rotates: a second press
+//   is stale) ->
 //   menu (aliases, new ETA, item problem, «Назад») or performStaffAction ->
 //   answerCallbackQuery(message) -> redraw with a new nonce.
 //
@@ -132,6 +133,10 @@ async function runPress(
   }
 
   const spec = menuAction(code);
+  if (spec?.kind === 'staff') {
+    // An owner action on the card's order (the role was checked before the claim).
+    return { message: (await perform(spec.action)).message, menu: null };
+  }
   const item = await cards.item(card.orderId, targetId);
   if (spec === null || item === null) return { message: STALE_CARD, menu: null };
 

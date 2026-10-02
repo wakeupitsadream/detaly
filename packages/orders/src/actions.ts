@@ -32,15 +32,25 @@ import {
 } from '@detaly/domain';
 import {
   buildTransitionContext,
+  handoverPaymentHeldOf,
+  handoverPaymentsHeld,
   itemsAfterChanges,
   liveMarginBp,
   moneyHeldOf,
   planItemChanges,
+  refundablePayment,
   settlementReceiptSucceededOf,
 } from './context';
-import { applyTransition, clock, nudge } from './engine';
+import { applyTransition, applyTransitionInTx, clock, nudge } from './engine';
 import { enqueueOutbox, recordJournalEvent } from './journal';
-import { createRefund, EngineError, paymentsEnabled } from './rows';
+import {
+  createRefund,
+  EngineError,
+  failedOrphanOf,
+  paymentsEnabled,
+  refundTargetOf,
+  retryableRefunds,
+} from './rows';
 import { loadOrderSettings } from './settings';
 import { isUuid, loadOrderSnapshot } from './snapshot';
 import type {
@@ -90,6 +100,7 @@ const GUARD_MESSAGES: Record<string, string> = {
   live_items_remain: 'Это последняя позиция — отмените заказ целиком',
   owner: 'Только владелец',
   payment_succeeded: 'Ждём оплату',
+  handover_payment_held: 'Ждём оплату',
   item: 'Позиция не найдена',
   item_state: 'Позиция в другом состоянии',
   proposal: 'Предложение не подходит: аналог — только по цене клиента, срок — не в прошлом',
@@ -98,6 +109,7 @@ const GUARD_MESSAGES: Record<string, string> = {
   no_refundable_payment: 'Нет платежа для возврата',
   prepay_funded: 'Платёж клиента возвращён — заказывать не на что',
   no_prepayment: 'Нет предоплаты для чека зачёта',
+  offset_exceeds_prepayment: 'Чек зачёта больше остатка предоплаты — проверьте возвраты в админке',
   no_phone: 'У клиента нет телефона для чека',
   refund_plan: 'Сумма возврата превышает платёж',
   receipt_lines: 'Чек не собирается: проверьте позиции',
@@ -141,6 +153,7 @@ const SUCCESS_MESSAGES: Record<StaffActionCode, string> = {
   supplier_return_reject: 'Возврат не принят: деталь на складе',
   stock_item: 'Деталь записана на склад',
   refund_payment: 'Возврат платежа создан',
+  retry_refund: 'Возврат отправлен повторно',
 };
 
 /** Actions only the owner (or the admin acting as the owner) may take. */
@@ -151,6 +164,7 @@ const OWNER_ONLY: ReadonlySet<StaffActionCode> = new Set([
   'supplier_return_reject',
   'stock_item',
   'refund_payment',
+  'retry_refund',
 ]);
 
 /** Actions whose target is an order item. */
@@ -289,7 +303,11 @@ export function availableStaffActions(
     }
   } else if (status === 'awaiting_handover_payment') {
     const handed = check('handed_over');
-    const paid = snapshot.payments.at(-1)?.status === 'succeeded';
+    // Any held QR of the total counts, not only the latest payment (two QR on the screen).
+    const paid = handoverPaymentHeldOf(snapshot);
+    if (paid && !settlementReceiptSucceededOf(snapshot) && pendingHandoverReceipt(snapshot)) {
+      add({ code: 'rcpt', label: 'Повторить чек', enabled: true });
+    }
     add({
       code: 'handed',
       label: 'Выдал',
@@ -309,7 +327,28 @@ export function availableStaffActions(
       enabled: true,
     });
   }
+  // A refund the provider rejected or canceled: the 10 days of ст. 22 keep running, so the
+  // owner can send it again from any status (the order and items follow its outcome).
+  if (role === 'owner' && retryableRefunds(snapshot).length > 0) {
+    add({ code: 'retry_refund', label: 'Повторить возврат', enabled: true });
+  }
   return views;
+}
+
+/** The pending `full` receipt of a held handover payment («Повторить чек» at the point). */
+function pendingHandoverReceipt(snapshot: OrderSnapshot) {
+  const held = new Set(handoverPaymentsHeld(snapshot).map((payment) => payment.id));
+  return (
+    snapshot.receipts
+      .filter(
+        (r) =>
+          r.kind === 'full' &&
+          r.status === 'pending' &&
+          r.paymentId !== null &&
+          held.has(r.paymentId),
+      )
+      .at(-1) ?? null
+  );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -565,8 +604,16 @@ export async function performStaffAction(
     }
     case 'came':
       return apply('client_arrived');
-    case 'rcpt':
+    case 'rcpt': {
+      const [row] = await deps.db
+        .select({ status: orders.status })
+        .from(orders)
+        .where(eq(orders.id, orderId));
+      if (row?.status === 'awaiting_handover_payment') {
+        return retryHandoverReceipt(deps, orderId, actor, staff.via, done, refuse);
+      }
       return apply('offset_receipt_requested');
+    }
     case 'qr':
       if (!paymentsEnabled(deps.env)) return refuse(GUARD_MESSAGES.payments_disabled as string);
       return apply('handover_payment_requested');
@@ -583,7 +630,106 @@ export async function performStaffAction(
       return stockItem(deps, orderId, itemId, actor, input, done, refuse);
     case 'refund_payment':
       return refundPayment(deps, orderId, actor, input, done, refuse);
+    case 'retry_refund':
+      return retryRefund(deps, orderId, actor, input, done, refuse);
   }
+}
+
+/**
+ * «Повторить чек» of a paid QR (pay_on_handover): the receipt went inside the payment, so it
+ * cannot be sent again; receipts/payment-receipt opens a new polling window for it (the first
+ * one ended with an alert) and «Выдал» unlocks as soon as the provider registers it.
+ */
+async function retryHandoverReceipt(
+  deps: EngineDeps,
+  orderId: string,
+  actor: ActorRef,
+  via: 'bot' | 'admin',
+  done: Done,
+  refuse: Refuse,
+): Promise<StaffActionResult> {
+  return withLockedOrder(deps, orderId, async ({ tx, snapshot, at }) => {
+    if (snapshot.order.status !== 'awaiting_handover_payment') {
+      return refuse(`Недоступно: заказ ${ORDER_STATUS_LABELS[snapshot.order.status]}`);
+    }
+    if (!handoverPaymentHeldOf(snapshot)) return refuse(GUARD_MESSAGES.payment_succeeded as string);
+    if (settlementReceiptSucceededOf(snapshot)) return refuse('Чек уже пробит — нажмите «Выдал»');
+    const receipt = pendingHandoverReceipt(snapshot);
+    if (receipt === null) {
+      return refuse('ЮKassa отклонила чек оплаты — пробейте чек в ЛК ЮKassa и напишите владельцу');
+    }
+    const { orderEventId } = await recordJournalEvent(tx, {
+      orderId,
+      type: 'receipt_retry_requested',
+      actor,
+      payload: { receiptId: receipt.id, kind: receipt.kind, via },
+      at,
+    });
+    await enqueueOutbox(tx, {
+      queue: 'receipts',
+      name: 'payment-receipt',
+      key: `payment-receipt:${receipt.id}:retry:${orderEventId}`,
+      data: { receiptId: receipt.id, orderId, restart: true },
+    });
+    return done('Проверяем чек ещё раз');
+  });
+}
+
+/**
+ * «Повторить возврат» (owner): a refund of the order or of one item that the provider rejected
+ * (4xx on POST /refunds) or canceled is created again with the same scope, items, payment and
+ * reason, and a new Idempotence-Key (safe: the old one created nothing or was canceled). The
+ * new row keeps the old deadline_at (10 days of ст. 22 from the first request) and points to
+ * it (retry_of); its success moves the order and the items as the first one would have.
+ */
+async function retryRefund(
+  deps: EngineDeps,
+  orderId: string,
+  actor: ActorRef,
+  input: StaffActionInput,
+  done: Done,
+  refuse: Refuse,
+): Promise<StaffActionResult> {
+  return withLockedOrder(deps, orderId, async ({ tx, snapshot, at }) => {
+    const wanted = input.refundId;
+    const targets = retryableRefunds(snapshot)
+      .filter((refund) => wanted === undefined || refund.id === wanted)
+      // Item refunds first: a whole-order refund then plans what they do not cover.
+      .sort((a, b) => Number(a.scope !== 'item') - Number(b.scope !== 'item'));
+    if (targets.length === 0) return refuse('Нет возврата, который можно повторить');
+    let current = snapshot;
+    let created = 0;
+    for (const failed of targets) {
+      if (created > 0) {
+        current = (await loadOrderSnapshot(tx, orderId, { lock: false })) as OrderSnapshot;
+        if (!retryableRefunds(current).some((refund) => refund.id === failed.id)) continue;
+      }
+      try {
+        await tx.transaction((sp) =>
+          createRefund(sp, current, {
+            ...refundTargetOf(failed),
+            reason: failed.reason,
+            requestedAt: at,
+            actor,
+            env: deps.env,
+            retryOf: failed,
+            ...(input.note ? { note: input.note.slice(0, 500) } : {}),
+          }),
+        );
+      } catch (error) {
+        if (error instanceof EngineError) throw error;
+        if (error instanceof Error && error.name === 'ReceiptLinesError') {
+          return refuse('Чек возврата не собирается: оформите возврат в ЛК ЮKassa');
+        }
+        if (error instanceof Error && error.name === 'RefundPlanError') {
+          return refuse('Сумма возврата превышает платёж');
+        }
+        throw error;
+      }
+      created += 1;
+    }
+    return created > 0 ? done() : refuse('Нет возврата, который можно повторить');
+  });
 }
 
 type Done = (message?: string) => StaffActionResult;
@@ -739,8 +885,10 @@ async function stockItem(
 }
 
 /**
- * «Вернуть платёж» (owner): the whole payment back with the lines of its own receipt
- * (scope orphan: the order status does not change), the owner's reason in the journal.
+ * «Вернуть платёж» (owner): the whole payment back with the lines of the receipt that took the
+ * money (scope orphan: the order status does not change), the owner's reason in the journal.
+ * Not for a payment whose order or item refund failed (that one is retried, so the order moves),
+ * and after handover the order's own payment goes back as a whole-order refund instead.
  */
 async function refundPayment(
   deps: EngineDeps,
@@ -759,6 +907,34 @@ async function refundPayment(
     if (payment === undefined || payment.status !== 'succeeded') {
       return refuse('Платёж не найден или не оплачен');
     }
+    if (retryableRefunds(snapshot).some((refund) => refund.paymentId === paymentId)) {
+      // An orphan refund would leave the order and its items waiting for the failed one.
+      return refuse(
+        'По этому платежу есть возврат, который не прошёл: нажмите «Повторить возврат», чтобы заказ и позиции пошли за деньгами',
+      );
+    }
+    const status = snapshot.order.status;
+    if (
+      (status === 'handed' || status === 'completed') &&
+      refundablePayment(snapshot)?.id === paymentId
+    ) {
+      // The order's own money after handover: a refusal within the 7 days of ст. 26.1 and
+      // the like go back as the whole order (planOrderRefund, refund_full mirroring the
+      // offset / handover receipt), and the order follows: refund_pending -> refunded.
+      const result = await applyTransitionInTx(
+        tx,
+        deps,
+        {
+          orderId,
+          event: 'claim_refund_approved',
+          actor,
+          facts: { scope: 'order', ownerOverrideReason: reason.slice(0, 500) },
+          payload: { via: 'refund_payment', note: reason.slice(0, 500) },
+        },
+        { snapshot },
+      );
+      return result.ok ? done('Возврат всего заказа создан') : refuse(failureMessage(result));
+    }
     try {
       await tx.transaction((sp) =>
         createRefund(sp, snapshot, {
@@ -770,6 +946,8 @@ async function refundPayment(
           actor,
           env: deps.env,
           note: reason.slice(0, 500),
+          // A failed orphan refund or a refund task of this payment keeps its deadline.
+          retryOf: failedOrphanOf(snapshot, paymentId),
         }),
       );
     } catch (error) {

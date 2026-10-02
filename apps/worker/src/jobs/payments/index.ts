@@ -9,6 +9,7 @@ import {
   applyRefundObject,
   loadOrderSnapshot,
   recordPaymentCreated,
+  recordPaymentRejected,
 } from '@detaly/orders';
 import type { CreatePaymentRequest } from '@detaly/payments';
 import { UnrecoverableError, type Job } from 'bullmq';
@@ -25,6 +26,7 @@ import {
   classifyProviderError,
   failureText,
   isNotFound,
+  isRejection,
   requirePayments,
   unknownJob,
   uuidField,
@@ -158,7 +160,16 @@ export async function processPaymentCreate(
     } catch (error) {
       const failure = classifyProviderError(error);
       if (failure !== null && failure.kind === 'final') {
-        throw new UnrecoverableError(`QR payment rejected: ${failureText(failure)}`);
+        const text = failureText(failure);
+        if (isRejection(failure)) {
+          // No payment exists: the row is closed, the owner alerted; the QR TTL returns the
+          // order to ready and «Выставить оплату» takes a new row and key.
+          await recordPaymentRejected(deps.engine, row.id, text);
+          deps.logger.error({ ...log, error: text }, 'handover payment rejected by the provider');
+          return { skipped: 'rejected' };
+        }
+        // An unreadable answer: the payment may exist, so the row is never written off.
+        throw new UnrecoverableError(`QR payment answer unreadable: ${text}`);
       }
       throw error;
     }

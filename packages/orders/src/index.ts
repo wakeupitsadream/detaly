@@ -12,11 +12,14 @@ export { loadOrderSettings, resolveOrderSettings } from './settings';
 export { isUuid, loadClientPhone, loadOrderSnapshot } from './snapshot';
 export {
   buildTransitionContext,
+  handoverPaymentHeldOf,
+  handoverPaymentsHeld,
   heldPayments,
   isLiveState,
   itemsAfterChanges,
   moneyHeldOf,
   paymentHeldOf,
+  paymentRestKop,
   planItemChanges,
   refundablePayment,
   settlementReceiptSucceededOf,
@@ -25,10 +28,14 @@ export { applyTransition, persistTransition } from './engine';
 export { canReachClient, enqueueOutbox, recordJournalEvent } from './journal';
 export {
   createRefund,
+  createRefundTask,
   EngineError,
+  openRefundTasks,
   paymentsEnabled,
   planRefund,
   REFUND_DEADLINE_DAYS,
+  REFUND_TASK_ERROR,
+  retryableRefunds,
 } from './rows';
 export {
   applyPaymentObject,
@@ -36,6 +43,9 @@ export {
   applyRefundObject,
   preparePayment,
   recordPaymentCreated,
+  recordPaymentRejected,
+  REJECTED_REASON_PREFIX,
+  SUPERSEDED_REASON,
 } from './payments';
 export {
   availableStaffActions,

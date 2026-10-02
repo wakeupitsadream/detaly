@@ -11,9 +11,11 @@ import {
   loadOrderSnapshot,
   recordJournalEvent,
   recordPaymentCreated,
+  recordPaymentRejected,
   type PaymentRow,
   type ProviderObjectSource,
   type RefundRow,
+  SUPERSEDED_REASON,
 } from '@detaly/orders';
 import type {
   CreatePaymentRequest,
@@ -44,6 +46,13 @@ const PENDING: readonly string[] = ['pending', 'waiting_for_capture'];
 
 export function isPendingPayment(row: Pick<PaymentRow, 'status'>): boolean {
   return PENDING.includes(row.status);
+}
+
+/** A QR row we closed because an older QR was paid: the provider may still settle it. */
+export function isSupersededPayment(
+  row: Pick<PaymentRow, 'status' | 'cancellationReason'>,
+): boolean {
+  return row.status === 'canceled' && row.cancellationReason === SUPERSEDED_REASON;
 }
 
 export async function loadPaymentRow(
@@ -85,6 +94,7 @@ async function call<T>(
 export type PaymentCheckOutcome =
   | { outcome: 'applied'; result: string; providerStatus: string }
   | { outcome: 'created'; providerStatus: string }
+  | { outcome: 'rejected'; error: string }
   | { outcome: 'skipped'; reason: string }
   | { outcome: 'failed'; error: string };
 
@@ -97,9 +107,13 @@ export async function recheckPayment(
   row: PaymentRow,
   source: ProviderObjectSource,
 ): Promise<PaymentCheckOutcome> {
-  if (!isPendingPayment(row)) return { outcome: 'skipped', reason: 'settled' };
+  const superseded = isSupersededPayment(row);
+  if (!isPendingPayment(row) && !superseded) return { outcome: 'skipped', reason: 'settled' };
   const provider = requirePayments(deps);
-  if (row.providerPaymentId === null) return repeatPaymentPost(deps, provider, row);
+  if (row.providerPaymentId === null) {
+    if (superseded) return { outcome: 'skipped', reason: 'superseded' };
+    return repeatPaymentPost(deps, provider, row);
+  }
   const providerPaymentId = row.providerPaymentId;
   const answer = await call(() => provider.getPayment(providerPaymentId));
   if (!answer.ok) return { outcome: 'failed', error: failureText(answer.failure) };
@@ -125,7 +139,9 @@ async function repeatBlocker(deps: WorkerDeps, row: PaymentRow): Promise<string 
  * Decision Б7: the provider may have created the payment while our process died before
  * recordPaymentCreated. The stored body is repeated with the same Idempotence-Key: YooKassa
  * answers with the payment it already has (or creates it now), and the answer is recorded.
- * Only for the current payment of an order that still waits for it.
+ * Only for the current payment of an order that still waits for it. A final rejection (4xx)
+ * proves no payment exists: the row is closed (recordPaymentRejected), so the order's TTL ends
+ * it and the next attempt takes a new row and key instead of repeating a refused body for a day.
  */
 export async function repeatPaymentPost(
   deps: WorkerDeps,
@@ -136,7 +152,14 @@ export async function repeatPaymentPost(
   if (blocker !== null) return { outcome: 'skipped', reason: blocker };
   const request = row.request as CreatePaymentRequest;
   const answer = await call(() => provider.createPayment(request));
-  if (!answer.ok) return { outcome: 'failed', error: failureText(answer.failure) };
+  if (!answer.ok) {
+    const error = failureText(answer.failure);
+    if (isRejection(answer.failure)) {
+      await recordPaymentRejected(deps.engine, row.id, error);
+      return { outcome: 'rejected', error };
+    }
+    return { outcome: 'failed', error };
+  }
   await recordPaymentCreated(deps.engine, row.id, answer.value);
   return { outcome: 'created', providerStatus: answer.value.status };
 }

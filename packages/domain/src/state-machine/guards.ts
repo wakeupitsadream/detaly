@@ -72,6 +72,12 @@ export interface TransitionContext {
    * pay_on_handover the caller must pass it explicitly: refusal/cancel branches fail closed.
    */
   paymentHeld?: boolean;
+  /**
+   * The order holds a succeeded handover (QR) payment of exactly the order total (payments.kind
+   * `full`, not refunded). Unlike providerPaymentStatus it does not depend on which payment is
+   * the latest: an old QR paid after a newer one was shown still pays for the order.
+   */
+  handoverPaymentHeld?: boolean;
 
   // --- supplier ---
   /** Supplier price growth found by the recheck (driftBp of the order). */
@@ -230,6 +236,12 @@ export const noMoneyHeld = guard(
 export const prepayFunded = guard(
   'prepay_funded',
   (c) => c.scheme === 'pay_on_handover' || (c.scheme === 'prepay' && c.paymentHeld !== false),
+);
+
+/** A handover (QR) payment of the order total is held (see handoverPaymentHeld). */
+export const handoverPaymentHeld = guard(
+  'handover_payment_held',
+  (c) => c.handoverPaymentHeld === true,
 );
 
 /** The order holds a succeeded payment (stale cancel/expiry of another payment is ignored). */

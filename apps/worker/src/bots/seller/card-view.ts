@@ -14,7 +14,9 @@ import {
 } from '@detaly/domain';
 import {
   buildCallbackData,
+  callbackCodeForStaffAction,
   deadline,
+  isOwnerOnlyAction,
   formatReplyBy,
   maskPhone,
   MENU_ACTIONS,
@@ -83,6 +85,8 @@ const HEADLINES: Partial<Record<OrderNotifyTemplate, string>> = {
   staff_refund_failed: 'Возврат не прошёл',
   staff_orphan_payment: 'Оплата после возврата',
   staff_refund_deadline: 'Срок возврата денег',
+  staff_payment_rejected: 'ЮKassa не создала платёж',
+  staff_refund_receipt_failed: 'Чек возврата не зарегистрирован',
   staff_claim_deadline: 'Претензия',
 };
 
@@ -170,10 +174,12 @@ export function renderCardText(data: CardData, menu: CardMenu | null = null): st
 }
 
 function actionButton(view: StaffActionView, orderId: string, nonce: string): InlineButton {
-  const label = view.code === 'invpaid' ? `${view.label}${OWNER_LABEL_SUFFIX}` : view.label;
+  // Staff actions that are not event codes have a short callback code (retry_refund -> rrefund).
+  const code = callbackCodeForStaffAction(view.code);
+  const label = isOwnerOnlyAction(code) ? `${view.label}${OWNER_LABEL_SUFFIX}` : view.label;
   return {
     text: label,
-    callback_data: buildCallbackData(view.code, view.itemId ?? orderId, nonce),
+    callback_data: buildCallbackData(code, view.itemId ?? orderId, nonce),
   };
 }
 

@@ -384,6 +384,8 @@ describe.skipIf(!hasTestDatabase)('full order cycle on the queues', () => {
       'supplier_checkout_succeeded:ordering->needs_attention',
       'item_cancelled:needs_attention->ordered_at_supplier',
       'refund_created',
+      // The refund object already says receipt_registration = succeeded: the refund receipt.
+      'receipt_succeeded',
       'partial_refund_succeeded',
       'item_arrived:ordered_at_supplier->ready',
       'client_arrived',

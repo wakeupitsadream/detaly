@@ -38,7 +38,11 @@
  *   cancel a pending payment); a later payment of that QR with the right amount brings the order
  *   back to `awaiting_handover_payment` instead of the owner's "unexpected payment" (Б9);
  * - partial (one item) refunds complete or fail through `partial_refund_succeeded` /
- *   `partial_refund_failed`, self-transitions; `refund_succeeded` is only for the whole order.
+ *   `partial_refund_failed`, self-transitions; `refund_succeeded` is only for the whole order;
+ * - «Выдал» after a handover payment needs a held QR payment of the total and its own `full`
+ *   receipt (handoverPaymentHeld), not the latest payment's status: two QR may be on the screen;
+ * - a payment arriving in refund_pending or refunded has no rule: the engine returns it as an
+ *   orphan refund. After handover (handed, completed) the owner decides, with a refund task.
  */
 import type { ActorType, OrderStatus, PaymentScheme, ReceiptKind } from '../statuses';
 import {
@@ -53,6 +57,7 @@ import {
   type Guard,
   hasItemErrors,
   eventPaymentIsCurrent,
+  handoverPaymentHeld,
   hasPdConsent,
   isOwner,
   itemsNotArrived,
@@ -195,6 +200,8 @@ export const ORDER_NOTIFY_TEMPLATES = [
   'staff_receipt_failed',
   'staff_approval_unreachable',
   'staff_refund_deadline',
+  'staff_payment_rejected',
+  'staff_refund_receipt_failed',
 ] as const;
 export type OrderNotifyTemplate = (typeof ORDER_NOTIFY_TEMPLATES)[number];
 
@@ -889,12 +896,14 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     notify: [owner('staff_amount_mismatch')],
   },
   {
+    // Any held QR payment of the total pays for the order, not only the latest one: an old QR
+    // paid after a newer one was shown (two QR on the screen) must not block the handover.
     label: 'Выдал (оплата на точке и чек прошли)',
     from: ['awaiting_handover_payment'],
     event: 'handed_over',
     to: 'handed',
     actors: ['staff'],
-    guard: all(paymentSucceeded, settlementReceiptSucceeded),
+    guard: all(handoverPaymentHeld, settlementReceiptSucceeded),
     notify: [client('handed')],
     effects: ['start_completion_timer'],
   },
@@ -951,9 +960,11 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     guard: paymentSucceeded,
     notify: [owner('staff_unexpected_payment')],
   },
-  // After handover or while refunding the status must not move: the owner decides.
-  ...(['handed', 'completed', 'refund_pending'] as const).map((status): TransitionRule => ({
-    label: 'Неожиданный платёж после выдачи или в возврате: владельцу',
+  // After handover the status must not move: the owner decides (the engine records a refund
+  // task with the 10-day deadline). In refund_pending / refunded the engine returns such a
+  // payment itself (scope orphan) without a transition.
+  ...(['handed', 'completed'] as const).map((status): TransitionRule => ({
+    label: 'Неожиданный платёж после выдачи: владельцу',
     from: [status],
     event: 'payment_succeeded',
     to: status,

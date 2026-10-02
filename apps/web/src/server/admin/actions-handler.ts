@@ -57,6 +57,7 @@ export const ADMIN_ACTION_CODES = [
   'supplier_return_reject',
   'stock_item',
   'refund_payment',
+  'retry_refund',
 ] as const satisfies readonly StaffActionCode[];
 
 const ITEM_ACTIONS: ReadonlySet<StaffActionCode> = new Set([
@@ -260,6 +261,15 @@ async function buildAction(
       if (reason === '') return { ok: false, message: 'Укажите причину возврата' };
       input.paymentId = paymentId;
       input.reason = reason;
+      break;
+    }
+    case 'retry_refund': {
+      // Optional: one failed refund; without it every refund that can be retried is sent.
+      const refundId = field(form, 'refundId', 64);
+      if (refundId !== '') {
+        if (!isUuid(refundId)) return { ok: false, message: 'Возврат не выбран' };
+        input.refundId = refundId;
+      }
       break;
     }
     // No fields: the button alone says it all.

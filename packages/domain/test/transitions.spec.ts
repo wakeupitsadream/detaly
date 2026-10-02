@@ -382,7 +382,7 @@ const EXPECTED: readonly Row[] = [
   [
     'awaiting_handover_payment',
     'handed_over',
-    staff({ ...COD, providerPaymentStatus: 'succeeded', settlementReceiptSucceeded: true }),
+    staff({ ...COD, handoverPaymentHeld: true, settlementReceiptSucceeded: true }),
     'handed',
   ],
   [
@@ -427,7 +427,6 @@ const EXPECTED: readonly Row[] = [
   ).map((status): Row => [status, 'payment_succeeded', paid(500_000), 'needs_attention']),
   ['handed', 'payment_succeeded', paid(500_000), 'handed'],
   ['completed', 'payment_succeeded', paid(500_000), 'completed'],
-  ['refund_pending', 'payment_succeeded', paid(500_000), 'refund_pending'],
 
   // out_for_delivery (phase 2, prepay + courier only)
   ['out_for_delivery', 'offset_receipt_requested', staff({ ...COURIER }), 'out_for_delivery'],
@@ -965,7 +964,21 @@ describe('guards', () => {
         'handed_over',
         staff({ ...COD, settlementReceiptSucceeded: true }),
       ),
-    ).toMatchObject({ ok: false, failed: ['payment_succeeded'] });
+    ).toMatchObject({ ok: false, failed: ['handover_payment_held'] });
+    // An old QR paid while a newer one is pending: the latest payment is not succeeded, the
+    // held QR payment still pays for the order (two QR on the screen).
+    expect(
+      resolveTransition(
+        'awaiting_handover_payment',
+        'handed_over',
+        staff({
+          ...COD,
+          providerPaymentStatus: 'pending',
+          handoverPaymentHeld: true,
+          settlementReceiptSucceeded: true,
+        }),
+      ),
+    ).toMatchObject({ ok: true, rule: { to: 'handed' } });
     expect(
       resolveTransition(
         'ready',
@@ -1329,7 +1342,7 @@ describe('phase 1B rules (docs/phase-1b-implementation.md section 3.4)', () => {
       resolveTransition(
         'awaiting_handover_payment',
         'handed_over',
-        staff({ ...COD, providerPaymentStatus: 'succeeded' }),
+        staff({ ...COD, handoverPaymentHeld: true }),
       ),
     ).toEqual({ ok: false, reason: 'guard_failed', failed: ['settlement_receipt_succeeded'] });
   });
@@ -1365,7 +1378,7 @@ describe('phase 1B rules (docs/phase-1b-implementation.md section 3.4)', () => {
         'handed_over',
         staff({
           ...COD_PAID,
-          providerPaymentStatus: 'succeeded',
+          handoverPaymentHeld: true,
           settlementReceiptSucceeded: false,
         }),
       ),
@@ -1541,7 +1554,12 @@ describe('graph properties', () => {
     }
     // money held and supplier order flags multiply the variants for the splits that use them
     for (const variant of [...variants]) {
-      variants.push({ ...variant, paymentHeld: true, pendingSupplierItems: 0 });
+      variants.push({
+        ...variant,
+        paymentHeld: true,
+        handoverPaymentHeld: true,
+        pendingSupplierItems: 0,
+      });
       variants.push({ ...variant, paymentHeld: false, pendingSupplierItems: 1 });
       variants.push({
         ...variant,

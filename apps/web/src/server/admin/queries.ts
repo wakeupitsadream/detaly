@@ -33,6 +33,7 @@ import {
   type RecheckAlternative,
   type RecheckItemResult,
 } from '@detaly/domain';
+import { refundablePayment, type OrderSnapshot } from '@detaly/orders';
 
 /** Orders per list page. */
 export const ADMIN_PAGE_SIZE = 50;
@@ -100,7 +101,8 @@ export function parseAdminSearch(raw: string): AdminSearch {
 /**
  * «Требуют внимания»: needs_attention, awaiting_supplier_invoice, a receipt that did not go
  * through (the 15-minute alert fired, or the provider finally rejected it) and has no
- * succeeded receipt of the same kind, a failed refund without a later successful one.
+ * succeeded receipt of the same kind, a failed refund (or a refund task for the owner) that no
+ * later refund took over («Повторить возврат», «Вернуть платёж») or outran.
  */
 export function attentionCondition(): SQL {
   return sql`(
@@ -124,6 +126,7 @@ export function attentionCondition(): SQL {
           where f2.order_id = f.order_id and f2.payment_id = f.payment_id
             and f2.status = 'succeeded' and f2.created_at > f.created_at
         )
+        and not exists (select 1 from ${refunds} f3 where f3.retry_of_refund_id = f.id)
     )
   )`;
 }
@@ -212,6 +215,11 @@ export interface AdminOrderCard {
   events: Row<typeof orderEvents>[];
   /** Alternatives of the latest recheck_result by order item id («Аналог» form). */
   alternatives: Record<string, RecheckAlternative[]>;
+  /**
+   * payments.id the order's refunds are taken from (refundablePayment): after handover
+   * «Вернуть платёж» of it returns the whole order instead of the bare payment.
+   */
+  orderPaymentId: string | null;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -348,6 +356,12 @@ export async function loadAdminOrder(
     supplierReturns: returns,
     stockItems: stock,
     events,
+    orderPaymentId:
+      refundablePayment({
+        order,
+        payments: paymentRows,
+        refunds: refundRows,
+      } as Pick<OrderSnapshot, 'order' | 'payments' | 'refunds'> as OrderSnapshot)?.id ?? null,
     alternatives,
   };
 }

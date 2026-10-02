@@ -13,6 +13,13 @@ export const TIMERS = {
   /** ... until 15 minutes after the first attempt, then an alert («Выдал» stays blocked). */
   receiptGiveUpMs: 15 * MINUTE,
   /**
+   * After that alert a receipt sent inside a payment (or a refund) is still polled, rarely: it
+   * cannot be sent again, and a late registration must unlock «Выдал» by itself ...
+   */
+  receiptSlowPollEveryMs: 10 * MINUTE,
+  /** ... up to a day after the window opened; «Повторить чек» opens a new window. */
+  receiptSlowPollUntilMs: DAY,
+  /**
    * Reconciliation repeats a lost POST /payments or /refunds answer (a pending row without a
    * provider id) only for rows older than 10 minutes; rows with a provider id are re-read on
    * every pass. The nightly check leaves payments younger than this to the sweep.

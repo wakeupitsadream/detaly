@@ -28,10 +28,10 @@ import {
 } from '@detaly/domain';
 import type { CreatePaymentRequest } from '@detaly/payments';
 import { v7 as uuidv7 } from 'uuid';
-import { heldPayments, isLiveState } from './context';
+import { heldPayments, isLiveState, paymentRestKop } from './context';
 import { enqueueOutbox, recordJournalEvent } from './journal';
 import { loadClientPhone } from './snapshot';
-import type { ActorRef, OrderItemRow, OrderSnapshot, PaymentRow, Tx } from './types';
+import type { ActorRef, OrderItemRow, OrderSnapshot, PaymentRow, RefundRow, Tx } from './types';
 
 /** Days the client waits for the money at most (ст. 22 ЗоЗПП, PLAN section 2). */
 export const REFUND_DEADLINE_DAYS = 10;
@@ -71,6 +71,18 @@ export interface ReceiptCodesOnly {
 
 interface StoredPaymentRequest {
   receipt?: { lines?: ReceiptLine[]; taxSystemCode?: number } | null;
+}
+
+/** Lines of the succeeded offset receipt registered against `paymentId` (receipts.request.lines). */
+export function offsetReceiptLines(
+  snapshot: OrderSnapshot,
+  paymentId: string,
+): ReceiptLine[] | null {
+  const offset = snapshot.receipts.find(
+    (r) => r.kind === 'offset' && r.status === 'succeeded' && r.paymentId === paymentId,
+  );
+  const lines = (offset?.request as { lines?: ReceiptLine[] } | null | undefined)?.lines;
+  return Array.isArray(lines) && lines.length > 0 ? lines : null;
 }
 
 /** Lines of the receipt sent with a payment (payments.request.receipt.lines). */
@@ -233,6 +245,21 @@ export function planRefund(
   );
   const mirrored: 'refund_prepayment' | 'refund_full' =
     payment.kind === 'full' || offsetSucceeded ? 'refund_full' : 'refund_prepayment';
+  // A whole payment goes back with the lines of the receipt that took the money last: the
+  // offset receipt (full_payment) after an offset, else the payment's own receipt.
+  const wholePayment = () => {
+    const orphan = planOrphanRefund({
+      paymentKop: payment.amountKop,
+      paymentKind: payment.kind,
+      receiptKind: mirrored,
+      originalLines:
+        (offsetSucceeded ? offsetReceiptLines(snapshot, payment.id) : null) ??
+        paymentReceiptLines(payment),
+      items,
+      courierFeeKop: snapshot.order.courierFeeKop,
+    });
+    return { plan: { amountKop: orphan.amountKop, lines: orphan.lines }, kind: orphan.receiptKind };
+  };
 
   let plan: RefundPlan;
   let receiptKind = mirrored;
@@ -262,15 +289,7 @@ export function planRefund(
       } else {
         // A payment whose amount differs from the order (a late payment of a cancelled order)
         // and was not refunded at all: it is returned whole with the lines of its own receipt.
-        const orphan = planOrphanRefund({
-          paymentKop: payment.amountKop,
-          paymentKind: payment.kind,
-          originalLines: paymentReceiptLines(payment),
-          items,
-          courierFeeKop: snapshot.order.courierFeeKop,
-        });
-        plan = { amountKop: orphan.amountKop, lines: orphan.lines };
-        receiptKind = orphan.receiptKind;
+        ({ plan, kind: receiptKind } = wholePayment());
       }
       break;
     }
@@ -278,15 +297,7 @@ export function planRefund(
       if (records.some((r) => r.status !== 'failed')) {
         throw new RefundPlanError('the payment was already (partly) refunded');
       }
-      const orphan = planOrphanRefund({
-        paymentKop: payment.amountKop,
-        paymentKind: payment.kind,
-        originalLines: paymentReceiptLines(payment),
-        items,
-        courierFeeKop: snapshot.order.courierFeeKop,
-      });
-      plan = { amountKop: orphan.amountKop, lines: orphan.lines };
-      receiptKind = orphan.receiptKind;
+      ({ plan, kind: receiptKind } = wholePayment());
       break;
     }
   }
@@ -315,9 +326,21 @@ export async function createRefund(
     env?: Env;
     /** Free text for the journal (owner's reason), without PD. */
     note?: string;
+    /**
+     * The failed refund (or refund task) this one takes over: its deadline_at is kept (the 10
+     * days of ст. 22 run from the first request, not from the retry) and refunds.retry_of
+     * links the rows.
+     */
+    retryOf?: Pick<RefundRow, 'id' | 'deadlineAt'> | null;
   },
 ): Promise<{ refundId: string; receiptId: string; amountKop: Kop }> {
   const { payment, plan, receiptKind } = planRefund(snapshot, input);
+  // A whole payment going back takes over its open refund task (deadline and reminders).
+  const retryOf =
+    input.retryOf ??
+    (input.scope === 'orphan'
+      ? (openRefundTasks(snapshot).find((task) => task.paymentId === payment.id) ?? null)
+      : null);
   const codes =
     input.codes ??
     receiptCodesFromPayment(payment) ??
@@ -357,7 +380,9 @@ export async function createRefund(
     idempotenceKey,
     request,
     requestedAt: input.requestedAt,
-    deadlineAt: new Date(input.requestedAt.getTime() + REFUND_DEADLINE_DAYS * DAY_MS),
+    deadlineAt:
+      retryOf?.deadlineAt ?? new Date(input.requestedAt.getTime() + REFUND_DEADLINE_DAYS * DAY_MS),
+    retryOfRefundId: retryOf?.id ?? null,
   });
   const receiptId = uuidv7();
   await tx.insert(receipts).values({
@@ -389,10 +414,124 @@ export async function createRefund(
       receiptKind,
       ...(input.itemIds && input.itemIds.length > 0 ? { itemIds: input.itemIds } : {}),
       ...(input.note ? { note: input.note } : {}),
+      ...(retryOf ? { retryOf: retryOf.id } : {}),
     },
     at: input.requestedAt,
   });
   return { refundId, receiptId, amountKop: plan.amountKop };
+}
+
+/** refunds.error of a refund task: money the owner has to decide about, nothing was sent. */
+export const REFUND_TASK_ERROR = 'needs_owner';
+
+/**
+ * A refund task (no provider call): a payment that arrived where no rule returns it by itself
+ * (after handover, a duplicate the order accepted, a status without a rule). The row is
+ * `failed` with error `needs_owner` and scope `orphan`, so the 10-day reminder (deadline_at)
+ * runs and the money is not forgotten; «Вернуть платёж» takes it over (retry_of). Nothing
+ * when the payment has nothing left or already has an open task.
+ */
+export async function createRefundTask(
+  tx: Tx,
+  snapshot: OrderSnapshot,
+  input: {
+    paymentId: string;
+    reason: RefundReason;
+    requestedAt: Date;
+    actor?: ActorRef;
+    note?: string;
+  },
+): Promise<{ refundId: string; amountKop: Kop } | null> {
+  const payment = snapshot.payments.find((p) => p.id === input.paymentId);
+  if (payment === undefined) return null;
+  const amountKop = paymentRestKop(snapshot, payment.id);
+  if (amountKop <= 0) return null;
+  const open = openRefundTasks(snapshot).some((task) => task.paymentId === payment.id);
+  if (open) return null;
+  const refundId = uuidv7();
+  await tx.insert(refunds).values({
+    id: refundId,
+    orderId: snapshot.order.id,
+    paymentId: payment.id,
+    amountKop,
+    items: [],
+    reason: input.reason,
+    status: 'failed',
+    scope: 'orphan',
+    idempotenceKey: uuidv7(),
+    request: null,
+    error: REFUND_TASK_ERROR,
+    alertedAt: input.requestedAt,
+    requestedAt: input.requestedAt,
+    deadlineAt: new Date(input.requestedAt.getTime() + REFUND_DEADLINE_DAYS * DAY_MS),
+  });
+  await recordJournalEvent(tx, {
+    orderId: snapshot.order.id,
+    type: 'refund_created',
+    actor: input.actor ?? SYSTEM_ACTOR,
+    payload: {
+      refundId,
+      paymentId: payment.id,
+      scope: 'orphan',
+      reason: input.reason,
+      amountKop,
+      task: REFUND_TASK_ERROR,
+      ...(input.note ? { note: input.note } : {}),
+    },
+    at: input.requestedAt,
+  });
+  return { refundId, amountKop };
+}
+
+/** Failed refunds nobody took over yet (no row has retry_of = their id). */
+function notTakenOver(snapshot: OrderSnapshot): RefundRow[] {
+  const taken = new Set(
+    snapshot.refunds.map((r) => r.retryOfRefundId).filter((id): id is string => id !== null),
+  );
+  return snapshot.refunds.filter((r) => r.status === 'failed' && !taken.has(r.id));
+}
+
+/** Refund tasks (needs_owner) still open. */
+export function openRefundTasks(snapshot: OrderSnapshot): RefundRow[] {
+  return notTakenOver(snapshot).filter((r) => r.error === REFUND_TASK_ERROR);
+}
+
+/**
+ * Failed order or item refunds that «Повторить возврат» can take over: the provider rejected or
+ * canceled them, nobody retried them yet, and the same refund still plans (the item still waits
+ * for its money, the order still has something to return from that payment).
+ */
+export function retryableRefunds(snapshot: OrderSnapshot): RefundRow[] {
+  return notTakenOver(snapshot).filter((refund) => {
+    if (refund.scope === 'orphan') return false;
+    try {
+      planRefund(snapshot, refundTargetOf(refund));
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** The latest failed orphan refund (or refund task) of a payment, not taken over yet. */
+export function failedOrphanOf(snapshot: OrderSnapshot, paymentId: string): RefundRow | null {
+  return (
+    notTakenOver(snapshot)
+      .filter((r) => r.scope === 'orphan' && r.paymentId === paymentId)
+      .at(-1) ?? null
+  );
+}
+
+/** The refund target a failed refund row stands for (same scope, payment and item). */
+export function refundTargetOf(refund: RefundRow): RefundTarget {
+  const itemIds = refund.items
+    .map((line) => line.orderItemId)
+    .filter((id): id is string => id !== null);
+  return {
+    scope: refund.scope,
+    paymentId: refund.paymentId,
+    ...(refund.scope === 'item' ? { itemIds: itemIds.slice(0, 1) } : {}),
+  };
 }
 
 function receiptCodesFromPayment(payment: PaymentRow): ReceiptCodesOnly | null {
@@ -432,9 +571,12 @@ export async function ensureOffsetReceipt(
     }
     return { receiptId: current.id, created: false };
   }
-  const payment = heldPayments(snapshot)
-    .filter((p) => p.kind === 'prepayment' && p.providerPaymentId !== null)
-    .at(-1);
+  // The order's own prepayment, the oldest held one with money left: refunds of the order are
+  // taken from it too (refundablePayment), so a duplicate payment (two tabs) is never offset.
+  const payment = heldPayments(snapshot).find(
+    (p) =>
+      p.kind === 'prepayment' && p.providerPaymentId !== null && paymentRestKop(snapshot, p.id) > 0,
+  );
   if (payment === undefined) throw new EngineError('no_prepayment', 'no succeeded prepayment');
   const codes = receiptCodesFor(input.env, payment);
   if (codes === null) throw new EngineError('receipt_codes_missing');
@@ -447,6 +589,13 @@ export async function ensureOffsetReceipt(
     vatCode: codes.vatCode,
     taxSystemCode: codes.taxSystemCode,
   });
+  if (prepaymentKop > paymentRestKop(snapshot, payment.id)) {
+    // The offset would consume more advance than this payment still holds (54-FZ).
+    throw new EngineError(
+      'offset_exceeds_prepayment',
+      `offset ${prepaymentKop} exceeds the rest of the prepayment`,
+    );
+  }
   const receiptId = uuidv7();
   const idempotenceKey = uuidv7();
   await tx.insert(receipts).values({

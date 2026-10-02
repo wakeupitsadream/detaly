@@ -578,6 +578,66 @@ describe('POST /api/admin/orders/<id>/actions', () => {
     expect(confirmed.status).not.toBe(400);
   });
 
+  it('«Повторить возврат»: a failed refund is sent again with its deadline (tick required)', async () => {
+    const order = await seed({ status: 'refund_pending', itemState: 'refund_pending' });
+    const deadlineAt = new Date(Date.now() + 4 * 86_400_000);
+    const [failed] = await db
+      .insert(refunds)
+      .values({
+        orderId: order.id,
+        paymentId: order.paymentId as string,
+        amountKop: 2 * ITEM_PRICE,
+        reason: 'refusal',
+        status: 'failed',
+        scope: 'order',
+        error: 'invalid_request (HTTP 400)',
+        idempotenceKey: randomBytes(16).toString('hex'),
+        requestedAt: new Date(Date.now() - 6 * 86_400_000),
+        deadlineAt,
+      })
+      .returning();
+    const html = await renderCard(order.id);
+    const button = /<form[^>]*data-action="retry_refund"[\s\S]*?<\/form>/.exec(html)?.[0] ?? '';
+    expect(plain(button)).toContain('Повторить возврат');
+    expect(button).toContain('name="confirm"');
+
+    const unconfirmed = await handleAdminAction(form({ action: 'retry_refund' }), order.id, deps());
+    expect(unconfirmed.status).toBe(400);
+    const withCodes = deps({
+      env: intEnv({
+        ADMIN_BASIC_AUTH: ADMIN,
+        APP_BASE_URL: APP,
+        YOOKASSA_SHOP_ID: 'test-shop',
+        YOOKASSA_SECRET_KEY: 'test-secret',
+        YOOKASSA_VAT_CODE: '1',
+        YOOKASSA_TAX_SYSTEM_CODE: '2',
+      }),
+    });
+    const done = await handleAdminAction(
+      form({ action: 'retry_refund', refundId: failed!.id, confirm: 'on' }),
+      order.id,
+      withCodes,
+    );
+    expect(done.status).toBe(303);
+    expect(decodeURIComponent(done.headers.get('location') ?? '')).toContain(
+      'Возврат отправлен повторно',
+    );
+    const rows = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.orderId, order.id))
+      .orderBy(asc(refunds.createdAt), asc(refunds.id));
+    expect(rows.map((r) => [r.status, r.retryOfRefundId])).toEqual([
+      ['failed', null],
+      ['pending', failed!.id],
+    ]);
+    expect(rows[1]?.deadlineAt.getTime()).toBe(deadlineAt.getTime());
+    // The card marks the retry and offers no second one.
+    const after = await renderCard(order.id);
+    expect(after).not.toContain('data-action="retry_refund"');
+    expect(plain(after)).toContain('повтор');
+  });
+
   it('«Rossko не принял возврат»: the return is rejected and the part goes to stock', async () => {
     const order = await seed({ status: 'handed', itemState: 'handed' });
     const [first] = order.itemIds as [string, string];

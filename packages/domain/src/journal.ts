@@ -16,6 +16,8 @@ export const JOURNAL_EVENTS = [
   'receipt_succeeded',
   /** A receipt was finally rejected or timed out (alert sent). */
   'receipt_failed',
+  /** «Повторить чек» of a receipt sent inside a payment: a new polling window. */
+  'receipt_retry_requested',
   /** A refund row and its refund receipt were created. */
   'refund_created',
   /** A payment of an already refunded order: refunded back automatically (scope orphan). */

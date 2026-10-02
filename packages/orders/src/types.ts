@@ -245,7 +245,8 @@ export type StaffActionCode =
   | 'supplier_return_accept'
   | 'supplier_return_reject'
   | 'stock_item'
-  | 'refund_payment';
+  | 'refund_payment'
+  | 'retry_refund';
 
 /** A button for the bot card or the admin page. */
 export interface StaffActionView {
@@ -278,6 +279,8 @@ export interface StaffActionInput {
   reason?: string;
   /** refund_payment: payments.id. */
   paymentId?: string;
+  /** retry_refund: one failed refunds.id (default: every refund that can be retried). */
+  refundId?: string;
   /** Free text without PD. */
   note?: string;
 }

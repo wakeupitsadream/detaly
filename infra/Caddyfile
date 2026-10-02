@@ -40,7 +40,7 @@
 				request>headers>Referer delete
 				request>headers>X-Real-Ip delete
 				request>headers>X-Forwarded-For delete
-				request>uri regexp ^/(o|p)/[^/?]+ /$1/[redacted]
+				request>uri regexp ^/(o|p|api/orders)/[^/?]+ /$1/[redacted]
 			}
 		}
 	}
@@ -58,8 +58,9 @@
 
 	# Access log without personal data in clear form (152-FZ, privacy policy section 3):
 	# client IPs are truncated to the subnet (/24, /48), browser and forwarding headers are
-	# dropped, and secret order/proposal tokens in /o/<token> and /p/<token> are redacted
-	# (Caddy already omits Cookie and Authorization). Retention is the docker json-file
+	# dropped, and secret order/proposal tokens in /o/<token>, /p/<token> and the client
+	# routes /api/orders/<token>/{pay,actions,cancel} are redacted (Caddy already omits Cookie
+	# and Authorization; apps/web/test/caddyfile.test.ts checks the filter). Retention is the docker json-file
 	# rotation (10m x 3 per service, infra/docker-compose.yml).
 	log {
 		output stdout
@@ -78,7 +79,7 @@
 				request>headers>Referer delete
 				request>headers>X-Real-Ip delete
 				request>headers>X-Forwarded-For delete
-				request>uri regexp ^/(o|p)/[^/?]+ /$1/[redacted]
+				request>uri regexp ^/(o|p|api/orders)/[^/?]+ /$1/[redacted]
 			}
 		}
 	}

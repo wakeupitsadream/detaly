@@ -6,8 +6,9 @@
  * Two kinds of codes (phase 1B, docs/phase-1b-implementation.md table 13.2):
  * - EVENT_ACTIONS: one press applies one order event (code -> OrderEvent);
  * - MENU_ACTIONS: the press opens a menu (aliases, new ETA, item problem), picks an option from
- *   it, goes back to the main keyboard, or retries a dead-letter job. Options that end in an
- *   event carry it, plus the parameter the option stands for.
+ *   it, goes back to the main keyboard, retries a dead-letter job, or runs an owner action that
+ *   is not one order event (`rrefund`: «Повторить возврат», staff action retry_refund). Options
+ *   that end in an event carry it, plus the parameter the option stands for.
  *
  * `<id>` is the order uuid or the order item uuid depending on the code (actionTarget); `dlq`
  * carries a dead-letter job id instead.
@@ -64,7 +65,9 @@ export type MenuActionSpec =
   /** Back to the main keyboard of the card. */
   | { kind: 'back'; label: string }
   /** Owner: retry a dead-letter job; the id part is the dead-letter job id. */
-  | { kind: 'dead_letter'; label: string };
+  | { kind: 'dead_letter'; label: string }
+  /** Owner: a staff action of @detaly/orders that is not one event; the id is the order id. */
+  | { kind: 'staff'; action: 'retry_refund'; label: string };
 
 export const MENU_ACTIONS = {
   ialt: { kind: 'open', menu: 'alternative', label: 'Аналог' },
@@ -93,6 +96,7 @@ export const MENU_ACTIONS = {
   },
   pdelay: { kind: 'problem', problem: 'delay', event: 'item_problem', label: 'Задержка' },
   dlq: { kind: 'dead_letter', label: 'Повторить' },
+  rrefund: { kind: 'staff', action: 'retry_refund', label: 'Повторить возврат' },
 } as const satisfies Record<string, MenuActionSpec>;
 
 export type MenuAction = keyof typeof MENU_ACTIONS;
@@ -134,7 +138,19 @@ const ITEM_ACTIONS: ReadonlySet<string> = new Set<CallbackAction>([
 ]);
 
 /** Codes only the owner may press (section 13.1): sellers get a refusal without changes. */
-export const OWNER_ONLY_ACTIONS = ['invpaid', 'dlq'] as const satisfies readonly CallbackAction[];
+export const OWNER_ONLY_ACTIONS = [
+  'invpaid',
+  'dlq',
+  'rrefund',
+] as const satisfies readonly CallbackAction[];
+
+/** The callback code of a staff action that is not an event code (`retry_refund` -> `rrefund`). */
+export function callbackCodeForStaffAction(action: string): string {
+  for (const [code, spec] of Object.entries(MENU_ACTIONS) as [string, MenuActionSpec][]) {
+    if (spec.kind === 'staff' && spec.action === action) return code;
+  }
+  return action;
+}
 
 /**
  * Codes a client may press in a messenger (client bot, phase 1C). `refused` is shared with staff:

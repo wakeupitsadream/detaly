@@ -10,14 +10,21 @@ import {
   orderEvents,
   orderItems,
   orders,
+  outbox,
   payments,
   receipts,
+  sql,
   users,
   type Db,
 } from '@detaly/db';
 import type { Offer, OrderStatus, PaymentScheme } from '@detaly/domain';
 import { applyPaymentObject, type EngineDeps } from '@detaly/orders';
-import { createPaymentsFromEnv, type Payments } from '@detaly/payments';
+import {
+  createPaymentsFromEnv,
+  PaymentProviderError,
+  PaymentRequestError,
+  type Payments,
+} from '@detaly/payments';
 import { createYooKassaMock, type YooKassaMock } from '@detaly/payments/testing';
 import { getResponse } from 'msw';
 import type * as Navigation from 'next/navigation';
@@ -32,7 +39,11 @@ import {
   payCheckState,
   type PayNotice,
 } from '@/server/orders/pay-notice';
-import { handlePayRequest, type PayHandlerDeps } from '@/server/payments/pay-handler';
+import {
+  handlePayRequest,
+  paymentRejection,
+  type PayHandlerDeps,
+} from '@/server/payments/pay-handler';
 import { intEnv, webDatabaseUrl } from './helpers';
 
 vi.mock('next/navigation', async (importOriginal) => ({
@@ -350,6 +361,50 @@ describe('POST /api/orders/<token>/pay', () => {
     expect(new Set(keys).size).toBe(1);
     expect(keys[0]).toBe(rows[0]?.idempotenceKey);
     expect(mock.payments.size).toBe(1);
+  });
+
+  it('a refusal (HTTP 4xx) closes the row: the next click takes a new key, the owner is told once', async () => {
+    const order = await seedOrder();
+    mock.failNext('POST /payments', 400);
+    const failed = await pay(order.token);
+    expect(failed.location).toBe(`${APP}/o/${order.token}?pay=error`);
+    const [closed] = await paymentRows(order.id);
+    expect(closed).toMatchObject({ status: 'canceled', providerPaymentId: null });
+    expect(closed?.cancellationReason).toMatch(/^rejected:.*\(HTTP 400\)$/u);
+
+    const retried = await pay(order.token);
+    expect(retried.location).toMatch(/^https:\/\//);
+    const rows = await paymentRows(order.id);
+    expect(rows.map((r) => r.status)).toEqual(['canceled', 'pending']);
+    const keys = postPayments().map((r) => r.idempotenceKey);
+    expect(keys).toHaveLength(2);
+    expect(new Set(keys).size).toBe(2);
+    const alerts = await db
+      .select()
+      .from(outbox)
+      .where(sql`${outbox.data}->>'orderId' = ${order.id} and ${outbox.queue} = 'notify'`);
+    expect(alerts.map((r) => (r.data as { template: string }).template)).toEqual([
+      'staff_payment_rejected',
+    ]);
+    expect(JSON.stringify(logs)).not.toContain(order.token);
+  });
+
+  it('paymentRejection: only a final 4xx or a local refusal proves no payment exists', () => {
+    expect(
+      paymentRejection(
+        new PaymentProviderError('bad', { status: 400, code: 'invalid_request', retryable: false }),
+      ),
+    ).toBe('invalid_request (HTTP 400)');
+    expect(paymentRejection(new PaymentRequestError('too long'))).toBe('PaymentRequestError');
+    for (const error of [
+      new PaymentProviderError('busy', { status: 429, code: 'too_many_requests', retryable: true }),
+      new PaymentProviderError('down', { status: 503, code: null, retryable: true }),
+      new PaymentProviderError('garbled', { status: 200, code: 'bad_response', retryable: false }),
+      new PaymentProviderError('timeout', { status: null, code: 'timeout', retryable: true }),
+      new TypeError('fetch failed'),
+    ]) {
+      expect(paymentRejection(error)).toBeNull();
+    }
   });
 
   it('the response was lost after YooKassa processed it: the next click gets the same payment', async () => {

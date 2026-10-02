@@ -12,6 +12,7 @@ export const DESTRUCTIVE_ADMIN_ACTIONS: ReadonlySet<StaffActionCode> = new Set([
   'icancel',
   'noshow',
   'refund_payment',
+  'retry_refund',
 ]);
 
 /** Name and value of the confirmation checkbox. */

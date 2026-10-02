@@ -117,6 +117,7 @@ function refund(overrides: Partial<RefundRow>): RefundRow {
     idempotenceKey: uid(),
     request: null,
     error: null,
+    retryOfRefundId: null,
     alertedAt: null,
     requestedAt: NOW,
     deadlineAt: NOW,

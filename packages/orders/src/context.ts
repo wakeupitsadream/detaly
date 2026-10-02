@@ -103,6 +103,14 @@ function refundSums(snapshot: OrderSnapshot, paymentId: string) {
   return { succeeded, pending, orphan };
 }
 
+/** What is left of a payment: amount - succeeded - pending refunds (failed ones returned nothing). */
+export function paymentRestKop(snapshot: OrderSnapshot, paymentId: string): number {
+  const payment = snapshot.payments.find((p) => p.id === paymentId);
+  if (payment === undefined) return 0;
+  const sums = refundSums(snapshot, paymentId);
+  return Math.max(0, payment.amountKop - sums.succeeded - sums.pending);
+}
+
 /**
  * Succeeded payments of the order that are the order's money: not refunded back as orphans and
  * not fully refunded yet. Oldest first.
@@ -157,10 +165,38 @@ export function moneyHeldOf(snapshot: OrderSnapshot): boolean {
   return paymentHeldOf(snapshot);
 }
 
-/** The settlement receipt: offset for prepay, full (handover payment) for pay_on_handover. */
+/**
+ * Held handover (QR) payments of exactly the order total, oldest first: whichever QR the
+ * client paid (an old one after a newer was shown included) pays for the order.
+ */
+export function handoverPaymentsHeld(snapshot: OrderSnapshot): PaymentRow[] {
+  return heldPayments(snapshot).filter(
+    (payment) => payment.kind === 'full' && payment.amountKop === snapshot.order.totalKop,
+  );
+}
+
+/** TransitionContext.handoverPaymentHeld. */
+export function handoverPaymentHeldOf(snapshot: OrderSnapshot): boolean {
+  return handoverPaymentsHeld(snapshot).length > 0;
+}
+
+/**
+ * The settlement receipt: offset for prepay; for pay_on_handover the `full` receipt sent inside
+ * a held handover payment (the receipt of the very payment that pays for the order, not of a
+ * stale QR that was never paid or was refunded).
+ */
 export function settlementReceiptSucceededOf(snapshot: OrderSnapshot): boolean {
-  const kind = snapshot.order.paymentScheme === 'prepay' ? 'offset' : 'full';
-  return snapshot.receipts.some((r) => r.kind === kind && r.status === 'succeeded');
+  if (snapshot.order.paymentScheme === 'prepay') {
+    return snapshot.receipts.some((r) => r.kind === 'offset' && r.status === 'succeeded');
+  }
+  const held = new Set(handoverPaymentsHeld(snapshot).map((payment) => payment.id));
+  return snapshot.receipts.some(
+    (r) =>
+      r.kind === 'full' &&
+      r.status === 'succeeded' &&
+      r.paymentId !== null &&
+      held.has(r.paymentId),
+  );
 }
 
 /** Every created supplier order has its Rossko invoice marked paid. */
@@ -233,6 +269,7 @@ export function buildTransitionContext(
     eventPaymentKind: eventPayment?.kind ?? null,
     allLiveItemsArrived: liveItemsAllArrived(virtual.map((item) => item.state)),
     paymentHeld: paymentHeldOf(snapshot),
+    handoverPaymentHeld: handoverPaymentHeldOf(snapshot),
     driftToleranceBp: settings.driftToleranceBp,
     prepayInvoice: settings.eta.prepayInvoice,
     supplierInvoicePaid: supplierInvoicePaidOf(snapshot),

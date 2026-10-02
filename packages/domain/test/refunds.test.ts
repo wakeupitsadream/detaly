@@ -254,6 +254,28 @@ describe('planOrphanRefund', () => {
     expect(plan.lines).toEqual([expect.objectContaining({ qty: 2, unitPriceKop: 64_000 })]);
   });
 
+  it('a prepayment already offset goes back as refund_full (full_payment lines)', () => {
+    const plan = planOrphanRefund({
+      paymentKop: 128_000,
+      paymentKind: 'prepayment',
+      receiptKind: 'refund_full',
+      originalLines: [
+        {
+          description: 'MANN W 914/2 Фильтр масляный',
+          quantity: 2,
+          unitPriceKop: 64_000,
+          vatCode: 1,
+          paymentSubject: 'commodity',
+          paymentMode: 'full_payment',
+        },
+      ],
+      items: [],
+    });
+    expect(plan.receiptKind).toBe('refund_full');
+    const receipt = buildRefundReceipt({ ...CODES, kind: plan.receiptKind, lines: plan.lines });
+    expect(receipt.data.lines.every((l) => l.paymentMode === 'full_payment')).toBe(true);
+  });
+
   it('falls back to the items (refunded ones included) and checks the sum', () => {
     const items = [
       { ...a, state: 'refunded' as const, refundedAmountKop: 128_000 },

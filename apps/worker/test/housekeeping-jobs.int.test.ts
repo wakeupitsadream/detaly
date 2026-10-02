@@ -242,8 +242,10 @@ describe.skipIf(!inject('workerDatabaseUrl'))('housekeeping (worker-ops)', () =>
         expiresAt: at(-MIN),
         payment: { status: 'pending' },
       });
+      // The lost POST is repeated by reconciliation while its Idempotence-Key lives.
       const noProviderId = await seedOrder(db, {
         status: 'awaiting_payment',
+        createdAt: at(-2 * HOUR),
         expiresAt: at(-MIN),
         payment: { status: 'pending', providerPaymentId: null },
       });
@@ -286,6 +288,42 @@ describe.skipIf(!inject('workerDatabaseUrl'))('housekeeping (worker-ops)', () =>
       await run('timers');
       expect(await outboxOf(db, pending.orderId)).toHaveLength(2);
       expect((await orderOf(db, pending.orderId)).status).toBe('awaiting_payment');
+    });
+
+    it('a payment row without a provider id past the key lifetime counts as canceled', async () => {
+      clock.now = T0;
+      // Every POST of this row failed for a day: the Idempotence-Key may have expired, the POST
+      // is never repeated again, so no payment can come of it.
+      const stuck = await seedOrder(db, {
+        status: 'awaiting_payment',
+        createdAt: at(-25 * HOUR),
+        expiresAt: at(-23 * HOUR),
+        payment: { status: 'pending', providerPaymentId: null },
+      });
+      await run('timers');
+      expect((await orderOf(db, stuck.orderId)).status).toBe('cancelled');
+      const events = await eventsOf(db, stuck.orderId);
+      expect(events.map((e) => [e.type, e.toStatus])).toEqual([
+        ['payment_ttl_expired', 'cancelled'],
+        ['payment_status', null],
+      ]);
+      expect(events[1]?.payload).toMatchObject({
+        paymentId: stuck.paymentId,
+        note: 'no_provider_payment',
+      });
+      const rows = await outboxOf(db, stuck.orderId);
+      expect(rows.map((r) => [r.data.audience, r.data.template]).sort()).toEqual(
+        [
+          ['client', 'payment_expired'],
+          ['owner', 'staff_payment_rejected'],
+        ].sort(),
+      );
+      // The row itself is left as it is: a webhook of it, if any, still finds it.
+      const [payment] = await db.select().from(payments).where(eq(payments.id, stuck.paymentId!));
+      expect(payment?.status).toBe('pending');
+      // The next run has nothing to do.
+      await run('timers');
+      expect(await eventsOf(db, stuck.orderId)).toHaveLength(2);
     });
 
     it('a succeeded payment is never expired by the TTL', async () => {
@@ -624,6 +662,70 @@ describe.skipIf(!inject('workerDatabaseUrl'))('housekeeping (worker-ops)', () =>
       expect((await outboxOf(db, invoice.orderId)).map((r) => r.data.template)).toEqual([
         'staff_supplier_invoice_due',
         'staff_supplier_invoice_due',
+      ]);
+    });
+
+    it('a failed refund taken over by «Повторить возврат» is not reminded, its retry is', async () => {
+      const base = at(90 * DAY);
+      clock.now = base;
+      const order = await seedOrder(db, {
+        status: 'refund_pending',
+        itemState: 'refund_pending',
+        payment: { status: 'succeeded' },
+      });
+      const deadlineAt = new Date(base.getTime() + DAY);
+      const failedId = uuidv7();
+      await db.insert(refunds).values({
+        id: failedId,
+        orderId: order.orderId,
+        paymentId: order.paymentId!,
+        amountKop: 192_000,
+        reason: 'refusal',
+        status: 'failed',
+        error: 'invalid_request (HTTP 400)',
+        idempotenceKey: uuidv7(),
+        requestedAt: new Date(base.getTime() - 9 * DAY),
+        deadlineAt,
+      });
+      const retryId = uuidv7();
+      await db.insert(refunds).values({
+        id: retryId,
+        orderId: order.orderId,
+        paymentId: order.paymentId!,
+        amountKop: 192_000,
+        reason: 'refusal',
+        status: 'pending',
+        idempotenceKey: uuidv7(),
+        retryOfRefundId: failedId,
+        requestedAt: new Date(base.getTime() - 2 * DAY),
+        deadlineAt,
+      });
+      // A refund task nobody took over yet is reminded like a failed refund.
+      const other = await seedOrder(db, { status: 'handed', payment: { status: 'succeeded' } });
+      const taskId = uuidv7();
+      await db.insert(refunds).values({
+        id: taskId,
+        orderId: other.orderId,
+        paymentId: other.paymentId!,
+        amountKop: 192_000,
+        reason: 'other',
+        status: 'failed',
+        scope: 'orphan',
+        error: 'needs_owner',
+        idempotenceKey: uuidv7(),
+        requestedAt: new Date(base.getTime() - 9 * DAY),
+        deadlineAt,
+      });
+      await run('reminders');
+      const reminded = async (orderId: string) =>
+        (await outboxOf(db, orderId))
+          .filter((r) => r.data.template === 'staff_refund_deadline')
+          .map((r) => r.jobId);
+      expect(await reminded(order.orderId)).toEqual([
+        `reminder:${order.orderId}:refund_deadline:${retryId}`,
+      ]);
+      expect(await reminded(other.orderId)).toEqual([
+        `reminder:${other.orderId}:refund_deadline:${taskId}`,
       ]);
     });
 

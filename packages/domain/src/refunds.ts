@@ -213,9 +213,18 @@ export function planItemRefund(input: ItemRefundInput): RefundPlan {
 export interface OrphanRefundInput {
   /** The whole payment is returned. */
   paymentKop: Kop;
-  /** Decides the refund receipt: prepayment -> refund_prepayment, full -> refund_full. */
+  /** Default refund receipt: prepayment -> refund_prepayment, full -> refund_full. */
   paymentKind: PaymentKind;
-  /** Lines of the receipt sent with the payment (payments.request), preferred when present. */
+  /**
+   * The refund receipt when the caller knows better than the payment kind: refund_full for a
+   * prepayment already offset by a succeeded offset receipt (54-FZ: the refund mirrors the
+   * settlement sign of the last receipt that took the money).
+   */
+  receiptKind?: 'refund_prepayment' | 'refund_full';
+  /**
+   * Lines of the receipt that took the money, preferred when present: the offset receipt after
+   * an offset, else the receipt sent with the payment (payments.request).
+   */
   originalLines?: readonly ReceiptLine[] | null;
   /** Fallback: order items as they were paid (failed/replaced items are skipped). */
   items: readonly ReceiptItemInput[];
@@ -229,7 +238,8 @@ export interface OrphanRefundInput {
 export function planOrphanRefund(input: OrphanRefundInput): RefundPlan & {
   receiptKind: 'refund_prepayment' | 'refund_full';
 } {
-  const receiptKind = input.paymentKind === 'prepayment' ? 'refund_prepayment' : 'refund_full';
+  const receiptKind =
+    input.receiptKind ?? (input.paymentKind === 'prepayment' ? 'refund_prepayment' : 'refund_full');
   let lines: RefundLine[];
   if (input.originalLines && input.originalLines.length > 0) {
     lines = input.originalLines.map((line) => ({

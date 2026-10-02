@@ -184,6 +184,7 @@ function StaffAction({
     case 'supplier_return_reject':
     case 'stock_item':
     case 'refund_payment':
+    case 'retry_refund':
       return <ActionForm {...common} />;
   }
 }

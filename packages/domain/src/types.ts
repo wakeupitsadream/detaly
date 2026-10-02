@@ -10,7 +10,15 @@
  * - Optional values from external systems are `null`, not `undefined`, so they survive JSON
  *   round trips (offer_snapshot jsonb, Redis cache).
  */
-import type { DocumentKind, ExcludedKind, Fulfillment, PaymentScheme, StaffRole } from './statuses';
+import type {
+  DocumentKind,
+  ExcludedKind,
+  Fulfillment,
+  PaymentMode,
+  PaymentScheme,
+  PaymentSubject,
+  StaffRole,
+} from './statuses';
 
 /** Integer kopecks. */
 export type Kop = number;
@@ -282,8 +290,70 @@ export interface SettingsValues {
   'courier.fee_kop': Kop;
   'rossko.local_stock_ids': string[];
   'rossko.prepay_invoice': boolean;
+  /** Hours the client has to answer «Согласен» / «Вернуть деньги» after the message was sent. */
+  'approval.timeout_h': number;
 }
 export type SettingsKey = keyof SettingsValues;
+
+// ---------------------------------------------------------------------------
+// 54-FZ receipts (phase 1B; moved from @detaly/payments, which re-exports them)
+// ---------------------------------------------------------------------------
+
+export interface ReceiptCustomer {
+  /** Digits without '+' as YooKassa expects ('79991234567'): receiptCustomerPhone. */
+  phone?: string;
+  email?: string;
+}
+
+export interface ReceiptLine {
+  /** 'Бренд Артикул Название', at most 128 characters (lineDescription). */
+  description: string;
+  /** Whole units; parts are never sold by weight. */
+  quantity: number;
+  /** Price per unit. */
+  unitPriceKop: Kop;
+  /** YooKassa vat_code (YOOKASSA_VAT_CODE, "без НДС" - to verify). */
+  vatCode: number;
+  paymentSubject: PaymentSubject;
+  paymentMode: PaymentMode;
+}
+
+export interface ReceiptData {
+  customer: ReceiptCustomer;
+  lines: ReceiptLine[];
+  /** YooKassa tax_system_code (YOOKASSA_TAX_SYSTEM_CODE, "УСН доход" - to verify). */
+  taxSystemCode?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Client approvals (phase 1B, table client_approvals, decision Б16)
+// ---------------------------------------------------------------------------
+
+/** What the client is asked to approve; stored in client_approvals.proposal (jsonb). */
+export type ApprovalProposal =
+  | {
+      kind: 'alternative';
+      /** The alternative offer as found by the recheck (becomes the new item's snapshot). */
+      offer: Offer;
+      /** Unit price for the client: the price of the item being replaced. */
+      priceClientKop: Kop;
+      /** Unit supplier price of the alternative. */
+      priceSupplierKop: Kop;
+      markupBp: BasisPoints;
+      etaDate: IsoDate | null;
+      /** Normalized article the alternative was found by (order_items.search_article_norm). */
+      searchArticleNorm: string;
+      /** offerViewId of the alternative (order_items.offer_key). */
+      offerKey: string;
+      /** Margin of the item at the client's price, in basis points of the client price. */
+      marginBp: BasisPoints;
+    }
+  | {
+      kind: 'new_eta';
+      etaDate: IsoDate;
+      /** Free text from staff shown to the client; must not contain PD. */
+      note: string | null;
+    };
 
 // ---------------------------------------------------------------------------
 // Seeds

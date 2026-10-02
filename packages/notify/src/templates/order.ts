@@ -254,6 +254,42 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
       ),
       adminLink(d),
     ),
+  // --- staff, phase 1B (engine and workers, outside TRANSITIONS) ---------------------------
+  staff_orphan_payment: (d) =>
+    msg(
+      lines(
+        `Заказ ${d.orderNumber}: оплата после возврата`,
+        `Оплачено ${rub(d.paidAmountKop)} по заказу, деньги за который уже возвращены.`,
+        'Платёж возвращается автоматически, статус заказа не меняется. Проверьте возврат в ЛК ЮKassa.',
+      ),
+      adminLink(d),
+    ),
+  staff_receipt_failed: (d) =>
+    msg(
+      lines(
+        `Заказ ${d.orderNumber}: чек не прошёл`,
+        d.note,
+        'Выдача заблокирована до чека. Клиенту — «приходите позже»; проверьте настройки чеков и нажмите «Повторить чек».',
+      ),
+      adminLink(d),
+    ),
+  staff_approval_unreachable: (d) =>
+    msg(
+      lines(
+        `Заказ ${d.orderNumber}: клиент не получил уведомление`,
+        'Нужно решение клиента, но написать ему некуда. Позвоните клиенту и отметьте решение в админке.',
+        `Клиент ${maskPhone(d.clientPhone)}`,
+      ),
+      adminLink(d),
+    ),
+  staff_refund_deadline: (d) =>
+    msg(
+      lines(
+        `Заказ ${d.orderNumber}: срок возврата денег`,
+        `Вернуть до ${d.deadlineDate ?? '—'} (10 дней по закону). Возврат ещё не прошёл.`,
+      ),
+      adminLink(d),
+    ),
 };
 
 export function renderOrderTemplate(

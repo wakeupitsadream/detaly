@@ -195,27 +195,17 @@ describe('payments and refunds', () => {
     providerPaymentId: randomUUID(),
   });
 
-  it('allows only one succeeded payment per order (23505)', async () => {
+  // Phase 1B decision Б8: "one succeeded payment per order" moved from a unique index to the
+  // engine, so a real double payment is recorded (and refunded or shown to the owner).
+  it('records a second succeeded payment of an order (index dropped in 0002)', async () => {
     const order = await insertOrder(db);
     await db.insert(payments).values(payment(order.id, 'canceled'));
     await db.insert(payments).values(payment(order.id, 'succeeded'));
-    await db.insert(payments).values(payment(order.id, 'pending'));
-    await expectPgError(
-      db.insert(payments).values(payment(order.id, 'succeeded')),
-      UNIQUE,
-      'payments_order_id_succeeded_unique',
-    );
-  });
-
-  it('blocks a second succeeded payment set by an update too', async () => {
-    const order = await insertOrder(db);
     await db.insert(payments).values(payment(order.id, 'succeeded'));
     const [late] = await db.insert(payments).values(payment(order.id, 'pending')).returning();
-    await expectPgError(
-      db.update(payments).set({ status: 'succeeded' }).where(eq(payments.id, late!.id)),
-      UNIQUE,
-      'payments_order_id_succeeded_unique',
-    );
+    await db.update(payments).set({ status: 'succeeded' }).where(eq(payments.id, late!.id));
+    const rows = await db.select().from(payments).where(eq(payments.orderId, order.id));
+    expect(rows.filter((row) => row.status === 'succeeded')).toHaveLength(3);
   });
 
   it('rejects duplicate idempotence keys and provider ids', async () => {

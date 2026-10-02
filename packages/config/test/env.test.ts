@@ -50,9 +50,29 @@ describe('parseEnv', () => {
       STAFF_SEED_JSON: [],
       VIN_PROVIDER: 'manual',
       SMS_PROVIDER: 'none',
+      SMS_PRICE_KOP: 500,
       GIT_SHA: 'dev',
     });
     expect(env.SELLER_REQUISITES_INN).toBeUndefined();
+    expect(env.SMS_LOGIN).toBeUndefined();
+    expect(env.SMS_API_URL).toBeUndefined();
+  });
+
+  it('reads the phase 1B SMS settings', () => {
+    const env = parseEnv(
+      minimalEnvSource({
+        SMS_LOGIN: 'shop@example.org',
+        SMS_API_URL: 'http://127.0.0.1:3299/v2',
+        SMS_PRICE_KOP: '450',
+      }),
+    );
+    expect(env).toMatchObject({
+      SMS_LOGIN: 'shop@example.org',
+      SMS_API_URL: 'http://127.0.0.1:3299/v2',
+      SMS_PRICE_KOP: 450,
+    });
+    expect(() => parseEnv(minimalEnvSource({ SMS_API_URL: 'not a url' }))).toThrow(EnvError);
+    expect(() => parseEnv(minimalEnvSource({ SMS_PRICE_KOP: '-1' }))).toThrow(EnvError);
   });
 
   it('treats empty strings as unset', () => {

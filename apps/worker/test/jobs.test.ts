@@ -1,9 +1,14 @@
 import { HEARTBEAT_KEY, HEARTBEAT_TTL_SEC, type Redis } from '@detaly/config';
-import { UnrecoverableError } from 'bullmq';
-import { describe, expect, it, vi } from 'vitest';
+import { UnrecoverableError, type Job } from 'bullmq';
+import { describe, expect, inject, it, vi } from 'vitest';
+import type { WorkerDeps } from '../src/deps';
+import { createSellerCards, SELLER_CARDS_NOT_IMPLEMENTED } from '../src/bots/seller/cards';
+import { PROCESSORS } from '../src/jobs';
 import { processHousekeeping } from '../src/jobs/housekeeping';
+import { NOT_IMPLEMENTED_MESSAGE } from '../src/jobs/not-implemented';
 import { processStub } from '../src/jobs/stub';
 import { HEARTBEAT_EVERY_MS, PROCESSED_QUEUES, registerSchedulers } from '../src/queues';
+import { createTestDeps } from './helpers/test-deps';
 
 function fakeRedis() {
   const set = vi.fn(async (..._args: unknown[]) => 'OK');
@@ -14,31 +19,60 @@ describe('processHousekeeping', () => {
   it('writes the heartbeat with SET … EX 600', async () => {
     const { redis, set } = fakeRedis();
     const now = new Date('2026-10-02T09:00:00Z');
-    const result = await processHousekeeping({ name: 'heartbeat' }, { redis, now: () => now });
+    const result = await processHousekeeping(
+      { name: 'heartbeat' },
+      { redis, now: () => now, heartbeatKey: HEARTBEAT_KEY },
+    );
     expect(result).toEqual({ heartbeatAt: now.getTime() });
     expect(HEARTBEAT_TTL_SEC).toBe(600);
     expect(set).toHaveBeenCalledWith(HEARTBEAT_KEY, String(now.getTime()), 'EX', 600);
   });
 
-  it('honours a custom heartbeat key', async () => {
+  it('honours the heartbeat key from deps', async () => {
     const { redis, set } = fakeRedis();
-    await processHousekeeping({ name: 'heartbeat' }, { redis, heartbeatKey: 'test:x:hb' });
+    await processHousekeeping(
+      { name: 'heartbeat' },
+      { redis, now: () => new Date(), heartbeatKey: 'test:x:hb' },
+    );
     expect(set.mock.calls[0]?.[0]).toBe('test:x:hb');
   });
 
   it('fails an unknown job without retries', async () => {
     const { redis } = fakeRedis();
-    await expect(processHousekeeping({ name: 'vacuum' }, { redis })).rejects.toBeInstanceOf(
-      UnrecoverableError,
-    );
+    await expect(
+      processHousekeeping({ name: 'vacuum' }, { redis, now: () => new Date(), heartbeatKey: 'k' }),
+    ).rejects.toBeInstanceOf(UnrecoverableError);
   });
 });
 
-describe('processStub', () => {
+describe('processStub (phase 0 composition without WorkerDeps)', () => {
   it("throws UnrecoverableError('phase 0')", async () => {
     const error = await processStub({ name: 'anything' }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(UnrecoverableError);
     expect((error as Error).message).toBe('phase 0');
+  });
+});
+
+describe('phase 1B processors (wave 1 stubs)', () => {
+  const job = { name: 'anything', data: {} } as Job;
+  const deps = {} as WorkerDeps;
+
+  it('one processor per worked queue', () => {
+    expect(Object.keys(PROCESSORS).sort()).toEqual([...PROCESSED_QUEUES].sort());
+  });
+
+  it.each(['payments', 'receipts', 'rossko', 'notify', 'reconciliation'] as const)(
+    "%s throws UnrecoverableError('not implemented')",
+    async (queue) => {
+      const error = await PROCESSORS[queue](job, deps).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(UnrecoverableError);
+      expect((error as Error).message).toBe(NOT_IMPLEMENTED_MESSAGE);
+    },
+  );
+
+  it('seller cards port is a stub until wave 4', async () => {
+    const cards = createSellerCards(deps);
+    await expect(cards.refresh('order')).rejects.toThrow(SELLER_CARDS_NOT_IMPLEMENTED);
   });
 });
 
@@ -63,5 +97,35 @@ describe('queues', () => {
       { every: 30_000 },
       expect.objectContaining({ name: 'heartbeat' }),
     );
+  });
+});
+
+describe.skipIf(!inject('workerDatabaseUrl'))('createTestDeps (test/helpers/test-deps.ts)', () => {
+  it('runs the heartbeat on full WorkerDeps with test prefixes and recording fakes', async () => {
+    const now = new Date('2026-10-02T09:00:00Z');
+    const t = await createTestDeps({ now: () => now });
+    try {
+      expect(t.deps.keyPrefix).toMatch(/^test:[0-9a-f-]{36}:$/);
+      expect(t.deps.bullPrefix.startsWith(t.deps.keyPrefix)).toBe(true);
+      expect(t.deps.heartbeatKey.startsWith(t.deps.keyPrefix)).toBe(true);
+      expect(t.deps.queues.housekeeping.opts.prefix).toBe(t.deps.bullPrefix);
+      await PROCESSORS.housekeeping({ name: 'heartbeat', data: {} } as Job, t.deps);
+      expect(await t.deps.redis.get(t.deps.heartbeatKey)).toBe(String(now.getTime()));
+      const [row] = await t.deps.db.$client<{ one: number }[]>`select 1 as one`;
+      expect(row?.one).toBe(1);
+
+      await t.deps.alerts.send({ audience: 'owner', text: 'проверка', dedupeKey: 'k' });
+      await t.deps.sellerCards.refresh('order-1');
+      t.deps.engine.nudge?.();
+      expect(t.fakes.alerts.calls).toEqual([
+        { audience: 'owner', text: 'проверка', dedupeKey: 'k' },
+      ]);
+      expect(t.fakes.sellerCards.calls).toEqual([{ method: 'refresh', orderId: 'order-1' }]);
+      expect(t.fakes.nudges.count).toBe(1);
+      expect(t.deps.payments).toBeNull();
+      expect(t.deps.env.ROSSKO_ALLOW_CHECKOUT).toBe(false);
+    } finally {
+      await t.close();
+    }
   });
 });

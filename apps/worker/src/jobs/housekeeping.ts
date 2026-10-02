@@ -1,29 +1,26 @@
-// Processor of the `housekeeping` queue. Phase 0 knows a single job: the heartbeat.
-import { HEARTBEAT_KEY, HOUSEKEEPING_JOBS, writeHeartbeat, type Redis } from '@detaly/config';
+// Processor of the `housekeeping` queue. Phase 0 knows a single job: the heartbeat; phase 1B
+// (worker-ops) adds timers, reminders, the SMS budget and deferred 1A effects.
+import { HOUSEKEEPING_JOBS, writeHeartbeat } from '@detaly/config';
 import { UnrecoverableError, type Job } from 'bullmq';
+import type { WorkerDeps } from '../deps';
 
-export interface HousekeepingDeps {
-  redis: Redis;
-  /** Clock (tests). */
-  now?: () => Date;
-  /** Heartbeat key; default HEARTBEAT_KEY (tests use a `test:<uuid>:` key). */
-  heartbeatKey?: string;
-}
+/** What the heartbeat needs from WorkerDeps (a full WorkerDeps satisfies it). */
+export type HousekeepingDeps = Pick<WorkerDeps, 'redis' | 'now' | 'heartbeatKey'>;
 
 export type HousekeepingResult = { heartbeatAt: number };
 
 /**
- * `heartbeat`: SET <key> <epoch ms> EX 600 via writeHeartbeat. /api/health, the compose
- * healthcheck and healthwatch.sh read this key to tell a live worker from a silent one.
+ * `heartbeat`: SET <deps.heartbeatKey> <epoch ms> EX 600 via writeHeartbeat. /api/health, the
+ * compose healthcheck and healthwatch.sh read this key to tell a live worker from a silent one.
  */
 export async function processHousekeeping(
   job: Pick<Job, 'name'>,
-  { redis, now = () => new Date(), heartbeatKey = HEARTBEAT_KEY }: HousekeepingDeps,
+  deps: HousekeepingDeps,
 ): Promise<HousekeepingResult> {
   switch (job.name) {
     case HOUSEKEEPING_JOBS.heartbeat: {
-      const at = now();
-      await writeHeartbeat(redis, { now: at, key: heartbeatKey });
+      const at = deps.now();
+      await writeHeartbeat(deps.redis, { now: at, key: deps.heartbeatKey });
       return { heartbeatAt: at.getTime() };
     }
     default:

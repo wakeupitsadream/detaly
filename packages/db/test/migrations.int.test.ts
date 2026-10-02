@@ -2,7 +2,13 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { testDatabaseUrl } from '@detaly/config/testing';
-import { ORDER_ITEM_STATES, ORDER_STATUSES } from '@detaly/domain/statuses';
+import {
+  APPROVAL_DECISIONS,
+  APPROVAL_KINDS,
+  ORDER_ITEM_STATES,
+  ORDER_STATUSES,
+  REFUND_SCOPES,
+} from '@detaly/domain/statuses';
 import { getTableName, isTable } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, migrateDb, MIGRATIONS_FOLDER, schema, type Db } from '../src/client';
@@ -38,7 +44,11 @@ describe('migrations on an empty database', () => {
       select table_name from information_schema.tables
       where table_schema = 'public' and table_type = 'BASE TABLE' order by table_name`;
     expect(tables.map((t) => t.table_name)).toEqual(schemaTables);
-    expect(schemaTables).toHaveLength(28);
+    // 28 tables of phases 0 and 1A plus outbox, client_approvals and seller_cards (1B)
+    expect(schemaTables).toHaveLength(31);
+    expect(schemaTables).toEqual(
+      expect.arrayContaining(['outbox', 'client_approvals', 'seller_cards']),
+    );
     expect(schemaTables).not.toContain('vehicles');
     expect(schemaTables).not.toContain('chat_messages');
 
@@ -50,6 +60,9 @@ describe('migrations on an empty database', () => {
       ).map((r) => r.v);
     expect(await enumValues('order_status')).toEqual([...ORDER_STATUSES]);
     expect(await enumValues('order_item_state')).toEqual([...ORDER_ITEM_STATES]);
+    expect(await enumValues('refund_scope')).toEqual([...REFUND_SCOPES]);
+    expect(await enumValues('approval_kind')).toEqual([...APPROVAL_KINDS]);
+    expect(await enumValues('approval_decision')).toEqual([...APPROVAL_DECISIONS]);
 
     const seq =
       await db.$client`select 1 from pg_sequences where sequencename = 'order_number_seq'`;

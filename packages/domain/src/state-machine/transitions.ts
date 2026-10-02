@@ -30,6 +30,15 @@
  *   cancellation is a refusal before handover and creates the seller's supplier-return task;
  * - the client (or staff) may cancel one delayed item in ordered_at_supplier ("Жду до" /
  *   "Отменить позицию", order.eta_changed): partial refund, the order stays with the others.
+ *
+ * Phase 1B additions (docs/phase-1b-implementation.md section 3.4):
+ * - «Клиент не пришёл» is `storage_expired` pressed by staff, allowed only after the storage
+ *   window (pickupWindowElapsed, decision Б10); housekeeping sends the same event;
+ * - the handover QR TTL returns the order to `ready` without a confirmed cancel (YooKassa cannot
+ *   cancel a pending payment); a later payment of that QR with the right amount brings the order
+ *   back to `awaiting_handover_payment` instead of the owner's "unexpected payment" (Б9);
+ * - partial (one item) refunds complete or fail through `partial_refund_succeeded` /
+ *   `partial_refund_failed`, self-transitions; `refund_succeeded` is only for the whole order.
  */
 import type { ActorType, OrderStatus, PaymentScheme, ReceiptKind } from '../statuses';
 import {
@@ -47,6 +56,7 @@ import {
   hasPdConsent,
   isOwner,
   itemsNotArrived,
+  lateHandoverPayment,
   liveItemsRemain,
   marginAboveFloor,
   minMarginReached,
@@ -64,6 +74,7 @@ import {
   paymentHeldFlag,
   paymentHeldKnown,
   paymentSucceeded,
+  pickupWindowElapsed,
   prepay,
   prepayInvoice,
   recheckPassed,
@@ -130,6 +141,9 @@ export const ORDER_EVENTS = [
   'client_refused',
   'refund_succeeded',
   'refund_failed',
+  // partial refunds (phase 1B, decision Б11): the order status does not change
+  'partial_refund_succeeded',
+  'partial_refund_failed',
 ] as const;
 export type OrderEvent = (typeof ORDER_EVENTS)[number];
 
@@ -175,6 +189,11 @@ export const ORDER_NOTIFY_TEMPLATES = [
   'staff_cancel_at_supplier_task',
   'staff_claim_deadline',
   'staff_refund_failed',
+  // staff, phase 1B (sent by the engine and workers outside TRANSITIONS)
+  'staff_orphan_payment',
+  'staff_receipt_failed',
+  'staff_approval_unreachable',
+  'staff_refund_deadline',
 ] as const;
 export type OrderNotifyTemplate = (typeof ORDER_NOTIFY_TEMPLATES)[number];
 
@@ -295,7 +314,10 @@ function resumeWork(rule: Omit<TransitionRule, 'to'>): TransitionRule[] {
   ];
 }
 
-/** Statuses before handover where a payment is not expected (a duplicate or stale link paid). */
+/**
+ * Statuses before handover where a payment is not expected (a duplicate or stale link paid).
+ * `ready` has its own rule: there an old handover QR may still be paid (decision Б9).
+ */
 const UNEXPECTED_PAYMENT_STATUSES = [
   'confirmed',
   'ordering',
@@ -303,8 +325,23 @@ const UNEXPECTED_PAYMENT_STATUSES = [
   'ordered_at_supplier',
   'needs_attention',
   'awaiting_client_approval',
-  'ready',
   'out_for_delivery',
+] as const satisfies readonly OrderStatus[];
+
+/** Statuses where a partial (one item) refund may complete or fail (decision Б11). */
+export const PARTIAL_REFUND_STATUSES = [
+  'confirmed',
+  'ordering',
+  'awaiting_supplier_invoice',
+  'ordered_at_supplier',
+  'needs_attention',
+  'awaiting_client_approval',
+  'ready',
+  'awaiting_handover_payment',
+  'out_for_delivery',
+  'handed',
+  'completed',
+  'refund_pending',
 ] as const satisfies readonly OrderStatus[];
 
 /** A late payment can be a prepayment link or a handover QR payment. */
@@ -777,13 +814,14 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     guard: all(prepay, courier),
     notify: [client('courier_on_way')],
   },
+  // housekeeping, or «Клиент не пришёл» from staff, only after the window (decision Б10)
   {
     label: 'Хранение истекло: возврат денег',
     from: ['ready'],
     event: 'storage_expired',
     to: 'refund_pending',
-    actors: ['system'],
-    guard: moneyHeld,
+    actors: ['system', 'staff'],
+    guard: all(pickupWindowElapsed, moneyHeld),
     receipt: refundReceipt,
     notify: [client('storage_expired'), sellers('staff_supplier_return_task')],
     effects: ['create_refund', 'no_show_increment', 'supplier_return_task'],
@@ -793,8 +831,8 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     from: ['ready'],
     event: 'storage_expired',
     to: 'cancelled',
-    actors: ['system'],
-    guard: noMoneyHeld,
+    actors: ['system', 'staff'],
+    guard: all(pickupWindowElapsed, noMoneyHeld),
     notify: [client('storage_expired'), sellers('staff_supplier_return_task')],
     effects: ['no_show_increment', 'supplier_return_task'],
   },
@@ -839,16 +877,37 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     notify: [],
   },
   {
+    // Decision Б9: YooKassa gives no way to cancel a pending payment, so the QR TTL does not
+    // wait for a confirmed cancel. If the old QR is paid later, `ready + payment_succeeded`
+    // (late handover payment) brings the order back here with the money.
     label: 'QR истёк',
     from: ['awaiting_handover_payment'],
     event: 'payment_ttl_expired',
     to: 'ready',
     actors: ['system'],
-    guard: all(eventPaymentIsCurrent, paymentConfirmedUnpaid, not(paymentHeldFlag)),
+    guard: all(eventPaymentIsCurrent, not(paymentSucceeded), not(paymentHeldFlag)),
     notify: [],
   },
 
   // --- a payment succeeded while the order does not wait for one ---------------------------
+  {
+    label: 'Оплата по истёкшему QR прошла',
+    from: ['ready'],
+    event: 'payment_succeeded',
+    to: 'awaiting_handover_payment',
+    actors: PAYMENT_ACTORS,
+    guard: all(paymentSucceeded, lateHandoverPayment),
+    notify: [],
+  },
+  {
+    label: 'Неожиданный платёж (дубль или устаревшая ссылка): владельцу',
+    from: ['ready'],
+    event: 'payment_succeeded',
+    to: 'needs_attention',
+    actors: PAYMENT_ACTORS,
+    guard: all(paymentSucceeded, not(lateHandoverPayment)),
+    notify: [owner('staff_unexpected_payment')],
+  },
   {
     label: 'Неожиданный платёж (дубль или устаревшая ссылка): владельцу',
     from: UNEXPECTED_PAYMENT_STATUSES,
@@ -984,6 +1043,27 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     actors: PAYMENT_ACTORS,
     notify: [owner('staff_refund_failed')],
   },
+
+  // --- partial refunds (one item; decision Б11): the order status does not change ----------
+  ...PARTIAL_REFUND_STATUSES.flatMap((status): TransitionRule[] => [
+    {
+      label: 'Деньги за позицию отправлены',
+      from: [status],
+      event: 'partial_refund_succeeded',
+      to: status,
+      actors: PAYMENT_ACTORS,
+      guard: refundConfirmed,
+      notify: [client('money_sent')],
+    },
+    {
+      label: 'Возврат за позицию не прошёл: алерт, срок 10 дней идёт',
+      from: [status],
+      event: 'partial_refund_failed',
+      to: status,
+      actors: PAYMENT_ACTORS,
+      notify: [owner('staff_refund_failed')],
+    },
+  ]),
 ];
 
 /** Resolves a rule's side effects for a concrete context. */

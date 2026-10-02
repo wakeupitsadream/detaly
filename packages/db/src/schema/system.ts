@@ -1,15 +1,26 @@
 // Notifications log, incoming webhook idempotency, external API calls and search log.
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, jsonb, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  inet,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { createdAt, id, kop, kopCheck, namedCheck, tstz, updatedAt } from './columns';
 import { apiCallSource, notificationChannel, notificationStatus, webhookSource } from './enums';
 import { orders } from './orders';
 import { staff, users } from './people';
 
 /**
- * The fate of every message. The row is written before sending; dedupe_key is the queue
- * jobId (`${order_event_id}:${channel}`). channel is null when nothing could be chosen
- * (status `skipped`, fallback_reason says why).
+ * The fate of every message. The row is written before sending; dedupe_key is
+ * `${order_event_id}:${template}:${channel ?? 'none'}` (decision Б20) or `alert:<key>`.
+ * channel is null when nothing could be chosen (status `skipped`, fallback_reason says why).
+ * Messages to a fixed chat (sellers chat, alerts) carry chat_id instead of a user or staff id.
  */
 export const notifications = pgTable(
   'notifications',
@@ -18,6 +29,8 @@ export const notifications = pgTable(
     userId: uuid().references(() => users.id),
     staffId: uuid().references(() => staff.id),
     orderId: uuid().references(() => orders.id),
+    /** Fixed chat (sellers chat, owner's private chat) when there is no user/staff recipient. */
+    chatId: text(),
     channel: notificationChannel(),
     template: text().notNull(),
     payload: jsonb().$type<Record<string, unknown>>().notNull().default({}),
@@ -36,7 +49,7 @@ export const notifications = pgTable(
     namedCheck(
       'notifications',
       'recipient',
-      sql`${t.userId} is not null or ${t.staffId} is not null`,
+      sql`${t.userId} is not null or ${t.staffId} is not null or ${t.chatId} is not null`,
     ),
     namedCheck('notifications', 'attempts', sql`${t.attempts} >= 0`),
   ],
@@ -53,7 +66,10 @@ export const webhookEvents = pgTable(
     payload: jsonb().notNull(),
     receivedAt: tstz().notNull().defaultNow(),
     processedAt: tstz(),
+    /** WEBHOOK_RESULTS value written by the engine (processed, duplicate, stale, ...). */
     result: text(),
+    /** Client IP as received (X-Real-IP from Caddy), for investigations. */
+    ip: inet(),
   },
   (t) => [
     unique('webhook_events_source_external_id_event_type_unique').on(
@@ -61,6 +77,9 @@ export const webhookEvents = pgTable(
       t.externalId,
       t.eventType,
     ),
+    index('webhook_events_unprocessed_idx')
+      .on(t.receivedAt)
+      .where(sql`${t.processedAt} is null`),
   ],
 );
 

@@ -3,41 +3,13 @@
  * YooKassa adapter converts them to '1280.00' strings at the boundary.
  */
 import type { PaymentStatus, ReceiptStatus } from '@detaly/domain/statuses';
-import type { Kop } from '@detaly/domain/types';
+import type { Kop, ReceiptCustomer, ReceiptData, ReceiptLine } from '@detaly/domain/types';
 
-/** 54-FZ settlement method of a receipt line ("признак способа расчёта"). */
-export const PAYMENT_MODES = ['full_prepayment', 'full_payment'] as const;
-export type PaymentMode = (typeof PAYMENT_MODES)[number];
-
-/** Subject of a receipt line. Installation is never sold, so only goods and delivery exist. */
-export const PAYMENT_SUBJECTS = ['commodity', 'service'] as const;
-export type PaymentSubject = (typeof PAYMENT_SUBJECTS)[number];
-
-export interface ReceiptCustomer {
-  /** E.164 without '+' as YooKassa expects ('79991234567'); format to verify with YooKassa. */
-  phone?: string;
-  email?: string;
-}
-
-export interface ReceiptLine {
-  /** 'Бренд Артикул Название', at most 128 characters. */
-  description: string;
-  /** Whole units; parts are never sold by weight. */
-  quantity: number;
-  /** Price per unit. */
-  unitPriceKop: Kop;
-  /** YooKassa vat_code (YOOKASSA_VAT_CODE, "без НДС" - to verify). */
-  vatCode: number;
-  paymentSubject: PaymentSubject;
-  paymentMode: PaymentMode;
-}
-
-export interface ReceiptData {
-  customer: ReceiptCustomer;
-  lines: ReceiptLine[];
-  /** YooKassa tax_system_code (YOOKASSA_TAX_SYSTEM_CODE, "УСН доход" - to verify). */
-  taxSystemCode?: number;
-}
+// Receipt shapes moved to @detaly/domain in phase 1B (receipts are built there); this package
+// re-exports them so its public API does not change.
+export { PAYMENT_MODES, PAYMENT_SUBJECTS } from '@detaly/domain/statuses';
+export type { PaymentMode, PaymentSubject } from '@detaly/domain/statuses';
+export type { ReceiptCustomer, ReceiptData, ReceiptLine } from '@detaly/domain/types';
 
 // ---------------------------------------------------------------------------------------------
 // Payments

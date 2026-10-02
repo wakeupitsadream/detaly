@@ -220,6 +220,15 @@ const envShape = {
   SMS_API_KEY: optionalString,
   SMS_SENDER: optionalString,
   SMS_MONTHLY_BUDGET_RUB: int().optional(),
+  /** [ф1B] SMS Aero login (e-mail) or smsc.ru login; the password/key is SMS_API_KEY. */
+  SMS_LOGIN: optionalString,
+  /**
+   * [ф1B] Gateway URL override (tests, stage). Default by SMS_PROVIDER:
+   * https://gate.smsaero.ru/v2 or https://smsc.ru/sys (VERIFY: both addresses with the provider).
+   */
+  SMS_API_URL: z.url().optional(),
+  /** [ф1B] Price of one SMS in kopecks for the monthly budget (VERIFY: provider tariff). */
+  SMS_PRICE_KOP: int().default(500),
   SMARTCAPTCHA_CLIENT_KEY: optionalString,
   SMARTCAPTCHA_SERVER_KEY: optionalString,
 

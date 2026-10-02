@@ -88,6 +88,8 @@ export const orders = pgTable(
     handedAt: tstz(),
     completedAt: tstz(),
     cancelledAt: tstz(),
+    /** «Клиент пришёл» was pressed (phase 1B): offset receipt / handover payment may start. */
+    clientArrivedAt: tstz(),
     /** Payment / confirmation / pickup deadline depending on status (housekeeping). */
     expiresAt: tstz(),
     supplierReturnDeadlineAt: tstz(),
@@ -139,6 +141,8 @@ export const orderItems = pgTable(
     /** Chestny Znak marking code (marked goods are excluded at start). */
     markingCode: text(),
     refundedAmountKop: kop().notNull().default(0),
+    /** «Приехало» for this item (phase 1B: partial arrival, pickup reminders). */
+    arrivedAt: tstz(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

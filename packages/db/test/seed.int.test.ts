@@ -37,6 +37,7 @@ describe('seed (globalSetup already ran it once)', () => {
     const byKey = Object.fromEntries(rows.map((r) => [r.key, r.value]));
     expect(Object.keys(byKey).sort()).toEqual(
       [
+        'approval.timeout_h',
         'courier.fee_kop',
         'eta.buffer_days',
         'eta.supplier_invoice_lag_days',

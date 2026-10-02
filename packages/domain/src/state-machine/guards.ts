@@ -7,6 +7,7 @@ import type {
   ActorType,
   ClaimKind,
   Fulfillment,
+  PaymentKind,
   PaymentScheme,
   PaymentStatus,
   StaffRole,
@@ -52,6 +53,12 @@ export interface TransitionContext {
    * cancel and expiry rules require it, and the worker marks such webhooks `stale`.
    */
   eventPaymentIsCurrent?: boolean;
+  /**
+   * payments.kind of the payment the event is about: `full` is a handover (QR) payment,
+   * `prepayment` an online prepay link. Tells a late payment of an expired QR (decision Б9)
+   * from a duplicate prepayment.
+   */
+  eventPaymentKind?: PaymentKind | null;
   /**
    * Every live (not failed/replaced/refunded) item is `arrived`. Pass `false` explicitly for
    * "not yet": the negative branch never runs on a missing flag. For a partial cancellation it
@@ -107,6 +114,12 @@ export interface TransitionContext {
   clientArrived?: boolean;
   /** The settlement receipt (offset for prepay, full for pay_on_handover) is succeeded. */
   settlementReceiptSucceeded?: boolean;
+  /**
+   * The storage window of a ready order has passed (orders.expires_at <= now: prepay
+   * pickup.window_prepaid_days, pay_on_handover pickup.window_cod_days). «Клиент не пришёл»
+   * is pressed by staff only after it (decision Б10); housekeeping passes true.
+   */
+  pickupWindowElapsed?: boolean;
 
   // --- claims and refunds ---
   openClaims?: number;
@@ -325,6 +338,25 @@ export const settlementReceiptSucceeded = guard(
   'settlement_receipt_succeeded',
   (c) => c.settlementReceiptSucceeded === true,
 );
+
+/** Decision Б10: a no-show is recorded only after the storage window has passed. */
+export const pickupWindowElapsed = guard(
+  'pickup_window_elapsed',
+  (c) => c.pickupWindowElapsed === true,
+);
+
+/** The event's payment is a handover (QR) payment: payments.kind = 'full'. */
+export const eventPaymentIsHandover = guard(
+  'event_payment_is_handover',
+  (c) => c.eventPaymentKind === 'full',
+);
+
+/**
+ * Decision Б9: a pay_on_handover order is back in `ready` after the QR expired, and the client
+ * pays that old QR anyway with the right amount. It is the payment the seller was waiting for,
+ * not an unexpected one.
+ */
+export const lateHandoverPayment = all(payOnHandover, eventPaymentIsHandover, amountMatches);
 
 export const noOpenClaims = guard('no_open_claims', (c) => c.openClaims === 0);
 

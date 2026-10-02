@@ -46,6 +46,7 @@ const nextConfig: NextConfig = {
     '@detaly/db',
     '@detaly/domain',
     '@detaly/notify',
+    '@detaly/orders',
     '@detaly/payments',
     '@detaly/rossko',
     '@detaly/vin',

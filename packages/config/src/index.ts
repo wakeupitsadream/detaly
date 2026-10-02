@@ -30,4 +30,19 @@ export {
   type HeartbeatOptions,
 } from './heartbeat';
 export { createLogger, REDACT_PATHS, type CreateLoggerOptions, type Logger } from './logger';
-export { BULLMQ_PREFIX, HOUSEKEEPING_JOBS, QUEUE, QUEUE_NAMES, type QueueName } from './queues';
+export {
+  BULLMQ_PREFIX,
+  bullJobId,
+  HOUSEKEEPING_JOBS,
+  NOTIFY_JOBS,
+  OUTBOX_CHANNEL,
+  OUTBOX_QUEUES,
+  PAYMENTS_JOBS,
+  QUEUE,
+  QUEUE_NAMES,
+  RECEIPTS_JOBS,
+  RECONCILIATION_JOBS,
+  ROSSKO_JOBS,
+  type OutboxQueue,
+  type QueueName,
+} from './queues';

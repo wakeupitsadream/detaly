@@ -12,7 +12,17 @@ const isDev = process.env.NODE_ENV === 'development';
  * until nonces are introduced (no third-party scripts are loaded at all). The dev server also
  * needs 'unsafe-eval' for React refresh.
  */
-const contentSecurityPolicy = [
+/**
+ * Where «Оплатить N ₽» on /o/<token> sends the browser: the form posts to
+ * /api/orders/<token>/pay, which answers 303 to YooKassa's confirmation_url. Browsers apply
+ * form-action to the redirects of a form submission too (Chromium blocks the 303 with
+ * «Refused to send form data … violates form-action»), so the payment page's origin must be
+ * listed here. VERIFY: Ю11 — confirmation_url of a redirect payment is on yoomoney.ru
+ * (reference examples: https://yoomoney.ru/checkout/payments/v2/contract?orderId=…).
+ */
+export const PAYMENT_FORM_ACTION_ORIGINS = ['https://yoomoney.ru', 'https://*.yoomoney.ru'];
+
+export const contentSecurityPolicy = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
   "style-src 'self' 'unsafe-inline'",
@@ -21,7 +31,7 @@ const contentSecurityPolicy = [
   `connect-src 'self'${isDev ? ' ws:' : ''}`,
   "object-src 'none'",
   "base-uri 'self'",
-  "form-action 'self'",
+  `form-action 'self' ${PAYMENT_FORM_ACTION_ORIGINS.join(' ')}`,
   "frame-ancestors 'none'",
 ].join('; ');
 

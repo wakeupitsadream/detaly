@@ -418,6 +418,43 @@ describe('POST /api/orders/<token>/pay', () => {
     expect(res.status).toBe(404);
     expect(postPayments()).toHaveLength(0);
   });
+
+  it('accepts the form post a browser sends from /o/<token> (Referrer-Policy: no-referrer)', async () => {
+    // Chromium sends `Origin: null` for a same-origin form POST from a no-referrer page.
+    const order = await seedOrder();
+    const browserForm = await pay(order.token, {
+      headers: { Origin: 'null', 'Sec-Fetch-Site': 'same-origin', 'Sec-Fetch-Mode': 'navigate' },
+    });
+    expect(browserForm.status).toBe(303);
+    expect(browserForm.location).toMatch(/^https:\/\//);
+    expect(postPayments()).toHaveLength(1);
+    // The same opaque origin from another site is still CSRF.
+    const crossSite = await pay(order.token, {
+      headers: { Origin: 'null', 'Sec-Fetch-Site': 'cross-site' },
+    });
+    expect(crossSite.status).toBe(403);
+    expect(postPayments()).toHaveLength(1);
+  });
+
+  it('the CSP lets the pay form follow its 303 to the YooKassa confirmation page', async () => {
+    // Chromium applies form-action to the redirects of a form submission: with `form-action
+    // 'self'` alone the «Оплатить» click is blocked before it reaches YooKassa.
+    const { default: nextConfig } = await import('../next.config');
+    const rules = (await nextConfig.headers?.()) ?? [];
+    const csp = rules
+      .flatMap((rule) => rule.headers)
+      .find((h) => h.key === 'Content-Security-Policy')?.value;
+    const formAction = csp
+      ?.split(';')
+      .map((d) => d.trim())
+      .find((d) => d.startsWith('form-action '));
+    expect(formAction?.split(/\s+/)).toEqual(
+      expect.arrayContaining(["'self'", 'https://yoomoney.ru']),
+    );
+    const order = await seedOrder();
+    const { location } = await pay(order.token);
+    expect(new URL(String(location)).origin).toBe('https://yoomoney.ru');
+  });
 });
 
 describe('/o/<token> payment block', () => {

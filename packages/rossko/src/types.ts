@@ -163,6 +163,8 @@ export interface CheckoutResult {
 export interface RosskoOrderLine {
   brand: string;
   article: string;
+  /** VERIFY: whether GetOrders lines carry the stock id at all (docs/external.md R11). */
+  stockId: string | null;
   count: number;
   priceKop: Kop | null;
   statusCode: number | null;
@@ -174,7 +176,21 @@ export interface RosskoOrder {
   statusCode: number | null;
   statusText: string | null;
   createdAt: string | null;
+  /**
+   * The order comment we sent with GetCheckout (`DT-000123/1`, checkoutComment).
+   * VERIFY: field name and whether Rossko echoes the comment in GetOrders (R10, R11).
+   */
+  comment: string | null;
   items: RosskoOrderLine[];
+}
+
+export interface RecentOrdersOptions {
+  /**
+   * Keep orders created at or after this instant (a date-only createdAt is compared by the
+   * Moscow calendar day). Orders whose createdAt is missing or not understood are kept: the
+   * comment, not the time, identifies an order. Omit to keep everything the API lists.
+   */
+  since?: Date;
 }
 
 export interface OrdersResult {
@@ -214,6 +230,13 @@ export interface RosskoClient {
   checkoutDetails(): Promise<CheckoutDetails>;
   /** Fetches orders by id; more than 20 ids are split into several calls. */
   orders(ids: readonly string[]): Promise<OrdersResult>;
+  /**
+   * GetOrders without order_ids: the account's recent orders, for the recovery after a
+   * GetCheckout timeout (decision Б14). VERIFY: the list mode is unconfirmed; when Rossko refuses
+   * it (success=false, SOAP fault, unexpected shape) this throws RosskoCallError with
+   * code 'unsupported'. Timeouts and network errors are rethrown unchanged (retryable).
+   */
+  recentOrders(options?: RecentOrdersOptions): Promise<OrdersResult>;
   /**
    * Throws CheckoutDisabledError when allowCheckout is false and RosskoConfigError without
    * delivery/payment ids. Never retried by the client; on failure use checkoutMayHaveExecuted()

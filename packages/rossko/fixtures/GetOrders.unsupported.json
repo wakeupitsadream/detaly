@@ -1,0 +1,13 @@
+{
+  "_meta": {
+    "synthetic": true,
+    "note": "сверить с реальным ответом: как Rossko отказывает в GetOrders без order_ids (success=false, SOAP Fault или пустой список)",
+    "method": "GetOrders",
+    "args": { "ordersList": "unsupported" },
+    "covers": "отказ режима списка: success=false с сообщением"
+  },
+  "OrdersResult": {
+    "success": false,
+    "message": "Не указаны номера заказов"
+  }
+}

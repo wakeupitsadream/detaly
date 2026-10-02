@@ -5,6 +5,7 @@ export {
   createRosskoClient,
   ORDERS_BATCH_SIZE,
   searchFailure,
+  UNSUPPORTED_CODE,
   type RosskoCallerConfig,
   type RosskoClientOptions,
 } from './client';
@@ -16,6 +17,17 @@ export {
   type SearchCache,
   type SearchCacheOptions,
 } from './cache';
+export {
+  checkoutComment,
+  CheckoutMatchError,
+  checkoutResultFromOrders,
+  findOrderByComment,
+  findOrdersByComment,
+  matchCheckoutResult,
+  type CheckoutMatch,
+  type CheckoutMatchErrorCode,
+  type CheckoutMatchRequest,
+} from './checkout-match';
 export {
   CheckoutDisabledError,
   checkoutMayHaveExecuted,
@@ -30,11 +42,13 @@ export {
   BUNDLED_FIXTURES,
   createFixtureCaller,
   FIXTURE_LOCAL_STOCK_IDS,
+  FIXTURE_TIMEOUT_MESSAGE,
   fixtureName,
   NOT_FOUND_FIXTURE,
   stripMeta,
   type CheckoutFixtureVariant,
   type FixtureCallerOptions,
+  type OrdersListFixtureVariant,
 } from './fixture-caller';
 export {
   createRosskoLimiter,
@@ -73,6 +87,7 @@ export {
   type OrdersResult,
   type ParsedSearch,
   type QuotaStatus,
+  type RecentOrdersOptions,
   type RosskoCallEvent,
   type RosskoCaller,
   type RosskoClient,

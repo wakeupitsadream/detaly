@@ -293,6 +293,7 @@ export function mapOrdersResult(raw: unknown): OrdersResult {
             {
               brand,
               article,
+              stockId: str(firstField(p, ['stock', 'stock_id', 'stockId'])),
               count: int(field(p, 'count')) ?? 0,
               priceKop: kopOrNull(field(p, 'price')),
               statusCode: int(field(p, 'status')),
@@ -305,6 +306,8 @@ export function mapOrdersResult(raw: unknown): OrdersResult {
           statusCode: int(field(o, 'status')),
           statusText: str(firstField(o, ['status_name', 'statusName', 'status_text'])),
           createdAt: str(firstField(o, ['created', 'created_at', 'date'])),
+          // VERIFY: the comment field of GetOrders is a guess (docs/external.md R10, R11).
+          comment: str(firstField(o, ['comment', 'note', 'description'])),
           items,
         },
       ];

@@ -5,6 +5,7 @@
  * No retries here. Retrying is the worker's decision (BullMQ), and GetCheckout must never be
  * repeated blindly: after a timeout the worker checks GetOrders first.
  */
+import { localDate, parseSupplierTimestamp } from '@detaly/domain';
 import type { RosskoMode } from '@detaly/domain/statuses';
 import {
   CheckoutDisabledError,
@@ -20,6 +21,7 @@ import {
   mapCheckoutResult,
   mapOrdersResult,
   parseSearchResponse,
+  RosskoResponseError,
 } from './mapper';
 import { normalizeArticle } from './normalize';
 import { SEARCH_ERROR_CACHE_TTL_SEC, type SearchCache, type CachedSearch } from './cache';
@@ -31,6 +33,7 @@ import type {
   CheckoutResult,
   LocalStockIdsSource,
   OrdersResult,
+  RecentOrdersOptions,
   RosskoCallEvent,
   RosskoCaller,
   RosskoClient,
@@ -79,6 +82,44 @@ export function searchFailure(parsed: { success: boolean; message: string | null
   if (parsed.success) return null;
   if (parsed.message !== null && SEARCH_NOT_FOUND_RE.test(parsed.message)) return null;
   return `GetSearch success=false: ${parsed.message ?? 'no message'}`;
+}
+
+/**
+ * GetOrders in list mode answering "no orders" (an empty list, not a refusal).
+ * VERIFY: wording unknown; taken by analogy with GetSearch (docs/external.md R11).
+ */
+const ORDERS_NONE_RE = /заказ\S*\s+не\s+найден|нет\s+заказ|not\s+found|no\s+orders/i;
+
+/** Error code of RosskoCallError when a method mode is refused by Rossko (recentOrders). */
+export const UNSUPPORTED_CODE = 'unsupported';
+
+/** null for a usable GetOrders list answer, else the refusal to report. */
+function ordersListFailure(parsed: { success: boolean; message: string | null }): string | null {
+  if (parsed.success) return null;
+  if (parsed.message !== null && ORDERS_NONE_RE.test(parsed.message)) return null;
+  return `GetOrders without order_ids refused: ${parsed.message ?? 'no message'}`;
+}
+
+/**
+ * Whether a failed list call means "Rossko does not support it" rather than a transient fault:
+ * an unexpected answer shape, or an HTTP 4xx / 500 (SOAP faults travel as 500).
+ * VERIFY: how Rossko actually refuses GetOrders without order_ids (R11).
+ */
+function isRefusal(error: unknown): boolean {
+  if (error instanceof RosskoResponseError) return true;
+  if (!(error instanceof RosskoCallError) || error.timeout || error.wsdl) return false;
+  return error.statusCode !== null && error.statusCode >= 400 && error.statusCode <= 500;
+}
+
+/** Moscow calendar day: date-only Rossko timestamps are Moscow dates. */
+const SUPPLIER_TIME_ZONE = 'Europe/Moscow';
+
+function createdSince(createdAt: string | null, since: Date): boolean {
+  if (createdAt === null) return true;
+  const parsed = parseSupplierTimestamp(createdAt);
+  if (parsed === null) return true;
+  if (parsed.kind === 'instant') return parsed.instant.getTime() >= since.getTime();
+  return parsed.date >= localDate(since, SUPPLIER_TIME_ZONE);
 }
 
 function errorMessage(error: unknown): string {
@@ -265,6 +306,46 @@ export function createRosskoClient(options: RosskoClientOptions): RosskoClient {
         merged.orders.push(...result.orders);
       }
       return merged;
+    },
+
+    async recentOrders({ since }: RecentOrdersOptions = {}): Promise<OrdersResult> {
+      if (since !== undefined && Number.isNaN(since.getTime())) {
+        throw new RangeError('recentOrders: invalid since');
+      }
+      let result: OrdersResult;
+      try {
+        // VERIFY: GetOrders without order_ids as an "account orders" list, and whether it takes
+        // a period or paging (R11). No filter arguments are sent: unknown elements might make
+        // the call fail; `since` is applied here instead.
+        result = await invoke(
+          'GetOrders',
+          credentials(),
+          'critical',
+          mapOrdersResult,
+          ordersListFailure,
+        );
+      } catch (error) {
+        if (!isRefusal(error)) throw error;
+        throw new RosskoCallError(
+          'GetOrders',
+          `order list is not supported: ${maskSecrets(errorMessage(error), [key1, key2])}`,
+          {
+            statusCode: error instanceof RosskoCallError ? error.statusCode : null,
+            code: UNSUPPORTED_CODE,
+          },
+        );
+      }
+      const refusal = ordersListFailure(result);
+      if (refusal !== null) {
+        throw new RosskoCallError('GetOrders', maskSecrets(refusal, [key1, key2]), {
+          code: UNSUPPORTED_CODE,
+        });
+      }
+      const orders =
+        since === undefined
+          ? result.orders
+          : result.orders.filter((order) => createdSince(order.createdAt, since));
+      return { success: true, message: result.message, orders };
     },
 
     async checkout(request: CheckoutRequest): Promise<CheckoutResult> {

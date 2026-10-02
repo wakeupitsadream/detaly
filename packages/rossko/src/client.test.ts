@@ -4,6 +4,7 @@ import {
   createRosskoClient,
   createRosskoCaller,
   searchFailure,
+  UNSUPPORTED_CODE,
   type RosskoClientOptions,
 } from './client';
 import {
@@ -380,6 +381,79 @@ describe('createRosskoClient.checkoutDetails and orders', () => {
     expect(calls[0]?.args).toMatchObject({ KEY1, KEY2 });
     // the fixture returns the same two orders for every batch
     expect(result.orders).toHaveLength(6);
+  });
+});
+
+describe('createRosskoClient.recentOrders (GetOrders list mode, VERIFY)', () => {
+  const ALL = ['70000012', '70000011', '70000010', '70000009'];
+
+  it('calls GetOrders without order_ids, critical, and returns the list', async () => {
+    const { instance, calls, events } = client();
+    const result = await instance.recentOrders();
+    expect(calls).toEqual([{ method: 'GetOrders', args: { KEY1, KEY2 } }]);
+    expect(result.success).toBe(true);
+    expect(result.orders.map((o) => o.id)).toEqual(ALL);
+    expect(events[0]).toMatchObject({ method: 'GetOrders', priority: 'critical', ok: true });
+  });
+
+  it('since keeps newer orders and those whose createdAt is not understood', async () => {
+    const { instance } = client();
+    const since = new Date('2026-10-02T12:20:04Z'); // 15:20:04 Moscow
+    expect((await instance.recentOrders({ since })).orders.map((o) => o.id)).toEqual([
+      '70000012',
+      '70000011',
+      '70000010',
+    ]);
+    await expect(instance.recentOrders({ since: new Date('nope') })).rejects.toThrow(RangeError);
+  });
+
+  it('success=false -> RosskoCallError code unsupported, reported ok=false', async () => {
+    const { instance, events } = client({
+      caller: createFixtureCaller({ ordersList: 'unsupported' }),
+    });
+    const error: unknown = await instance.recentOrders().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RosskoCallError);
+    expect(error).toMatchObject({ code: UNSUPPORTED_CODE, timeout: false, method: 'GetOrders' });
+    expect((error as Error).message).toContain('Не указаны номера заказов');
+    expect(events[0]).toMatchObject({ ok: false, supplierSuccess: false });
+  });
+
+  it('"no orders" is an empty list, not a refusal', async () => {
+    const caller: RosskoCaller = {
+      call: () =>
+        Promise.resolve({ OrdersResult: { success: false, message: 'Заказы не найдены' } }),
+    };
+    const result = await client({ caller }).instance.recentOrders();
+    expect(result).toEqual({ success: true, message: 'Заказы не найдены', orders: [] });
+  });
+
+  it('a SOAP fault (500) or an unexpected shape is unsupported', async () => {
+    const fault: RosskoCaller = {
+      call: () =>
+        Promise.reject(
+          new RosskoCallError('GetOrders', `soap:Client: order_ids required ${KEY1}`, {
+            statusCode: 500,
+          }),
+        ),
+    };
+    const error: unknown = await client({ caller: fault })
+      .instance.recentOrders()
+      .catch((e: unknown) => e);
+    expect(error).toMatchObject({ code: UNSUPPORTED_CODE, statusCode: 500 });
+    expect((error as Error).message).not.toContain(KEY1);
+    const shape: RosskoCaller = { call: () => Promise.resolve({ unexpected: true }) };
+    await expect(client({ caller: shape }).instance.recentOrders()).rejects.toMatchObject({
+      code: UNSUPPORTED_CODE,
+    });
+  });
+
+  it('timeouts and gateway errors are rethrown unchanged (the worker retries)', async () => {
+    const timeout = new RosskoCallError('GetOrders', 'timeout', { timeout: true, statusCode: 500 });
+    const gateway = new RosskoCallError('GetOrders', 'bad gateway', { statusCode: 502 });
+    for (const failure of [timeout, gateway]) {
+      const caller: RosskoCaller = { call: () => Promise.reject(failure) };
+      await expect(client({ caller }).instance.recentOrders()).rejects.toBe(failure);
+    }
   });
 });
 

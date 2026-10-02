@@ -375,9 +375,31 @@ describe('mapOrdersResult', () => {
     expect(result.orders[1]?.items[0]).toEqual({
       brand: 'Knecht',
       article: 'OC 90',
+      stockId: null,
       count: 1,
       priceKop: 38900,
       statusCode: 1,
     });
+    expect(result.orders.map((o) => o.comment)).toEqual([null, null]);
+  });
+
+  it('GetOrders.recent: comment and line stock (VERIFY: both fields are guesses)', () => {
+    const result = mapOrdersResult(fixture('GetOrders.recent'));
+    expect(result.orders.map((o) => [o.id, o.comment])).toEqual([
+      ['70000012', 'DT-000123/12'],
+      ['70000011', 'Заказ DT-000123/1'],
+      ['70000010', 'DT-000123/1'],
+      ['70000009', null],
+    ]);
+    expect(result.orders[2]?.items).toEqual([
+      {
+        brand: 'Knecht',
+        article: 'OC 90',
+        stockId: 'ORB1',
+        count: 2,
+        priceKop: 41250,
+        statusCode: 1,
+      },
+    ]);
   });
 });

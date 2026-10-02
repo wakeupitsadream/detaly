@@ -57,6 +57,7 @@ import {
 } from '@detaly/rossko';
 import type { Job } from 'bullmq';
 import type { WorkerDeps } from '../../deps';
+import { refreshCard } from '../receipts/offset';
 import {
   SYSTEM_ACTOR,
   errorText,
@@ -613,6 +614,12 @@ async function settle(
 
   nudge(deps);
   const { transition, orderNumber } = settled;
+  if (transition.ok) {
+    // The engine notifies the client (or posts a new card on needs_attention), not the open
+    // sellers card: without a redraw it keeps «Проверить и заказать» and never offers
+    // «Приехало». Best effort; the press on a stale card heals it too.
+    await refreshCard(deps, { orderId: head.orderId });
+  }
   if (!transition.ok) {
     log.warn(
       { reason: transition.reason, failed: transition.failed, status: transition.status },

@@ -121,7 +121,7 @@ done
 wait_for() {
   local what=$1 url=$2 pid=$3
   for _ in $(seq 90); do
-    if curl -fsS -o /dev/null --max-time 2 "$url"; then
+    if curl -fs -o /dev/null --max-time 2 "$url"; then
       log "$what is up"
       return 0
     fi

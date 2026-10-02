@@ -32,6 +32,7 @@ import {
   type TransitionFacts,
 } from '@detaly/orders';
 import type { WorkerDeps } from '../../deps';
+import { refreshCard } from '../receipts/offset';
 import { BATCH, HOUR_MS, HOUSEKEEPING_ACTOR, MINUTE_MS, notAfter, nudge } from './common';
 
 /**
@@ -65,7 +66,12 @@ async function fire(
       ...(input.facts ? { facts: input.facts } : {}),
       payload: { source: 'housekeeping' },
     });
-    if (result.ok) return 'transition';
+    if (result.ok) {
+      // A timer moves the order without a press (QR expired -> ready, no-show, ...): the open
+      // sellers card is redrawn with the buttons of the new status. Best effort.
+      await refreshCard(deps, { orderId: input.orderId });
+      return 'transition';
+    }
     if (result.status !== null && result.status !== input.expected) return 'moved';
     deps.logger.warn(
       { orderId: input.orderId, event: input.event, reason: result.reason, failed: result.failed },

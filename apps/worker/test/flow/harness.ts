@@ -885,16 +885,9 @@ export async function press(
     );
     return button?.callback_data ? { messageId: id, data: button.callback_data } : null;
   };
-  let found = await find();
-  if (found === null) {
-    // Some transitions made by the queues (GetCheckout succeeded, the handover payment
-    // succeeded) neither post nor refresh the seller card, so it keeps the buttons of the
-    // previous status until the next press redraws it (open issue of the flow package). The
-    // seller would press the stale card once; the harness redraws it the same way.
-    await worker.deps.sellerCards.refresh(orderId);
-    found = await waitFor(`button ${code} on the card of ${orderId}`, find);
-  }
-  const { messageId, data } = found;
+  // Transitions made by the queues (recheck, GetCheckout, payments, receipts, timers) redraw
+  // the open card themselves: no press is needed to see the buttons of the new status.
+  const { messageId, data } = await waitFor(`button ${code} on the card of ${orderId}`, find);
   const id = updateId++;
   await worker.bot.handleUpdate({
     update_id: id,

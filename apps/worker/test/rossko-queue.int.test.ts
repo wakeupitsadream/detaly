@@ -444,6 +444,8 @@ describe.skipIf(!enabled)('rossko queue', () => {
 
       const order = await orderOf(h.t, seeded.orderId);
       expect(order.status).toBe('ordering');
+      // The open sellers card is redrawn for `ordering` (no more «Проверить и заказать»).
+      expect(h.t.fakes.sellerCards.calls).toEqual([{ method: 'refresh', orderId: seeded.orderId }]);
       const [attempt] = await supplierOrdersOf(h.t, seeded.orderId);
       expect(attempt).toMatchObject({ attemptNo: 1, status: 'sending', calledAt: null });
       const links = await h.t.deps.db
@@ -472,6 +474,11 @@ describe.skipIf(!enabled)('rossko queue', () => {
 
       const after = await orderOf(h.t, seeded.orderId);
       expect(after.status).toBe('ordered_at_supplier');
+      // ... and again for `ordered_at_supplier`: «Приехало» without a press on a stale card.
+      expect(h.t.fakes.sellerCards.calls).toEqual([
+        { method: 'refresh', orderId: seeded.orderId },
+        { method: 'refresh', orderId: seeded.orderId },
+      ]);
       expect(after.promisedDate).not.toBeNull();
       expect((await itemsOf(h.t, seeded.orderId)).map((i) => i.state)).toEqual([
         'ordered',

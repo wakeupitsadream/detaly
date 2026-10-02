@@ -37,6 +37,7 @@ import {
 import { searchFailure } from '@detaly/rossko';
 import { UnrecoverableError, type Job } from 'bullmq';
 import type { WorkerDeps } from '../../deps';
+import { refreshCard } from '../receipts/offset';
 import {
   SYSTEM_ACTOR,
   errorText,
@@ -245,6 +246,9 @@ export async function processRecheck(job: Job, deps: WorkerDeps): Promise<Rechec
     log.warn({ reason: applied.reason, failed: applied.failed }, 'recheck: transition refused');
     return { outcome: 'not_applied', reason: applied.reason, recheckEventId };
   }
+  // The sellers card still shows «Проверить и заказать» of `confirmed`: redraw it for
+  // `ordering` (best effort; needs_attention also gets a new card from the notify queue).
+  await refreshCard(deps, { orderId });
   log.info(
     { to: applied.to, priceDriftBp: result.priceDriftBp, allAvailable: result.allAvailable },
     'recheck applied',

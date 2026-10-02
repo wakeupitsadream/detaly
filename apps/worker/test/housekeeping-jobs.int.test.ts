@@ -363,6 +363,8 @@ describe.skipIf(!inject('workerDatabaseUrl'))('housekeeping (worker-ops)', () =>
       expect((await eventsOf(db, qr.orderId)).map((e) => [e.type, e.toStatus])).toEqual([
         ['payment_ttl_expired', 'ready'],
       ]);
+      // The sellers card loses the expired QR state and offers «Выставить оплату» again.
+      expect(t.fakes.sellerCards.calls).toContainEqual({ method: 'refresh', orderId: qr.orderId });
     });
 
     it('Verification 15: prepay not collected on day 10 -> refund_pending, no-show, Rossko return task', async () => {

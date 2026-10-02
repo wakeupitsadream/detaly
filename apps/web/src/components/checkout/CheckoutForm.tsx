@@ -2,7 +2,7 @@
 
 import type { LineChange } from '@detaly/domain';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { DiffBanner } from '@/components/DiffBanner';
 
 type Field = 'phone' | 'name' | 'channel' | 'acceptOffer' | 'consentPd';
@@ -67,6 +67,16 @@ export function CheckoutForm(props: CheckoutFormProps) {
   useEffect(() => {
     setOverride(null);
   }, [props.expectedTotalKop, props.itemsHash]);
+
+  // On a phone the submit button is far below the banner: bring a fresh 409 banner into view
+  // and move focus there, so the client sees that the order was not created.
+  const changesRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (changes === null) return;
+    const node = changesRef.current;
+    node?.scrollIntoView({ block: 'center' });
+    node?.focus({ preventScroll: true });
+  }, [changes]);
 
   const expectedTotalKop = override?.totalKop ?? props.expectedTotalKop;
   const itemsHash = override?.itemsHash ?? props.itemsHash;
@@ -136,7 +146,12 @@ export function CheckoutForm(props: CheckoutFormProps) {
   return (
     <form className="space-y-5" onSubmit={(e) => void onSubmit(e)} data-testid="checkout-form">
       {changes !== null ? (
-        <div className="space-y-2">
+        <div
+          ref={changesRef}
+          tabIndex={-1}
+          className="space-y-2 outline-none"
+          data-testid="checkout-stale"
+        >
           <DiffBanner changes={changes} cartChanged />
           <p className="text-sm text-muted">
             Заказ не оформлен. Сумма и состав обновлены — проверьте их и отправьте форму ещё раз.

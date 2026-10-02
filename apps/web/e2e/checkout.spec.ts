@@ -293,6 +293,9 @@ test('stale total: 409 shows the diff banner, a resubmit creates the order', asy
     page.getByTestId('diff-banner').filter({ hasText: 'Корзина изменилась' }),
   ).toBeVisible();
   await expect(page.getByTestId('checkout-form')).toContainText('Заказ не оформлен');
+  // The submit button is far below the banner on a phone: the banner is scrolled into view.
+  await expect(page.getByTestId('checkout-stale')).toBeInViewport();
+  await expect(page.getByTestId('checkout-stale')).toBeFocused();
   await expect(page).toHaveURL(/\/checkout$/);
   await expectNoHorizontalScroll(page, '/checkout 409');
   await page.unroute('**/api/checkout');

@@ -2,10 +2,12 @@
  * Next 16 proxy (formerly middleware; Node.js runtime).
  *
  * 1. Search rate limit on /search and /api/search: 20 per minute and 300 per day per
- *    HMAC(SESSION_SECRET, client ip). HEAD and prefetch requests are not counted, nor are
- *    requests without a query (they never reach Rossko). Over the limit: JSON 429 with
- *    Retry-After for the API, a short HTML 429 page for /search. Redis down: fail open
- *    (the search itself then answers 503, because Rossko is never called without its limiter).
+ *    HMAC(SESSION_SECRET, client ip). Not counted: requests without a query, genuine router
+ *    prefetches of /search, and HEAD, which is answered here without running the search
+ *    (Next would run the GET handler for it); see server/search-request.ts. Every other
+ *    method counts. Over the limit: JSON 429 with Retry-After for the API, a short HTML 429
+ *    page for /search. Redis down: fail open (the search itself then answers 503, because
+ *    Rossko is never called without its limiter).
  * 2. X-Robots-Tag: always on /search, everywhere when NOINDEX_ALL=true (stage). This runs here
  *    and not in next.config headers() because the same image serves prod and stage.
  */
@@ -15,29 +17,11 @@ import { serverEnv, type Env } from './server/env';
 import { getLogger } from './server/logger';
 import { hitSearchRateLimit, type RateLimitDecision } from './server/rate-limit';
 import { getRedis } from './server/redis';
+import { classifySearchRequest } from './server/search-request';
 import { withTimeout } from './server/timeout';
 
-const LIMITED_PATHS = new Set(['/search', '/api/search']);
 const NOINDEX = 'noindex, nofollow';
 const RATE_LIMIT_TIMEOUT_MS = 1_000;
-
-function isPrefetch(request: NextRequest): boolean {
-  const headers = request.headers;
-  // Visible here thanks to skipProxyUrlNormalize in next.config.ts.
-  return (
-    headers.has('next-router-prefetch') ||
-    headers.has('next-router-segment-prefetch') ||
-    headers.get('purpose') === 'prefetch' ||
-    (headers.get('sec-purpose') ?? '').includes('prefetch')
-  );
-}
-
-function shouldCount(request: NextRequest): boolean {
-  if (request.method !== 'GET') return false;
-  if (!LIMITED_PATHS.has(request.nextUrl.pathname)) return false;
-  if (isPrefetch(request)) return false;
-  return (request.nextUrl.searchParams.get('q') ?? '').trim() !== '';
-}
 
 async function decide(request: NextRequest, env: Env): Promise<RateLimitDecision | null> {
   try {
@@ -97,6 +81,20 @@ function tooManyResponse(pathname: string, retryAfterSec: number): NextResponse 
   });
 }
 
+/** HEAD of a search: headers only, without spending a supplier call or the visitor's limit. */
+function headResponse(pathname: string): NextResponse {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Content-Type': pathname.startsWith('/api/')
+        ? 'application/json'
+        : 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Robots-Tag': NOINDEX,
+    },
+  });
+}
+
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   let env: Env;
   try {
@@ -108,7 +106,14 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   }
   const { pathname } = request.nextUrl;
 
-  if (shouldCount(request)) {
+  const kind = classifySearchRequest({
+    method: request.method,
+    pathname,
+    searchParams: request.nextUrl.searchParams,
+    headers: request.headers,
+  });
+  if (kind === 'head') return headResponse(pathname);
+  if (kind === 'count') {
     const decision = await decide(request, env);
     if (decision && !decision.allowed) return tooManyResponse(pathname, decision.retryAfterSec);
   }
@@ -121,6 +126,8 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  // Everything except build assets; the work above is cheap for non-search paths.
-  matcher: ['/((?!_next/static|_next/image|favicon\\.ico).*)'],
+  // Every path, build assets included: an exclusion such as `_next/static` is matched against
+  // the raw path, so `/_next/static/../../search?q=…` skipped the proxy while Next still routed
+  // it to /search. The work above is one cached env lookup for non-search paths.
+  matcher: '/:path*',
 };

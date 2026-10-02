@@ -54,8 +54,8 @@ const nextConfig: NextConfig = {
   // Node-only libraries loaded at runtime instead of being bundled (must be direct deps of web).
   serverExternalPackages: ['soap', 'pino', 'ioredis'],
   poweredByHeader: false,
-  // Lets src/proxy.ts see `next-router-prefetch` (stripped from the proxy request by default),
-  // so prefetches are not counted against the search limit. The proxy never rewrites or
+  // Lets src/proxy.ts see `rsc` and `next-router-prefetch` (stripped from the proxy request by
+  // default), so genuine router prefetches are not counted against the search limit. The proxy never rewrites or
   // redirects, which is what this flag would otherwise affect.
   skipProxyUrlNormalize: true,
   // `next build` must not need a database or env: pages are dynamic (see (site)/layout.tsx).

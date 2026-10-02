@@ -44,6 +44,32 @@ export const JOURNAL_EVENTS = [
   'deferred_1a_processed',
   /** effect open_claim in 1B: claims arrive in phase 1C, the journal keeps the request. */
   'claim_deferred',
+  // phase 1C (docs/phase-1c-implementation.md section 3.3)
+  /** «Принял возврат» with a photo of the returned part (claims.return_accepted_at). */
+  'claim_return_accepted',
+  /** A claim decision (refund / replace / reject) with the answer text (text not journaled). */
+  'claim_decided',
+  /** A claim closed without a refund transition («Замена выдана», reject). */
+  'claim_closed',
+  /** Compensation under art. 23.1 recorded by the owner (paid outside the system). */
+  'claim_compensation',
+  /** Installation booking requested by the client (web or bot) or staff. */
+  'install_requested',
+  'install_confirmed',
+  'install_declined',
+  'install_cancelled',
+  'install_done',
+  'install_no_show',
+  /** The client was reminded of a confirmed installation slot (24 hours before). */
+  'install_reminder',
+  /** A messenger was bound by a deep link of this order (phone confirmed). */
+  'messenger_bound',
+  /** Notifications switched off (/stop); not shown on the timeline. */
+  'messenger_unbound',
+  /** A photo (packaging, handover, return) was added to the order. */
+  'photo_added',
+  /** The order was checked out from a VIN proposal (/p/<token>). */
+  'vin_order',
 ] as const;
 export type JournalEvent = (typeof JOURNAL_EVENTS)[number];
 

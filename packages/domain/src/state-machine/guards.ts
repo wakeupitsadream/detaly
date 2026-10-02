@@ -385,6 +385,9 @@ export const lateHandoverPayment = all(payOnHandover, eventPaymentIsHandover, am
 
 export const noOpenClaims = guard('no_open_claims', (c) => c.openClaims === 0);
 
+/** Phase 1C (decision С7): before the handover only a delay claim may be opened. */
+export const claimIsDelay = guard('claim_is_delay', (c) => c.claimKind === 'delay');
+
 /**
  * PLAN section 2 invariant: a claim refund (except kind=delay) needs the returned part
  * accepted, or an owner override with a written reason.

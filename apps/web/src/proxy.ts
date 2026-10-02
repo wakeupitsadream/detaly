@@ -11,7 +11,11 @@
  *    - cancel (POST /api/orders/<token>/cancel): 5 per hour;
  *    - pay (POST /api/orders/<token>/pay): 10 per hour;
  *    - order_action (POST /api/orders/<token>/actions): 20 per hour;
- *    - cart (writes to /api/cart and /api/cart/**): 120 per hour.
+ *    - cart (writes to /api/cart and /api/cart/**): 120 per hour;
+ *    - phase 1C (decision С27): link (POST /api/orders/<token>/link) 20 per hour, install
+ *      (POST /api/orders/<token>/install and …/install/cancel) 20 per hour, claim
+ *      (POST /api/orders/<token>/claims) 10 per hour, vin (POST /api/vin) 5 per hour and 20
+ *      per day, proposal (POST /api/proposals/<token>/take) 30 per hour.
  *    The YooKassa webhook is not limited (its handler checks the IP allowlist) but gets
  *    Cache-Control: no-store.
  *    A write with a foreign Origin is not counted: its handler answers 403, and counting it
@@ -33,11 +37,16 @@
  *    runs here and not in next.config headers() because the same image serves prod and stage;
  *    proxy response headers are applied after the next.config ones (Next's resolve-routes
  *    copies them onto the response later), and next.config keeps its global Referrer-Policy
- *    off /o/ anyway.
+ *    off /o/ anyway. Phase 1C: the VIN proposal /p/<token>, its API /api/proposals/* and the
+ *    VIN confirmation /vin/sent/<link token> carry tokens too and get the same three headers;
+ *    admin files (/api/admin/files/*) get no-store with the other admin headers.
  * 4. DEMO_MODE (docs/design.md, section 5): the rate limits are counted in memory
  *    (server/demo/rate-limit.ts, Redis is never touched); /admin, /api/admin/*,
  *    /api/webhooks/* and /api/orders/* answer 404, and so does every order page but the sample
- *    /o/demo (its handlers check the same again).
+ *    /o/demo (its handlers check the same again). Phase 1C (decision С21): the demo forms are
+ *    answered here WITHOUT reading the body — POST /api/vin -> 303 /vin/sent?demo=1, POST
+ *    /api/orders/demo/{link,install,claims} -> 303 /o/demo?demo=<what>; every proposal but
+ *    /p/demo (and its API) and every /vin/sent/<token> answer 404.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import {
@@ -121,9 +130,26 @@ const BACK_LINKS: Record<RateLimitKind, { href: string; label: string }> = {
   pay: { href: '/', label: 'На главную' },
   order_action: { href: '/', label: 'На главную' },
   admin_auth: { href: '/admin', label: 'Попробовать снова' },
+  link: { href: '/', label: 'На главную' },
+  install: { href: '/', label: 'На главную' },
+  claim: { href: '/', label: 'На главную' },
+  vin: { href: '/vin', label: 'Вернуться к заявке' },
+  proposal: { href: '/', label: 'На главную' },
 };
 
-/** Order access tokens are base64url (server/orders/access.ts); anything else gets no link. */
+/** Limits of forms on /o/<token>: the 429 page links back to the order. */
+const ORDER_PAGE_KINDS: ReadonlySet<RateLimitKind> = new Set([
+  'pay',
+  'order_action',
+  'link',
+  'install',
+  'claim',
+]);
+
+/**
+ * Order access tokens and proposal tokens are base64url (server/orders/access.ts, decision
+ * С13); anything else gets no link.
+ */
 const ORDER_TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/;
 
 /**
@@ -131,11 +157,12 @@ const ORDER_TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/;
  * order page; the token is already in the URL the visitor posted to.
  */
 function backLink(kind: RateLimitKind, path: string): { href: string; label: string } {
-  if (kind === 'pay' || kind === 'order_action') {
-    const token = path.split('/')[3];
-    if (token && ORDER_TOKEN_RE.test(token)) {
-      return { href: `/o/${token}`, label: 'Вернуться к заказу' };
-    }
+  const token = path.split('/')[3];
+  if (ORDER_PAGE_KINDS.has(kind) && token && ORDER_TOKEN_RE.test(token)) {
+    return { href: `/o/${token}`, label: 'Вернуться к заказу' };
+  }
+  if (kind === 'proposal' && token && ORDER_TOKEN_RE.test(token)) {
+    return { href: `/p/${token}`, label: 'Вернуться к подборке' };
   }
   return BACK_LINKS[kind];
 }
@@ -196,9 +223,18 @@ function under(path: string, prefix: string): boolean {
   return path === prefix || path.startsWith(`${prefix}/`);
 }
 
-/** Order page and its API: the URL carries the order's access token. */
+/**
+ * Pages and APIs whose URL carries a secret token: the order page and its API, the VIN
+ * proposal /p/<token> and its API, the VIN confirmation /vin/sent/<link token> (phase 1C).
+ */
 function isOrderPath(path: string): boolean {
-  return under(path, '/o') || under(path, '/api/orders');
+  return (
+    under(path, '/o') ||
+    under(path, '/api/orders') ||
+    under(path, '/p') ||
+    under(path, '/api/proposals') ||
+    under(path, '/vin/sent')
+  );
 }
 
 /** Payment provider callbacks: never cached by anything in between. */
@@ -229,15 +265,57 @@ function applyPathHeaders(response: NextResponse, path: string, env: Env): NextR
 /** The sample order of the demo (app/(site)/o/demo/page.tsx). */
 export const DEMO_ORDER_PATH = '/o/demo';
 
+/** The sample VIN proposal of the demo (phase 1C, app/(site)/p/[token] with token `demo`). */
+export const DEMO_PROPOSAL_PATH = '/p/demo';
+
 /**
  * DEMO_MODE: paths that do not exist without a database (the admin, payment webhooks, the
- * order API and real order pages). null = serve as usual.
+ * order API, real order pages, real proposals and their API, VIN confirmations with a link
+ * token). null = serve as usual.
  */
 export function demoBlockedPath(path: string): 'api' | 'page' | null {
   if (under(path, '/api/admin') || isWebhookPath(path) || under(path, '/api/orders')) return 'api';
+  if (under(path, '/api/proposals') && !under(path, '/api/proposals/demo')) return 'api';
   if (under(path, '/admin')) return 'page';
   if (under(path, '/o') && path !== DEMO_ORDER_PATH) return 'page';
+  if (under(path, '/p') && path !== DEMO_PROPOSAL_PATH) return 'page';
+  if (under(path, '/vin/sent') && path !== '/vin/sent') return 'page';
   return null;
+}
+
+/** Demo forms of the sample order: the last path segment -> `?demo=` of /o/demo. */
+const DEMO_ORDER_FORMS: Readonly<Record<string, string>> = {
+  link: 'link',
+  install: 'install',
+  claims: 'claim',
+};
+
+/**
+ * DEMO_MODE (decision С21): where a demo form goes instead of its handler, or null. The proxy
+ * answers 303 without reading the body, so no personal data or photo is ever accepted.
+ */
+export function demoFormRedirect(method: string, path: string): string | null {
+  if (method.toUpperCase() !== 'POST') return null;
+  if (path === '/api/vin') return '/vin/sent?demo=1';
+  const prefix = '/api/orders/demo/';
+  if (path.startsWith(prefix)) {
+    const form = path.slice(prefix.length);
+    if (Object.hasOwn(DEMO_ORDER_FORMS, form)) return `/o/demo?demo=${DEMO_ORDER_FORMS[form]}`;
+  }
+  return null;
+}
+
+/** 303 to a same-site path (relative Location: valid whatever host the demo answers on). */
+function demoSeeOther(location: string): NextResponse {
+  return new NextResponse(null, {
+    status: 303,
+    headers: {
+      Location: location,
+      'Cache-Control': 'no-store',
+      'X-Robots-Tag': NOINDEX,
+      'Referrer-Policy': 'no-referrer',
+    },
+  });
 }
 
 /** 404 of a demo-blocked path: JSON for the API, the site's not-found page otherwise. */
@@ -306,6 +384,8 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     // Nor does anything a demo hides, whatever else is wrong with its env.
     if (rawDemoFlag()) {
       const path = canonicalPath(request.nextUrl.pathname);
+      const redirect = demoFormRedirect(request.method, path);
+      if (redirect !== null) return demoSeeOther(redirect);
       const blocked = demoBlockedPath(path);
       if (blocked !== null) {
         return demoNotFoundResponse(request, path.startsWith('/api/') ? 'api' : blocked);
@@ -317,6 +397,8 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   // Decoded and normalized, so `/o//token/` or `/%6f/token` gets the same headers.
   const path = canonicalPath(pathname);
   if (env.DEMO_MODE) {
+    const redirect = demoFormRedirect(request.method, path);
+    if (redirect !== null) return demoSeeOther(redirect);
     const blocked = isAdminPath(pathname) ? 'page' : demoBlockedPath(path);
     if (blocked !== null) {
       return demoNotFoundResponse(request, path.startsWith('/api/') ? 'api' : blocked);

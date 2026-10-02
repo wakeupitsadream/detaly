@@ -68,6 +68,13 @@ describe.skipIf(!hasTestDatabase)('createWorkerDeps', () => {
     expect(deps.receipts).toBeNull();
     expect(deps.smsDriver).toBeNull();
     expect(deps.telegram).toBeNull();
+    // phase 1C: no client bot without its token, MAX is phase 2, photos off by default
+    expect(deps.clientTelegram).toBeNull();
+    expect(deps.maxDriver).toBeNull();
+    expect(deps.files.kind).toBe('none');
+    expect(
+      build({ TG_CLIENT_BOT_TOKEN: '654321:fake-client-token' }).deps.clientTelegram,
+    ).toBeInstanceOf(Api);
     expect(deps.keyPrefix).toBe(prefix);
     expect(deps.bullPrefix).toBe(`${prefix}bull`);
     expect(deps.engine.db).toBe(deps.db);
@@ -127,6 +134,9 @@ describe.skipIf(!hasTestDatabase)('createWorkerDeps', () => {
       },
       refresh: async () => undefined,
       sendHandoverQr: async () => undefined,
+      // phase 1C ports
+      postVin: async () => ({ status: 'posted' }),
+      refreshVin: async () => undefined,
     };
     const { deps } = build({ TG_SELLER_BOT_TOKEN: '123456:fake-token-for-tests' }, cards);
     expect(deps.telegram).toBeInstanceOf(Api);

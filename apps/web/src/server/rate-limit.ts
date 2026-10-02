@@ -7,6 +7,12 @@
  * - pay: 10 POST /api/orders/<token>/pay per hour (each may create a YooKassa payment);
  * - order_action: 20 POST /api/orders/<token>/actions per hour (client decisions, some of them
  *   confirmed by the last 4 phone digits: brute force, docs/phase-1b-implementation.md 15);
+ * - link: 20 POST /api/orders/<token>/link per hour (messenger deep links, phase 1C);
+ * - install: 20 POST /api/orders/<token>/install and …/install/cancel per hour (phase 1C);
+ * - claim: 10 POST /api/orders/<token>/claims per hour (photos, the last 4 phone digits; the
+ *   wrong-digits counter of 1A works on top of it);
+ * - vin: 5 POST /api/vin per hour and 20 per 24 hours (a form with personal data and photos);
+ * - proposal: 30 POST /api/proposals/<token>/take per hour (copies a proposal into the cart);
  * - admin_auth: 20 wrong /admin passwords per hour (Basic auth in src/proxy.ts). Only wrong
  *   passwords are hit; while the window is full even the right one is refused (peekRateLimit),
  *   otherwise a brute force would still learn the password from the one answer that differs.
@@ -20,7 +26,19 @@ import { slidingWindowHit, type Redis } from '@detaly/config';
 import { rateLimitSubject } from './client-ip';
 
 export type RateLimitKind =
-  'search' | 'checkout' | 'cancel' | 'cart' | 'pay' | 'order_action' | 'admin_auth';
+  | 'search'
+  | 'checkout'
+  | 'cancel'
+  | 'cart'
+  | 'pay'
+  | 'order_action'
+  | 'admin_auth'
+  // phase 1C (docs/phase-1c-implementation.md decision С27)
+  | 'link'
+  | 'install'
+  | 'claim'
+  | 'vin'
+  | 'proposal';
 
 /** Name reported in decisions. */
 export type RateLimitWindowName = 'minute' | 'hour' | 'day';
@@ -52,6 +70,14 @@ export const RATE_LIMITS = {
   pay: [{ window: 'hour', keySegment: 'hour', limit: 10, windowMs: HOUR_MS }],
   order_action: [{ window: 'hour', keySegment: 'hour', limit: 20, windowMs: HOUR_MS }],
   admin_auth: [{ window: 'hour', keySegment: 'hour', limit: 20, windowMs: HOUR_MS }],
+  link: [{ window: 'hour', keySegment: 'hour', limit: 20, windowMs: HOUR_MS }],
+  install: [{ window: 'hour', keySegment: 'hour', limit: 20, windowMs: HOUR_MS }],
+  claim: [{ window: 'hour', keySegment: 'hour', limit: 10, windowMs: HOUR_MS }],
+  vin: [
+    { window: 'hour', keySegment: 'hour', limit: 5, windowMs: HOUR_MS },
+    { window: 'day', keySegment: 'day', limit: 20, windowMs: DAY_MS },
+  ],
+  proposal: [{ window: 'hour', keySegment: 'hour', limit: 30, windowMs: HOUR_MS }],
 } as const satisfies Record<RateLimitKind, readonly RateLimitRule[]>;
 
 /** Phase 0 shape of the search limits (kept for existing imports). */

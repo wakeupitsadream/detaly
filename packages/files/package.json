@@ -1,0 +1,27 @@
+{
+  "name": "@detaly/files",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@detaly/config": "workspace:*",
+    "@detaly/domain": "workspace:*",
+    "aws4fetch": "1.0.20",
+    "sharp": "0.35.5",
+    "uuid": "14.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "msw": "3.0.1",
+    "typescript": "6.0.3",
+    "vite": "8.3.2",
+    "vitest": "5.0.3"
+  }
+}

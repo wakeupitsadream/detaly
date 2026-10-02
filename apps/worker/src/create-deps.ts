@@ -1,8 +1,9 @@
 // Builds WorkerDeps from the parsed env (docs/phase-1b-implementation.md section 9.1): Postgres,
 // Redis (RESP2), queues, the order engine with `nudge`, YooKassa (null without the 4 variables,
 // decision Б6), the Rossko client behind the shared limiter, the SMS driver with its guard (null
-// with SMS_PROVIDER=none), the seller bot API (null without a token), seller cards, alerts and
-// the queue inspector. app.ts owns the returned connections and closes them on shutdown.
+// with SMS_PROVIDER=none), the seller and client bot APIs (null without a token), the photo
+// FileStore (phase 1C), seller cards, alerts and the queue inspector. app.ts owns the returned
+// connections and closes them on shutdown.
 import {
   BULLMQ_PREFIX,
   createRedis,
@@ -16,6 +17,7 @@ import {
   type Redis,
 } from '@detaly/config';
 import { and, apiCalls, createDb, eq, settings, sql, type Db } from '@detaly/db';
+import { createFileStoreFromEnv, type FileStore } from '@detaly/files';
 import {
   createSmsDriver,
   createSmsGuard,
@@ -38,7 +40,7 @@ import { Api } from 'grammy';
 import { createAlerts } from './alerts';
 import { createSellerCards } from './bots/seller/cards';
 import { safeErrorMessage } from './dead-letter';
-import type { SellerCardPort, SellerTelegramApi, WorkerDeps } from './deps';
+import type { ClientTelegramApi, SellerCardPort, SellerTelegramApi, WorkerDeps } from './deps';
 import { createQueueInspector } from './inspector';
 import { createQueues } from './queues';
 
@@ -73,6 +75,10 @@ export interface CreateWorkerDepsOptions {
   fetch?: typeof fetch;
   /** Overrides the seller bot API built from TG_SELLER_BOT_TOKEN (tests: fake transport). */
   telegram?: SellerTelegramApi | null;
+  /** Overrides the client bot API built from TG_CLIENT_BOT_TOKEN (tests: fake transport). */
+  clientTelegram?: ClientTelegramApi | null;
+  /** Overrides the FileStore of FILES_STORAGE (tests: memory store). */
+  files?: FileStore;
   /** Overrides createSellerCards (tests). */
   sellerCards?: (deps: WorkerDeps) => SellerCardPort;
 }
@@ -279,6 +285,13 @@ export function createWorkerDeps(options: CreateWorkerDepsOptions): WorkerResour
         ? new Api(env.TG_SELLER_BOT_TOKEN)
         : null;
 
+  const clientTelegram =
+    options.clientTelegram !== undefined
+      ? options.clientTelegram
+      : env.TG_CLIENT_BOT_TOKEN
+        ? new Api(env.TG_CLIENT_BOT_TOKEN)
+        : null;
+
   // Seller cards need the finished deps object: the port delegates to it once it is built.
   let cards: SellerCardPort | null = null;
   const built = (): SellerCardPort => {
@@ -289,6 +302,8 @@ export function createWorkerDeps(options: CreateWorkerDepsOptions): WorkerResour
     post: (input) => built().post(input),
     refresh: (orderId) => built().refresh(orderId),
     sendHandoverQr: (input) => built().sendHandoverQr(input),
+    postVin: (input) => built().postVin(input),
+    refreshVin: (vinRequestId) => built().refreshVin(vinRequestId),
   };
 
   const deps: WorkerDeps = {
@@ -322,6 +337,11 @@ export function createWorkerDeps(options: CreateWorkerDepsOptions): WorkerResour
       fetch: options.fetch,
     }),
     telegram,
+    clientTelegram,
+    // MAX is phase 2 (decision С1): no driver, selectChannel never picks it.
+    maxDriver: null,
+    files: options.files ?? createFileStoreFromEnv(env, { fetch: options.fetch }),
+    fetch: options.fetch ?? fetch,
     sellerCards: cardsPort,
     alerts: createAlerts({ db, telegram, sellerChatId: env.TG_SELLER_CHAT_ID, logger, now }),
     inspector: createQueueInspector({ queues, logger }),

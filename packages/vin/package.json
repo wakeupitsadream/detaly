@@ -11,7 +11,12 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@detaly/domain": "workspace:*"
+    "@detaly/config": "workspace:*",
+    "@detaly/db": "workspace:*",
+    "@detaly/domain": "workspace:*",
+    "@detaly/orders": "workspace:*",
+    "@detaly/rossko": "workspace:*",
+    "uuid": "14.0.2"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

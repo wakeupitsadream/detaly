@@ -7,7 +7,7 @@
  * `smsText`: SMS has no buttons, so it sends the client to /o/<token> (the URL button), and two
  * UCS-2 segments (134 characters) leave about 65 characters next to a 65-character link. The sender name carries the brand.
  */
-import type { OrderNotifyTemplate } from '@detaly/domain';
+import { CLAIM_KIND_LABELS, type OrderNotifyTemplate } from '@detaly/domain';
 import type { CallbackAction } from '../actions';
 import { deadline, formatReplyBy, itemsLine, lines, maskPhone, promise, rub } from '../format';
 import type { MessageButton, OrderTemplateData, RenderedMessage } from '../types';
@@ -60,6 +60,15 @@ const storageEnding = (d: OrderTemplateData): boolean =>
   d.readyDays > 0 &&
   typeof d.storageDays === 'number' &&
   d.storageDays - d.readyDays <= STORAGE_WARN_DAYS_LEFT;
+/** Installation is the partner's service, paid at the service (PLAN risk 11: no agency). */
+const installPaid = (d: OrderTemplateData): string =>
+  d.installPartner
+    ? `Установка — услуга ${d.installPartner}, оплачивается в сервисе по его чеку.`
+    : 'Установка оплачивается в сервисе по его чеку.';
+const slot = (d: OrderTemplateData): string => d.slotText ?? 'выбранное время';
+const claimKind = (d: OrderTemplateData): string | null =>
+  d.claim ? CLAIM_KIND_LABELS[d.claim.kind].toLowerCase() : null;
+
 const storagePhrase = (d: OrderTemplateData): string =>
   d.scheme === 'prepay'
     ? `По оферте заказ хранится ${d.storageDays} дн., затем возврат денег.`
@@ -208,6 +217,38 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
       msg(lines(head(d), 'Деньги отправлены. Срок зачисления зависит от банка.'), [orderLink(d)]),
       `Заказ ${d.orderNumber}: деньги отправлены, зачисление зависит от банка.`,
     ),
+
+  // --- client, phase 1C (texts are finished by the notify-1c package) ----------------------
+  // The decision text may contain PD: only a link to the order page (decision С2).
+  claim_decided: (d) =>
+    msg(lines(head(d), 'Ответ по претензии готов — он на странице заказа.'), [
+      orderLink(d, 'Открыть ответ'),
+    ]),
+  install_requested: (d) =>
+    msg(
+      lines(
+        head(d),
+        `Запись на установку: ${slot(d)}. Ждём подтверждения мастера.`,
+        installPaid(d),
+      ),
+      [orderLink(d)],
+    ),
+  install_confirmed: (d) =>
+    msg(lines(head(d), `Запись на установку подтверждена: ${slot(d)}.`, installPaid(d)), [
+      orderLink(d),
+    ]),
+  install_declined: (d) =>
+    msg(
+      lines(
+        head(d),
+        `Мастер не сможет принять машину: ${slot(d)}. Выберите другое время на странице заказа.`,
+      ),
+      [orderLink(d, 'Выбрать другое время')],
+    ),
+  install_reminder: (d) =>
+    msg(lines(head(d), `Напоминаем о записи на установку: ${slot(d)}.`, installPaid(d)), [
+      orderLink(d),
+    ]),
 
   // --- staff -------------------------------------------------------------------------------
   staff_new_order: (d) =>
@@ -362,6 +403,25 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
         `Заказ ${d.orderNumber}: чек возврата не зарегистрирован`,
         d.note,
         'Деньги клиенту отправлены, но чека возврата нет (54-ФЗ). Проверьте чек в ЛК ЮKassa и при необходимости пробейте чек коррекции.',
+      ),
+      adminLink(d),
+    ),
+  // --- staff, phase 1C ----------------------------------------------------------------------
+  // The client's text and photos stay in the admin (decision С2).
+  staff_claim_opened: (d) =>
+    msg(
+      lines(
+        `Претензия по заказу ${d.orderNumber}${claimKind(d) ? `: ${claimKind(d)}` : ''}.`,
+        what(d),
+        `Ответить до ${deadline(d.claim?.deadlineDate ?? d.deadlineDate)}.`,
+      ),
+      adminLink(d),
+    ),
+  staff_install_request: (d) =>
+    msg(
+      lines(
+        `Заказ ${d.orderNumber}: запись на установку ${slot(d)}.`,
+        'Подтвердите или отклоните.',
       ),
       adminLink(d),
     ),

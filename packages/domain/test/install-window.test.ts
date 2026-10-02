@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   dayLoadStrip,
   demoLoadSnapshot,
+  installSlotOf,
+  listInstallSlots,
   parseWorkHours,
   planInstallWindow,
   zonedInstant,
@@ -180,5 +182,81 @@ describe('dayLoadStrip', () => {
     expect(strip.map((c) => c.hour)).toEqual([10, 11, 12, 13, 14, 15, 16, 17, 18]);
     expect(strip.filter((c) => c.inSlot)).toHaveLength(2);
     for (const cell of strip.filter((c) => c.inSlot)) expect(cell.booked).toBeLessThan(2);
+  });
+});
+
+describe('listInstallSlots (decision С6)', () => {
+  const list = (etaDate: string, now: Date, load: LoadSnapshot = FREE, limit = 6) =>
+    listInstallSlots({ etaDate, now, timeZone: TZ, schedule: WEEKDAYS, load, limit });
+
+  it('starts with the planInstallWindow slot and goes on by the step', () => {
+    const now = at('2026-10-05', '08:00');
+    const slots = list('2026-10-05', now);
+    expect(slots.map((s) => s.slotStart.toISOString())).toEqual(
+      ['12:00', '13:00', '14:00', '15:00', '16:00', '17:00'].map((t) =>
+        at('2026-10-05', t).toISOString(),
+      ),
+    );
+    const first = planInstallWindow({
+      etaDate: '2026-10-05',
+      now,
+      timeZone: TZ,
+      schedule: WEEKDAYS,
+      load: FREE,
+    });
+    expect(slots[0]).toEqual(first);
+  });
+
+  it('equals planInstallWindow for many days, loads and clocks', () => {
+    const load = demoLoadSnapshot({ schedule: WITH_SATURDAY, timeZone: TZ });
+    for (let day = 1; day <= 20; day += 1) {
+      for (const time of ['07:30', '11:10', '16:45', '21:00']) {
+        const date = `2026-10-${String(day).padStart(2, '0')}`;
+        const input = {
+          etaDate: date,
+          now: at(date, time),
+          timeZone: TZ,
+          schedule: WITH_SATURDAY,
+          load,
+        };
+        expect(listInstallSlots({ ...input, limit: 3 })[0] ?? null).toEqual(
+          planInstallWindow(input),
+        );
+      }
+    }
+  });
+
+  it('skips busy hours and closed days, crosses into the next working day', () => {
+    // Friday 2026-10-09 from 16:00: 16:00 is busy, 17:00 fits before 19:00, then Monday.
+    const slots = list('2026-10-09', at('2026-10-09', '15:00'), busy('2026-10-09 16'), 3);
+    expect(slots.map((s) => s.slotStart.toISOString())).toEqual([
+      at('2026-10-09', '17:00').toISOString(),
+      at('2026-10-12', '10:00').toISOString(),
+      at('2026-10-12', '11:00').toISOString(),
+    ]);
+  });
+
+  it('is empty without understood hours and validates the limit', () => {
+    expect(
+      listInstallSlots({
+        etaDate: '2026-10-05',
+        now: at('2026-10-05', '08:00'),
+        schedule: null,
+        load: FREE,
+        limit: 6,
+      }),
+    ).toEqual([]);
+    expect(() => list('2026-10-05', at('2026-10-05', '08:00'), FREE, 0)).toThrow(RangeError);
+  });
+
+  it('installSlotOf renders the slot in the client zone', () => {
+    const [slot] = list('2026-10-08', at('2026-10-08', '08:00'), FREE, 1);
+    expect(installSlotOf(slot!, TZ)).toEqual({
+      startAt: '2026-10-08T12:00:00+05:00',
+      endAt: '2026-10-08T14:00:00+05:00',
+      dayText: 'чт 8 окт',
+      timeText: '12:00',
+    });
+    expect(new Date(installSlotOf(slot!, TZ).startAt).getTime()).toBe(slot!.slotStart.getTime());
   });
 });

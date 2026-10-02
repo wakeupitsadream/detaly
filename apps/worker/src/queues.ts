@@ -101,8 +101,8 @@ export interface SchedulerSpec {
 
 /**
  * Every Job Scheduler (section 9.4): heartbeat 30 s, timers 60 s, reminders 15 min, SMS budget
- * 1 h, deferred 1A effects 10 min, reconciliation sweep 10 min and the nightly check at 03:15
- * Asia/Yekaterinburg.
+ * 1 h, deferred 1A effects 10 min, reconciliation sweep 10 min, the nightly check at 03:15 and
+ * the VIN photo retention at 04:40 Asia/Yekaterinburg (phase 1C, decision С16).
  */
 export const SCHEDULERS: readonly SchedulerSpec[] = [
   {
@@ -129,6 +129,12 @@ export const SCHEDULERS: readonly SchedulerSpec[] = [
     name: HOUSEKEEPING_JOBS.deferred1a,
     repeat: { every: 10 * 60_000 },
     keep: 20,
+  },
+  {
+    queue: 'housekeeping',
+    name: HOUSEKEEPING_JOBS.retention,
+    repeat: { pattern: '40 4 * * *', tz: SCHEDULER_TZ },
+    keep: 30,
   },
   {
     queue: 'reconciliation',

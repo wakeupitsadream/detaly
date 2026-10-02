@@ -8,6 +8,10 @@
  * - pay: POST /api/orders/<token>/pay (phase 1B).
  * - order_action: POST /api/orders/<token>/actions (phase 1B).
  * - cart: POST, PATCH and DELETE on /api/cart and /api/cart/**.
+ * - phase 1C (decision С27): link — POST /api/orders/<token>/link; install —
+ *   POST /api/orders/<token>/install and /api/orders/<token>/install/cancel; claim —
+ *   POST /api/orders/<token>/claims; vin — POST /api/vin; proposal —
+ *   POST /api/proposals/<token>/take.
  *
  * Not limited here: the YooKassa webhook (/api/webhooks/yookassa, closed by the IP allowlist
  * in its handler) and /admin with /api/admin (Basic auth in the proxy, which limits wrong
@@ -84,6 +88,9 @@ const ORDER_WRITE_KINDS: Readonly<Record<string, RateLimitKind>> = {
   cancel: 'cancel',
   pay: 'pay',
   actions: 'order_action',
+  link: 'link',
+  install: 'install',
+  claims: 'claim',
 };
 
 /** Write-path limit of a decoded path, or null. */
@@ -94,7 +101,15 @@ function writeKind(segments: string[]): RateLimitKind | null {
   if (area === 'orders' && segments.length === 4 && token && action !== undefined) {
     return Object.hasOwn(ORDER_WRITE_KINDS, action) ? (ORDER_WRITE_KINDS[action] ?? null) : null;
   }
+  // /api/orders/<token>/install/cancel spends the install allowance.
+  if (area === 'orders' && segments.length === 5 && token) {
+    return action === 'install' && segments[4] === 'cancel' ? 'install' : null;
+  }
   if (area === 'cart') return 'cart';
+  if (area === 'vin' && segments.length === 2) return 'vin';
+  if (area === 'proposals' && segments.length === 4 && token && action === 'take') {
+    return 'proposal';
+  }
   return null;
 }
 
@@ -108,9 +123,10 @@ export function classifyLimitedRequest(request: LimitedRequestLike): LimitedRequ
 }
 
 /**
- * True for a checkout, cancel, pay, order action or cart write that carries an `Origin` other than APP_BASE_URL's
- * (`null` included, unless `Sec-Fetch-Site: same-origin` marks it as a form on one of our
- * no-referrer pages, see isSameOrigin). Browsers send `Origin` on every cross-site POST, and a cross-site PATCH or
+ * True for a limited write (checkout, cancel, pay, order action, cart, the phase 1C forms)
+ * that carries an `Origin` other than APP_BASE_URL's (`null` included, unless
+ * `Sec-Fetch-Site: same-origin` marks it as a form on one of our no-referrer pages, see
+ * isSameOrigin). Browsers send `Origin` on every cross-site POST, and a cross-site PATCH or
  * DELETE never gets past the CORS preflight, so this is exactly the CSRF case: the handler
  * answers 403 (decision Д19) and the proxy does not spend the visitor's allowance on it.
  * Otherwise five hidden forms on any page would block cancellation for the visitor's whole

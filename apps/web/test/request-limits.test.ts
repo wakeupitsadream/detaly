@@ -176,6 +176,37 @@ describe('classifyLimitedRequest: phase 1B pay, order actions, webhook, admin', 
   });
 });
 
+describe('classifyLimitedRequest: phase 1C forms (decision С27)', () => {
+  const token = 'Zx9_aB-cd1234567890abcdefghijklmnopqrstuvw';
+
+  it('counts link, install, claims, VIN and proposal writes on their own limits', () => {
+    expect(classify('POST', `/api/orders/${token}/link`)).toEqual(count('link'));
+    expect(classify('POST', `/api/orders/${token}/install`)).toEqual(count('install'));
+    expect(classify('POST', `/api/orders/${token}/install/cancel`)).toEqual(count('install'));
+    expect(classify('POST', `/api/orders/${token}/claims`)).toEqual(count('claim'));
+    expect(classify('POST', '/api/vin')).toEqual(count('vin'));
+    expect(classify('POST', '/api/vin/')).toEqual(count('vin'));
+    expect(classify('POST', '/api/%76in')).toEqual(count('vin'));
+    expect(classify('POST', `/api/proposals/${token}/take`)).toEqual(count('proposal'));
+    expect(classify('POST', `/api//proposals/${token}/./take/`)).toEqual(count('proposal'));
+  });
+
+  it('never counts reads and unknown neighbours', () => {
+    for (const method of ['GET', 'HEAD', 'OPTIONS']) {
+      expect(classify(method, '/api/vin'), method).toEqual(PASS);
+      expect(classify(method, `/api/orders/${token}/claims`), method).toEqual(PASS);
+      expect(classify(method, `/api/proposals/${token}/take`), method).toEqual(PASS);
+    }
+    expect(classify('POST', `/api/orders/${token}/install/other`)).toEqual(PASS);
+    expect(classify('POST', `/api/orders/${token}/cancel/install`)).toEqual(PASS);
+    expect(classify('POST', `/api/orders/${token}/claims/1/photos`)).toEqual(PASS);
+    expect(classify('POST', '/api/vin/extra')).toEqual(PASS);
+    expect(classify('POST', `/api/proposals/${token}`)).toEqual(PASS);
+    expect(classify('POST', `/api/proposals/${token}/drop`)).toEqual(PASS);
+    expect(classify('POST', '/vin')).toEqual(PASS);
+  });
+});
+
 describe('pathSegments and canonicalPath', () => {
   it('normalizes slashes and dot segments and decodes each segment once', () => {
     expect(canonicalPath('/')).toBe('/');

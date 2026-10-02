@@ -328,7 +328,12 @@ describe('other constraints', () => {
       .returning();
     const [cart] = await db
       .insert(carts)
-      .values({ proposalToken: randomToken(), vinRequestId: request!.id })
+      .values({
+        proposalToken: randomToken(),
+        // phase 1C: a proposal token always comes with its expiry (carts_proposal_expires_at_check)
+        proposalExpiresAt: new Date(Date.now() + 7 * 86_400_000),
+        vinRequestId: request!.id,
+      })
       .returning();
     await db
       .update(vinRequests)

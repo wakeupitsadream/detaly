@@ -42,6 +42,7 @@ describe('schedulers', () => {
       ['housekeeping', 'reminders', { every: 900_000 }],
       ['housekeeping', 'sms-budget', { every: 3_600_000 }],
       ['housekeeping', 'deferred-1a', { every: 600_000 }],
+      ['housekeeping', 'retention', { pattern: '40 4 * * *', tz: 'Asia/Yekaterinburg' }],
       ['reconciliation', 'sweep', { every: 600_000 }],
       ['reconciliation', 'nightly', { pattern: '15 3 * * *', tz: 'Asia/Yekaterinburg' }],
     ]);
@@ -51,7 +52,8 @@ describe('schedulers', () => {
   it('registers housekeeping only when the reconciliation queue is not passed', async () => {
     const housekeeping = vi.fn(async () => ({}));
     await registerSchedulers({ housekeeping: { upsertJobScheduler: housekeeping } as never });
-    expect(housekeeping).toHaveBeenCalledTimes(5);
+    // heartbeat, timers, reminders, sms-budget, deferred-1a and the phase 1C retention
+    expect(housekeeping).toHaveBeenCalledTimes(6);
 
     const reconciliation = vi.fn(async () => ({}));
     await registerSchedulers({

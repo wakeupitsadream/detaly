@@ -2,7 +2,11 @@
  * Install window parameters (docs/design.md, section 4). The numbers live in
  * lib/install-params.ts, next to their wording, so the page texts never drift from the planner.
  */
-import { CLIENT_TIME_ZONE, type InstallWindowOptions } from '@detaly/domain';
+import {
+  CLIENT_TIME_ZONE,
+  INSTALL_HOLDING_STATUSES,
+  type InstallWindowOptions,
+} from '@detaly/domain';
 import {
   INSTALL_ARRIVAL_TIME,
   INSTALL_HORIZON_DAYS,
@@ -25,4 +29,4 @@ export const INSTALL_WINDOW_OPTIONS: Partial<InstallWindowOptions> = {
 };
 
 /** Bookings that hold a lift (requested ones too: the master has not said no yet). */
-export const HOLDING_BOOKING_STATUSES = ['requested', 'confirmed'] as const;
+export const HOLDING_BOOKING_STATUSES = INSTALL_HOLDING_STATUSES;

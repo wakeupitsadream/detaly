@@ -13,6 +13,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { createdAt, id, kop, kopCheck, namedCheck, tstz, updatedAt } from './columns';
 import { apiCallSource, notificationChannel, notificationStatus, webhookSource } from './enums';
+import { vinRequests } from './carts';
 import { orders } from './orders';
 import { staff, users } from './people';
 
@@ -42,10 +43,16 @@ export const notifications = pgTable(
     sentAt: tstz(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
+    /**
+     * Phase 1C (decision С20): a message about a VIN request (no order); dedupe_key is
+     * `vin:<vin_request_id>:<template>:<n>:<channel>`.
+     */
+    vinRequestId: uuid().references(() => vinRequests.id),
   },
   (t) => [
     unique('notifications_dedupe_key_unique').on(t.dedupeKey),
     index('notifications_order_id_idx').on(t.orderId),
+    index('notifications_vin_request_id_idx').on(t.vinRequestId),
     namedCheck(
       'notifications',
       'recipient',

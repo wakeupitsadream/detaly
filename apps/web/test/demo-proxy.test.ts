@@ -22,7 +22,7 @@ vi.mock('@/server/redis', () => ({
 }));
 vi.mock('@/server/logger', () => ({ getLogger: () => ({ warn: () => undefined }) }));
 
-const { demoBlockedPath, proxy } = await import('@/proxy');
+const { demoBlockedPath, demoFormRedirect, proxy } = await import('@/proxy');
 const { resetSingleton } = await import('@/server/globals');
 
 function demoEnv(overrides: Record<string, string> = {}): Env {
@@ -107,6 +107,105 @@ describe('demo proxy: hidden paths', () => {
       const admin = await proxy(request('GET', '/admin'));
       expect(admin.status).toBe(404);
     } finally {
+      if (saved === undefined) delete process.env.DEMO_MODE;
+      else process.env.DEMO_MODE = saved;
+    }
+  });
+});
+
+describe('demo proxy: phase 1C forms and pages (decision С21)', () => {
+  it('classifies the proposal and VIN confirmation paths', () => {
+    expect(demoBlockedPath('/p/demo')).toBeNull();
+    expect(demoBlockedPath('/p/AbCdEf0123456789AbCdEf0123456789')).toBe('page');
+    expect(demoBlockedPath('/api/proposals/demo/take')).toBeNull();
+    expect(demoBlockedPath('/api/proposals/AbCdEf0123456789/take')).toBe('api');
+    expect(demoBlockedPath('/vin/sent')).toBeNull();
+    expect(demoBlockedPath('/vin/sent/AbCdEf0123456789')).toBe('page');
+    expect(demoBlockedPath('/vin')).toBeNull();
+    expect(demoBlockedPath('/api/vin')).toBeNull();
+  });
+
+  it('answers the demo forms with 303 without reading the body', () => {
+    expect(demoFormRedirect('POST', '/api/vin')).toBe('/vin/sent?demo=1');
+    expect(demoFormRedirect('POST', '/api/orders/demo/link')).toBe('/o/demo?demo=link');
+    expect(demoFormRedirect('POST', '/api/orders/demo/install')).toBe('/o/demo?demo=install');
+    expect(demoFormRedirect('POST', '/api/orders/demo/claims')).toBe('/o/demo?demo=claim');
+    expect(demoFormRedirect('GET', '/api/vin')).toBeNull();
+    expect(demoFormRedirect('POST', '/api/orders/demo/cancel')).toBeNull();
+    expect(demoFormRedirect('POST', '/api/orders/demo/constructor')).toBeNull();
+    expect(demoFormRedirect('POST', '/api/orders/real-token/link')).toBeNull();
+  });
+
+  it('redirects the forms through the proxy, never touching the body or Redis', async () => {
+    const cases = [
+      ['/api/vin', '/vin/sent?demo=1'],
+      ['/api/orders/demo/link', '/o/demo?demo=link'],
+      ['/api/orders/demo/install', '/o/demo?demo=install'],
+      ['/api/orders/demo/claims', '/o/demo?demo=claim'],
+      ['/api//orders/demo/claims/', '/o/demo?demo=claim'],
+    ] as const;
+    for (const [path, location] of cases) {
+      let bodyRead = false;
+      // highWaterMark 0: the stream is pulled only when someone actually reads the body.
+      const body = new ReadableStream(
+        {
+          pull(controller) {
+            bodyRead = true;
+            controller.close();
+          },
+        },
+        { highWaterMark: 0 },
+      );
+      const form = new NextRequest(new URL(path, 'http://localhost:3000'), {
+        method: 'POST',
+        headers: {
+          'x-real-ip': '203.0.113.7',
+          origin: 'http://localhost:3000',
+          'content-type': 'multipart/form-data; boundary=x',
+        },
+        body,
+        duplex: 'half',
+      } as ConstructorParameters<typeof NextRequest>[1]);
+      const response = await proxy(form);
+      expect(response.status, path).toBe(303);
+      expect(response.headers.get('location'), path).toBe(location);
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+      expect(bodyRead, path).toBe(false);
+      // control: reading the body does pull the stream
+      await form.arrayBuffer();
+      expect(bodyRead, path).toBe(true);
+    }
+    expect(state.redisCalls).toBe(0);
+  });
+
+  it('answers 404 to real proposals and VIN confirmations, serves the samples', async () => {
+    const api = await proxy(request('POST', '/api/proposals/AbCdEf0123456789/take'));
+    expect(api.status).toBe(404);
+    for (const path of ['/p/AbCdEf0123456789', '/vin/sent/AbCdEf0123456789']) {
+      const page = await proxy(request('GET', path));
+      expect(page.headers.get('x-middleware-rewrite'), path).toMatch(/\/_demo\/not-found$/);
+    }
+    for (const path of ['/p/demo', '/vin/sent', '/vin']) {
+      const page = await proxy(request('GET', path));
+      expect(page.headers.get('x-middleware-next'), path).toBe('1');
+    }
+    const take = await proxy(request('POST', '/api/proposals/demo/take'));
+    expect(take.headers.get('x-middleware-next')).toBe('1');
+    expect(state.redisCalls).toBe(0);
+  });
+
+  it('redirects the demo forms even when the env does not parse', async () => {
+    state.env = new Error('invalid env');
+    const saved = process.env.DEMO_MODE;
+    process.env.DEMO_MODE = 'true';
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const response = await proxy(request('POST', '/api/vin'));
+      expect(response.status).toBe(303);
+      expect(response.headers.get('location')).toBe('/vin/sent?demo=1');
+    } finally {
+      consoleError.mockRestore();
       if (saved === undefined) delete process.env.DEMO_MODE;
       else process.env.DEMO_MODE = saved;
     }

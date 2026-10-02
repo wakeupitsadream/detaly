@@ -57,6 +57,8 @@ export const HOUSEKEEPING_JOBS = {
   smsBudget: 'sms-budget',
   /** Every 10 minutes: deferred effects of phase 1A order events (Б26). */
   deferred1a: 'deferred-1a',
+  /** Daily at 04:40 local: VIN request photos older than 90 days are deleted (phase 1C, С16). */
+  retention: 'retention',
 } as const;
 
 /** Job names of the reconciliation queue (decision Б29, PLAN section 1). */
@@ -95,4 +97,6 @@ export const ROSSKO_JOBS = {
 export const NOTIFY_JOBS = {
   order: 'order',
   alert: 'alert',
+  /** Phase 1C (decision С20): a VIN request message to the client or the sellers card. */
+  vin: 'vin',
 } as const;

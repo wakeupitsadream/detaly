@@ -315,8 +315,11 @@ export type ApprovalDecision = (typeof APPROVAL_DECISIONS)[number];
 export const APPROVAL_SCOPES = ['order', 'item'] as const;
 export type ApprovalScope = (typeof APPROVAL_SCOPES)[number];
 
-/** seller_cards.kind (text + check): an order card with action buttons, or the handover QR. */
-export const SELLER_CARD_KINDS = ['order', 'qr'] as const;
+/**
+ * seller_cards.kind (text + check): an order card with action buttons, the handover QR, or a
+ * VIN request card (phase 1C; the card then belongs to a vin_request instead of an order).
+ */
+export const SELLER_CARD_KINDS = ['order', 'qr', 'vin'] as const;
 export type SellerCardKind = (typeof SELLER_CARD_KINDS)[number];
 
 /**
@@ -339,3 +342,59 @@ export const WEBHOOK_RESULTS = [
   'error',
 ] as const;
 export type WebhookResult = (typeof WEBHOOK_RESULTS)[number];
+
+// ---------------------------------------------------------------------------
+// Phase 1C: claims, installation bookings, VIN requests, messenger links
+// (docs/phase-1c-implementation.md sections 0 and 3.1)
+// ---------------------------------------------------------------------------
+
+/** claims.opened_via (text + check): the order page, the admin or the seller bot. */
+export const CLAIM_OPENED_VIA = ['web', 'admin', 'bot'] as const;
+export type ClaimOpenedVia = (typeof CLAIM_OPENED_VIA)[number];
+
+/** claims.decided_via (text + check): a decision is made by staff in the bot or the admin. */
+export const CLAIM_DECIDED_VIA = ['bot', 'admin'] as const;
+export type ClaimDecidedVia = (typeof CLAIM_DECIDED_VIA)[number];
+
+/** install_bookings.created_via (text + check). */
+export const INSTALL_CREATED_VIA = ['web', 'bot', 'admin'] as const;
+export type InstallCreatedVia = (typeof INSTALL_CREATED_VIA)[number];
+
+/**
+ * Order statuses in which the client may book an installation slot (decision С6): the order is
+ * alive and the part is on its way, at the point or already handed.
+ */
+export const INSTALL_BOOKABLE_STATUSES = [
+  'confirmed',
+  'ordering',
+  'awaiting_supplier_invoice',
+  'ordered_at_supplier',
+  'ready',
+  'awaiting_handover_payment',
+  'handed',
+] as const satisfies readonly OrderStatus[];
+
+/** Bookings that hold a lift (requested ones too: the master has not said no yet). */
+export const INSTALL_HOLDING_STATUSES = [
+  'requested',
+  'confirmed',
+] as const satisfies readonly InstallBookingStatus[];
+
+/** VIN requests waiting for the master's answer (the 4-hour reminder looks at them). */
+export const VIN_OPEN_STATUSES = ['new', 'in_work'] as const satisfies readonly VinRequestStatus[];
+
+/** First segment of a FileStore key: whose photo it is. */
+export const FILE_KEY_SCOPES = ['vin', 'claim', 'order'] as const;
+export type FileKeyScope = (typeof FILE_KEY_SCOPES)[number];
+
+/**
+ * FileStore keys (@detaly/files) and order_photos.s3_key (CHECK): `<scope>/<owner uuid>/<uuid>.jpg`
+ * with lower-case uuids. Nothing else is accepted, so a key can never walk out of its folder.
+ */
+export const FILE_KEY_PATTERN =
+  '^(vin|claim|order)/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/' +
+  '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.jpg$';
+
+/** link_tokens.channel (pgEnum messenger_channel): MAX links come in phase 2. */
+export const LINK_TOKEN_CHANNELS = MESSENGER_CHANNELS;
+export type LinkTokenChannel = MessengerChannel;

@@ -16,6 +16,7 @@
     "@detaly/config": "workspace:*",
     "@detaly/db": "workspace:*",
     "@detaly/domain": "workspace:*",
+    "@detaly/files": "workspace:*",
     "@detaly/notify": "workspace:*",
     "@detaly/orders": "workspace:*",
     "@detaly/payments": "workspace:*",
@@ -30,6 +31,7 @@
     "qrcode": "1.5.4",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "sharp": "0.35.5",
     "soap": "1.13.1",
     "zod": "4.6.5"
   },

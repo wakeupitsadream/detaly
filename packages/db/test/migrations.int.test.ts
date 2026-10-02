@@ -79,6 +79,23 @@ describe('migrations on an empty database', () => {
     expect(split).toEqual([]);
     expect(columns).toContainEqual({ table_name: 'supplier_orders', column_name: 'upd_s3_key' });
     expect(columns).toContainEqual({ table_name: 'order_photos', column_name: 's3_key' });
+    // phase 1C (0004): no new tables, new columns on the phase 0 tables
+    for (const [table, column] of [
+      ['claims', 'request_key'],
+      ['claims', 'refund_id'],
+      ['install_bookings', 'request_key'],
+      ['order_photos', 'claim_id'],
+      ['vin_requests', 'preview'],
+      ['vin_requests', 'photos_deleted_at'],
+      ['carts', 'proposal_expires_at'],
+      ['orders', 'vin_request_id'],
+      ['consents', 'vin_request_id'],
+      ['link_tokens', 'used_by_external_id'],
+      ['seller_cards', 'vin_request_id'],
+      ['notifications', 'vin_request_id'],
+    ] as const) {
+      expect(columns).toContainEqual({ table_name: table, column_name: column });
+    }
   });
 
   it('is idempotent and records every journal entry once', async () => {

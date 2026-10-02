@@ -3,8 +3,8 @@
  * a date -> the nearest free lift slot -> the car is ready at a time. Pure and deterministic:
  * the clock, the time zone, the working hours and the lift load are all passed in.
  */
-import { addDays, CLIENT_TIME_ZONE, isIsoDate } from './dates';
-import type { IsoDate } from './types';
+import { addDays, CLIENT_TIME_ZONE, isIsoDate, weekdayShort } from './dates';
+import type { InstallSlot, IsoDate } from './types';
 import type { WeekSchedule } from './work-hours';
 
 const MINUTE_MS = 60_000;
@@ -177,22 +177,34 @@ function slotIsFree(
  * 3. the first candidate whose every hour has booked < capacity.
  */
 export function planInstallWindow(input: InstallWindowInput): InstallPlan | null {
+  return listInstallSlots({ ...input, limit: 1 })[0] ?? null;
+}
+
+/**
+ * Up to `limit` free install windows in time order, by the rules of planInstallWindow (its
+ * result is the first element): the client chooses one of them to book (decision С6). Empty
+ * when the working hours were not understood or nothing is free within the horizon.
+ */
+export function listInstallSlots(input: InstallWindowInput & { limit: number }): InstallPlan[] {
   const { etaDate, now, schedule, load } = input;
   const timeZone = input.timeZone ?? CLIENT_TIME_ZONE;
   const opts = { ...DEFAULT_INSTALL_WINDOW_OPTIONS, ...input.options };
   if (!isIsoDate(etaDate)) throw new RangeError(`invalid date '${String(etaDate)}'`);
   if (!(now instanceof Date) || Number.isNaN(now.getTime())) throw new RangeError('invalid now');
+  const limit = positiveInt(input.limit, 'limit');
   const jobMin = positiveInt(opts.jobMin, 'jobMin');
   const stepMin = positiveInt(opts.stepMin, 'stepMin');
   const horizonDays = positiveInt(opts.horizonDays, 'horizonDays');
   if (!Number.isSafeInteger(opts.leadMin) || opts.leadMin < 0) {
     throw new RangeError('leadMin must be >= 0');
   }
-  if (schedule === null || schedule.length !== 7) return null;
+  if (schedule === null || schedule.length !== 7) return [];
 
   const arrival = zonedInstant(etaDate, parseClock(opts.arrivalTime), timeZone);
   const readyAtMs = Math.max(now.getTime() + opts.leadMin * MINUTE_MS, arrival);
   const ready = zonedWallTime(readyAtMs, timeZone);
+  const loadKind = input.loadKind ?? 'live';
+  const slots: InstallPlan[] = [];
 
   for (let offset = 0; offset < horizonDays; offset += 1) {
     const date = addDays(ready.date, offset);
@@ -206,15 +218,59 @@ export function planInstallWindow(input: InstallWindowInput): InstallPlan | null
     for (let s = start; s + jobMin <= hours.closeMin; s += stepMin) {
       if (!slotIsFree(date, s, s + jobMin, load, timeZone)) continue;
       const slotStart = zonedInstant(date, s, timeZone);
-      return {
+      slots.push({
         readyAt: new Date(readyAtMs),
         slotStart: new Date(slotStart),
         carReadyAt: new Date(slotStart + jobMin * MINUTE_MS),
-        loadKind: input.loadKind ?? 'live',
-      };
+        loadKind,
+      });
+      if (slots.length >= limit) return slots;
     }
   }
-  return null;
+  return slots;
+}
+
+const MONTHS_SHORT = [
+  'янв',
+  'фев',
+  'мар',
+  'апр',
+  'мая',
+  'июн',
+  'июл',
+  'авг',
+  'сен',
+  'окт',
+  'ноя',
+  'дек',
+] as const;
+
+/** ISO timestamp with the zone's offset: '2026-10-08T14:00:00+05:00'. */
+export function zonedIso(instantMs: number, timeZone: string = CLIENT_TIME_ZONE): string {
+  const offset = zoneOffsetMin(instantMs, timeZone);
+  const local = new Date(instantMs - (instantMs % 1000) + offset * MINUTE_MS).toISOString();
+  const sign = offset < 0 ? '-' : '+';
+  const abs = Math.abs(offset);
+  const hh = String(Math.floor(abs / 60)).padStart(2, '0');
+  const mm = String(abs % 60).padStart(2, '0');
+  return `${local.slice(0, 19)}${sign}${hh}:${mm}`;
+}
+
+/** A plan as the client sees it: 'чт 8 окт' and '14:00' in the zone, ISO with the offset. */
+export function installSlotOf(
+  plan: Pick<InstallPlan, 'slotStart' | 'carReadyAt'>,
+  timeZone: string = CLIENT_TIME_ZONE,
+): InstallSlot {
+  const start = zonedWallTime(plan.slotStart.getTime(), timeZone);
+  const [, month, day] = start.date.split('-').map(Number) as [number, number, number];
+  const hh = String(Math.floor(start.minutes / 60)).padStart(2, '0');
+  const mm = String(Math.floor(start.minutes % 60)).padStart(2, '0');
+  return {
+    startAt: zonedIso(plan.slotStart.getTime(), timeZone),
+    endAt: zonedIso(plan.carReadyAt.getTime(), timeZone),
+    dayText: `${weekdayShort(start.date)} ${day} ${MONTHS_SHORT[month - 1] as string}`,
+    timeText: `${hh}:${mm}`,
+  };
 }
 
 /** One working hour of a day for the load strip under the plan. */

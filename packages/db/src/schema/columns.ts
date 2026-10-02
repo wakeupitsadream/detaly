@@ -30,6 +30,17 @@ export function kopCheck(table: string, column: string, col: AnyPgColumn) {
   return check(`${table}_${column}_check`, sql`${col} >= 0`);
 }
 
+/**
+ * `'a', 'b'` for `... in (...)` over a constant tuple of identifiers from @detaly/domain
+ * (never user input: the values are inlined into DDL).
+ */
+export function sqlList(values: readonly string[]): SQL {
+  for (const value of values) {
+    if (!/^[a-z0-9_]+$/.test(value)) throw new Error(`unsafe SQL list value '${value}'`);
+  }
+  return sql.raw(values.map((value) => `'${value}'`).join(', '));
+}
+
 /** Named CHECK with the conventional `<table>_<suffix>_check` name. */
 export function namedCheck(table: string, suffix: string, expr: SQL) {
   return check(`${table}_${suffix}_check`, expr);

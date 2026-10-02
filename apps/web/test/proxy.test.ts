@@ -297,6 +297,74 @@ describe('proxy: phase 1B order API and webhook', () => {
   });
 });
 
+describe('proxy: phase 1C forms and token pages', () => {
+  const token = 'Zx9_aB-cd1234567890abcdefghijklmnopq';
+
+  it('counts the phase 1C forms on their own limits, never a cross-site post', async () => {
+    await proxy(request('POST', `/api/orders/${token}/link`));
+    await proxy(request('POST', `/api/orders/${token}/install`));
+    await proxy(request('POST', `/api/orders/${token}/install/cancel`));
+    await proxy(request('POST', `/api/orders/${token}/claims`));
+    await proxy(request('POST', '/api/vin'));
+    await proxy(request('POST', `/api/proposals/${token}/take`));
+    await proxy(request('POST', '/api/vin', { origin: 'https://evil.example' }));
+    await proxy(request('GET', '/vin'));
+    expect(hits.map((hit) => hit.kind)).toEqual([
+      'link',
+      'install',
+      'install',
+      'claim',
+      'vin',
+      'proposal',
+    ]);
+  });
+
+  it('sends blocked forms back to their order page or proposal', async () => {
+    rejectWith(600);
+    const html = { accept: 'text/html,*/*;q=0.8' };
+    const claim = await proxy(request('POST', `/api/orders/${token}/claims`, html));
+    expect(claim.status).toBe(429);
+    expect(await claim.text()).toContain(`<a href="/o/${token}">Вернуться к заказу</a>`);
+    const take = await proxy(request('POST', `/api/proposals/${token}/take`, html));
+    expect(take.status).toBe(429);
+    expect(take.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(await take.text()).toContain(`<a href="/p/${token}">Вернуться к подборке</a>`);
+    const vin = await proxy(request('POST', '/api/vin', html));
+    expect(await vin.text()).toContain('<a href="/vin">Вернуться к заявке</a>');
+    const json = await proxy(request('POST', '/api/vin'));
+    expect(json.status).toBe(429);
+    expect(json.headers.get('content-type')).toContain('application/json');
+  });
+
+  it('makes the proposal, its API and the VIN confirmation private', async () => {
+    for (const path of [
+      `/p/${token}`,
+      `/api/proposals/${token}/take`,
+      `/vin/sent/${token}`,
+      '/vin/sent',
+      '/%70/x',
+    ]) {
+      const response = await proxy(request('GET', path));
+      expect(response.headers.get(MIDDLEWARE_NEXT), path).toBe('1');
+      expect(response.headers.get('referrer-policy'), path).toBe('no-referrer');
+      expect(response.headers.get('x-robots-tag'), path).toBe('noindex, nofollow');
+      expect(response.headers.get('cache-control'), path).toBe('no-store');
+    }
+    // /vin itself stays a public page; /pricing is not /p
+    for (const path of ['/vin', '/pricing']) {
+      const response = await proxy(request('GET', path));
+      expect(response.headers.get('referrer-policy'), path).toBeNull();
+      expect(response.headers.get('cache-control'), path).toBeNull();
+    }
+  });
+
+  it('demo form redirects are off outside DEMO_MODE', async () => {
+    const response = await proxy(request('POST', '/api/orders/demo/link'));
+    expect(response.headers.get(MIDDLEWARE_NEXT)).toBe('1');
+    expect(response.headers.get('location')).toBeNull();
+  });
+});
+
 describe('proxy: /admin Basic auth', () => {
   const ADMIN = 'admin:correct horse battery staple';
   const basic = (credentials: string) => ({
@@ -376,6 +444,16 @@ describe('proxy: /admin Basic auth', () => {
     expect(post.headers.get(MIDDLEWARE_NEXT)).toBe('1');
     expect(peeks.map((peek) => peek.kind)).toEqual(['admin_auth', 'admin_auth', 'admin_auth']);
     expect(hits).toEqual([]);
+  });
+
+  it('keeps admin files behind the password and out of every cache (phase 1C)', async () => {
+    const key = '/api/admin/files/vin/0192d8a4-0000-7000-8000-000000000001/x.jpg';
+    const anonymous = await proxy(request('GET', key));
+    expect(anonymous.status).toBe(401);
+    expectAdminHeaders(anonymous, 'anonymous');
+    const right = await proxy(request('GET', key, basic(ADMIN)));
+    expect(right.headers.get(MIDDLEWARE_NEXT)).toBe('1');
+    expectAdminHeaders(right, 'right');
   });
 
   it('refuses even the right password while the wrong-password window is full', async () => {

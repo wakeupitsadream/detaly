@@ -152,6 +152,8 @@ jobs:
       LEGAL_CONSENT_PD_VERSION: 2026-10-d1
       LEGAL_CONSENT_MARKETING_VERSION: 2026-10-d1
       LEGAL_RETURN_MEMO_VERSION: 2026-10-d1
+      # checkout.spec.ts greps the server log for the phones and names it typed.
+      E2E_WEB_LOG: ${{ github.workspace }}/web.log
     steps:
       - uses: actions/checkout@v5
 
@@ -193,6 +195,13 @@ jobs:
 
       - name: E2E (mobile 375 and desktop 1280)
         run: pnpm --filter @detaly/web e2e
+
+      - name: No phone numbers in the web log
+        # Counts only: printing the matching lines would copy the data into the CI log.
+        run: |
+          count=$(grep -cE '\+79[0-9]{9}' web.log || true)
+          echo "phone-like strings in web.log: $count"
+          test "$count" = 0
 
       - name: Screenshots and reports
         if: always()

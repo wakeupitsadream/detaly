@@ -66,7 +66,14 @@ export const MIXED_CART_TEXT =
 export const STALE_PRICES_TEXT = 'Не удалось обновить цены, проверим при оформлении';
 export const FINAL_SCHEME_NOTE = 'Окончательно способ оплаты определим после ввода телефона.';
 
-function promiseFor(dates: readonly (IsoDate | null)[], settings: CartSettings): string | null {
+/**
+ * «к пт 2 октября» for the given supplier dates with the eta buffer (promisedDate), as /cart,
+ * /checkout and the order show it; null without a known date.
+ */
+export function promiseFor(
+  dates: readonly (IsoDate | null)[],
+  settings: Pick<CartSettings, 'eta'>,
+): string | null {
   const known = dates.filter((d): d is IsoDate => d !== null);
   if (known.length === 0) return null;
   try {

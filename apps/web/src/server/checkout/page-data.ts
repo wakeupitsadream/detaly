@@ -25,6 +25,7 @@ import {
   type RepricedLine,
 } from '@detaly/domain';
 import type { RosskoClient } from '@detaly/rossko';
+import { promiseFor } from '../cart/summary';
 import { fetchFreshOffers, findActiveCart, persistRepricing } from '../cart-store';
 import type { CheckoutGate } from '../checkout-gate';
 import type { CheckoutSettings } from './checkout-service';
@@ -53,6 +54,11 @@ export interface CheckoutPageReady {
   totals: CartTotals;
   itemsHash: string;
   promisedDate: IsoDate | null;
+  /**
+   * Per line «к …» with the eta buffer, by line id (the same text as on /cart): the raw
+   * supplier etaDate is never shown to the client.
+   */
+  linePromises: Record<string, string | null>;
   /** Scheme with no-shows counted as 0; the server decides finally by the phone. */
   decision: PaymentSchemeDecision;
   explanation: string[];
@@ -134,6 +140,7 @@ export async function loadCheckoutPage(
     totals,
     itemsHash: itemsHash(lines),
     promisedDate: etaDates.length > 0 ? promisedDate(etaDates, settings.eta) : null,
+    linePromises: Object.fromEntries(lines.map((l) => [l.id, promiseFor([l.etaDate], settings)])),
     decision,
     explanation: explainPaymentScheme(decision, {
       onPickupMaxTotalKop: settings.order.onPickupMaxTotalKop,

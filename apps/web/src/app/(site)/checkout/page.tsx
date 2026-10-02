@@ -93,6 +93,7 @@ export default async function CheckoutPage({
               lines={data.lines}
               totalKop={data.totals.subtotalKop}
               promisedDate={data.promisedDate}
+              linePromises={data.linePromises}
             />
           </div>
           <div className="min-w-0 space-y-4">

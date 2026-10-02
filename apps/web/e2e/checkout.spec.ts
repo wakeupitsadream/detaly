@@ -55,6 +55,23 @@ async function addToCart(page: Page, query: string, offerId: string): Promise<vo
   await expect(page).toHaveURL(/\/cart\?added=1$/);
 }
 
+/** «к …» of every line by brand, e.g. { Knecht: 'к сб 3 октября' }. */
+async function linePromises(
+  page: Page,
+  lineTestId: string,
+  promiseTestId: string,
+): Promise<Record<string, string>> {
+  const result: Record<string, string> = {};
+  for (const line of await page.getByTestId(lineTestId).all()) {
+    const text = (await line.innerText()).toLowerCase();
+    const brand = text.includes('knecht') ? 'Knecht' : text.includes('bosch') ? 'BOSCH' : text;
+    const promise = (await line.getByTestId(promiseTestId).innerText()).match(PROMISE_RE);
+    expect(promise, `${lineTestId} ${brand}: delivery promise`).not.toBeNull();
+    result[brand] = promise?.[0] ?? '';
+  }
+  return result;
+}
+
 function submitButton(page: Page) {
   return page.getByTestId('checkout-form').getByRole('button', { name: 'Оформить заказ' });
 }
@@ -117,6 +134,8 @@ test('mixed cart: prepayment order from search to the order page', async ({ page
   await expect(notice).toContainText('Одним заказом — предоплата 100%');
   await expect(notice.getByTestId('split-order')).toHaveText('Разделить на два заказа');
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
+  const cartPromises = await linePromises(page, 'cart-line', 'cart-line-promise');
+  expect(Object.keys(cartPromises)).toHaveLength(2);
   await expectNoHorizontalScroll(page, '/cart');
   await screenshot(page, project, 'cart');
 
@@ -128,6 +147,8 @@ test('mixed cart: prepayment order from search to the order page', async ({ page
   await expect(scheme).toHaveAttribute('data-scheme', 'prepay');
   await expect(scheme).toContainText('Предоплата 100%');
   await expect(page.getByTestId('pickup-point')).toBeVisible();
+  // Each line promises the same day as in the cart (eta buffer included on both pages).
+  expect(await linePromises(page, 'checkout-line', 'checkout-line-promise')).toEqual(cartPromises);
   await expect(submitButton(page)).toBeDisabled();
   const totalText = (await page.getByTestId('checkout-total').textContent())?.trim() ?? '';
   expect(totalText).toMatch(/\d\s?₽$/);

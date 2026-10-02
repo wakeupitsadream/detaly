@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 
 interface CancelResponse {
   error?: string;
@@ -43,6 +43,17 @@ export function CancelOrderForm({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const openButtonRef = useRef<HTMLButtonElement>(null);
+  // Where focus goes after the block expands or collapses: the button that had it is removed
+  // from the DOM, so without this keyboard and screen reader users land on <body>.
+  const focusNext = useRef<'input' | 'open' | null>(null);
+
+  useEffect(() => {
+    if (focusNext.current === 'input') inputRef.current?.focus();
+    else if (focusNext.current === 'open') openButtonRef.current?.focus();
+    focusNext.current = null;
+  }, [open]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -103,8 +114,12 @@ export function CancelOrderForm({
         <button
           type="button"
           className="inline-flex h-11 items-center rounded-xl border border-line px-5 font-medium text-ink hover:border-accent hover:text-accent"
+          ref={openButtonRef}
           aria-expanded="false"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            focusNext.current = 'input';
+            setOpen(true);
+          }}
           data-testid="cancel-open"
         >
           Отменить заказ
@@ -115,6 +130,7 @@ export function CancelOrderForm({
             Для подтверждения введите последние 4 цифры телефона
           </label>
           <input
+            ref={inputRef}
             id={inputId}
             name="last4"
             type="text"
@@ -154,6 +170,7 @@ export function CancelOrderForm({
               disabled={pending}
               className="inline-flex h-11 items-center rounded-xl border border-line px-5 font-medium text-muted"
               onClick={() => {
+                focusNext.current = 'open';
                 setOpen(false);
                 setError(null);
                 setLast4('');

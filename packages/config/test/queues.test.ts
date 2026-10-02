@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   bullJobId,
   HOUSEKEEPING_JOBS,
+  NOTIFY_JOBS,
   OUTBOX_CHANNEL,
   OUTBOX_QUEUES,
   QUEUE_NAMES,
@@ -38,7 +39,15 @@ describe('queue names', () => {
       'reminders',
       'smsBudget',
       'deferred1a',
+      'retention',
     ]);
     expect(RECONCILIATION_JOBS).toEqual({ sweep: 'sweep', nightly: 'nightly' });
+  });
+});
+
+describe('phase 1C jobs', () => {
+  it('notify/vin and the daily retention', () => {
+    expect(NOTIFY_JOBS).toEqual({ order: 'order', alert: 'alert', vin: 'vin' });
+    expect(HOUSEKEEPING_JOBS.retention).toBe('retention');
   });
 });

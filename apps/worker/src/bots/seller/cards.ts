@@ -5,7 +5,8 @@
 //
 // - post: a new card for the order; the order's older open cards are closed (keyboard removed);
 // - refresh: the latest open card is redrawn from the database (e.g. «Выдал» after the receipt);
-// - sendHandoverQr: the QR photo of a handover payment, to the sellers chat only (Б28).
+// - sendHandoverQr: the QR photo of a handover payment, to the sellers chat only (Б28);
+// - postVin / refreshVin: VIN request cards (phase 1C) — stubs until the seller-bot-1c package.
 //
 // The same service backs the bot's button presses (redraw with a menu or the main keyboard);
 // the bot builds it over its own Api, the queue jobs over deps.telegram.
@@ -48,7 +49,14 @@ import {
 } from './card-view';
 import { describeBotError } from './errors';
 
-export type SellerCardRow = typeof sellerCards.$inferSelect;
+/** An order card (kinds order, qr): since phase 1C seller_cards.order_id is null for VIN cards. */
+export type SellerCardRow = typeof sellerCards.$inferSelect & { orderId: string };
+
+/** The row as an order card, or null for a VIN request card. */
+function orderCard(row: typeof sellerCards.$inferSelect | undefined): SellerCardRow | null {
+  if (row === undefined || row.orderId === null) return null;
+  return { ...row, orderId: row.orderId };
+}
 
 /**
  * Cards in the sellers chat are drawn with the owner's buttons: the owner reads the same chat,
@@ -177,7 +185,9 @@ export function createCardService(
   }
 
   /** Removes the keyboard of a closed card; failures only cost a stale keyboard (logged). */
-  async function stripKeyboard(card: Pick<SellerCardRow, 'chatId' | 'messageId' | 'orderId'>) {
+  async function stripKeyboard(
+    card: Pick<typeof sellerCards.$inferSelect, 'chatId' | 'messageId' | 'orderId'>,
+  ) {
     if (api === null || card.messageId === null) return;
     try {
       await api.editMessageReplyMarkup(card.chatId, card.messageId, {
@@ -345,13 +355,24 @@ export function createCardService(
       logger.info({ orderNumber: order.number }, 'seller QR sent');
     },
 
+    // Phase 1C stubs (docs/phase-1c-implementation.md section 4): the seller-bot-1c package
+    // draws VIN request cards (kind 'vin') with their nonce and buttons.
+    async postVin({ vinRequestId }) {
+      logger.warn({ vinRequestId }, 'seller VIN card: not implemented yet');
+      return { status: 'skipped', fallbackReason: 'not_implemented' };
+    },
+
+    async refreshVin() {
+      // Nothing to redraw until VIN cards exist.
+    },
+
     async findByNonce(nonce) {
       const [card] = await db
         .select()
         .from(sellerCards)
         .where(and(eq(sellerCards.nonce, nonce), eq(sellerCards.kind, 'order')))
         .limit(1);
-      return card ?? null;
+      return orderCard(card);
     },
 
     async claim(card) {
@@ -370,7 +391,8 @@ export function createCardService(
     },
 
     async redraw(cardId, menu = null) {
-      const [card] = await db.select().from(sellerCards).where(eq(sellerCards.id, cardId));
+      const [row] = await db.select().from(sellerCards).where(eq(sellerCards.id, cardId));
+      const card = orderCard(row);
       if (!card || card.closedAt !== null || card.messageId === null) return null;
       const data = await loadCard(card.orderId);
       if (data === null) return null;
@@ -415,7 +437,7 @@ export function createCardService(
     },
 
     async heal(chatId, messageId) {
-      const [card] = await db
+      const [row] = await db
         .select()
         .from(sellerCards)
         .where(
@@ -427,6 +449,7 @@ export function createCardService(
         )
         .orderBy(desc(sellerCards.createdAt))
         .limit(1);
+      const card = orderCard(row);
       if (!card) return;
       try {
         if (card.closedAt === null) await service.redraw(card.id);

@@ -43,6 +43,11 @@
  *   receipt (handoverPaymentHeld), not the latest payment's status: two QR may be on the screen;
  * - a payment arriving in refund_pending or refunded has no rule: the engine returns it as an
  *   orphan refund. After handover (handed, completed) the owner decides, with a refund task.
+ *
+ * Phase 1C additions (docs/phase-1c-implementation.md section 3.4):
+ * - a delay claim may be opened before the handover (a self-transition in every refusable
+ *   status) when the client's money is held; its refund goes through `client_refused` (С10);
+ * - the sellers get the order card with the claim (`staff_claim_opened`) on every claim.
  */
 import type { ActorType, OrderStatus, PaymentScheme, ReceiptKind } from '../statuses';
 import {
@@ -50,6 +55,7 @@ import {
   allLiveItemsArrived,
   amountMatches,
   amountMismatch,
+  claimIsDelay,
   claimRefundAllowed,
   clientArrived,
   clientReachable,
@@ -182,6 +188,12 @@ export const ORDER_NOTIFY_TEMPLATES = [
   'how_is_it',
   'claim_received',
   'money_sent',
+  // client, phase 1C
+  'claim_decided',
+  'install_requested',
+  'install_confirmed',
+  'install_declined',
+  'install_reminder',
   // staff (sellers chat or owner)
   'staff_new_order',
   'staff_amount_mismatch',
@@ -202,6 +214,9 @@ export const ORDER_NOTIFY_TEMPLATES = [
   'staff_refund_deadline',
   'staff_payment_rejected',
   'staff_refund_receipt_failed',
+  // staff, phase 1C
+  'staff_claim_opened',
+  'staff_install_request',
 ] as const;
 export type OrderNotifyTemplate = (typeof ORDER_NOTIFY_TEMPLATES)[number];
 
@@ -266,6 +281,16 @@ export const REFUSABLE_STATUSES = [
 const client = (template: OrderNotifyTemplate): NotifySpec => ({ audience: 'client', template });
 const sellers = (template: OrderNotifyTemplate): NotifySpec => ({ audience: 'sellers', template });
 const owner = (template: OrderNotifyTemplate): NotifySpec => ({ audience: 'owner', template });
+
+/**
+ * A claim was opened (decision С7): the client gets the order of actions, the owner the 10-day
+ * deadline, the sellers the order card with the claim.
+ */
+const CLAIM_OPENED_NOTIFY: readonly NotifySpec[] = [
+  client('claim_received'),
+  owner('staff_claim_deadline'),
+  sellers('staff_claim_opened'),
+];
 
 /** Refund receipt mirrors the settlement sign of the receipt that took the money. */
 const refundReceipt = (ctx: TransitionContext): ReceiptKind | null => {
@@ -1020,7 +1045,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
       event: 'claim_opened',
       to: status,
       actors: ['client', 'staff'],
-      notify: [client('claim_received'), owner('staff_claim_deadline')],
+      notify: CLAIM_OPENED_NOTIFY,
       effects: ['open_claim'],
     },
     {
@@ -1046,6 +1071,18 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     notify: [client('refund_started')],
     effects: ['create_refund'],
   },
+
+  // --- delay claim before handover (phase 1C, decision С7): a self-transition ---------------
+  ...REFUSABLE_STATUSES.map((status): TransitionRule => ({
+    label: 'Претензия о просрочке',
+    from: [status],
+    event: 'claim_opened',
+    to: status,
+    actors: ['client', 'staff'],
+    guard: all(claimIsDelay, moneyHeld),
+    notify: CLAIM_OPENED_NOTIFY,
+    effects: ['open_claim'],
+  })),
 
   // --- client refusal before handover (ст. 26.1) -------------------------------------------
   {

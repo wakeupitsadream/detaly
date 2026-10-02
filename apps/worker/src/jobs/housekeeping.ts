@@ -1,16 +1,19 @@
 // Processor of the `housekeeping` queue (docs/phase-1b-implementation.md section 12.2):
-// heartbeat (phase 0), timers (every minute), reminders (15 min), sms-budget (hourly) and
-// deferred-1a (10 min). One attempt each: the next scheduled run picks up what one missed.
+// heartbeat (phase 0), timers (every minute), reminders (15 min), sms-budget (hourly),
+// deferred-1a (10 min) and retention (daily, phase 1C). One attempt each: the next scheduled
+// run picks up what one missed.
 import { HOUSEKEEPING_JOBS, writeHeartbeat } from '@detaly/config';
 import { UnrecoverableError, type Job } from 'bullmq';
 import type { WorkerDeps } from '../deps';
 import { runDeferred1a, type Deferred1aResult } from './housekeeping/deferred-1a';
 import { runReminders, type RemindersResult } from './housekeeping/reminders';
+import { runRetention, type RetentionResult } from './housekeeping/retention';
 import { runSmsBudget, type SmsBudgetResult } from './housekeeping/sms-budget';
 import { runTimers, type TimersResult } from './housekeeping/timers';
 
 export { planDeferred, runDeferred1a } from './housekeeping/deferred-1a';
 export { runReminders } from './housekeeping/reminders';
+export { runRetention } from './housekeeping/retention';
 export { runSmsBudget } from './housekeeping/sms-budget';
 export { runTimers } from './housekeeping/timers';
 
@@ -21,13 +24,19 @@ export { runTimers } from './housekeeping/timers';
 export type HousekeepingDeps = Pick<WorkerDeps, 'redis' | 'now' | 'heartbeatKey'>;
 
 export type HousekeepingResult =
-  { heartbeatAt: number } | TimersResult | RemindersResult | SmsBudgetResult | Deferred1aResult;
+  | { heartbeatAt: number }
+  | TimersResult
+  | RemindersResult
+  | SmsBudgetResult
+  | Deferred1aResult
+  | RetentionResult;
 
 const FULL_DEPS_JOBS: readonly string[] = [
   HOUSEKEEPING_JOBS.timers,
   HOUSEKEEPING_JOBS.reminders,
   HOUSEKEEPING_JOBS.smsBudget,
   HOUSEKEEPING_JOBS.deferred1a,
+  HOUSEKEEPING_JOBS.retention,
 ];
 
 function fullDeps(job: Pick<Job, 'name'>, deps: HousekeepingDeps | WorkerDeps): WorkerDeps {
@@ -65,6 +74,9 @@ export async function processHousekeeping(
       break;
     case HOUSEKEEPING_JOBS.smsBudget:
       result = await runSmsBudget(full);
+      break;
+    case HOUSEKEEPING_JOBS.retention:
+      result = await runRetention(full);
       break;
     default:
       result = await runDeferred1a(full);

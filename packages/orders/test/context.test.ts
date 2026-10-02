@@ -174,6 +174,7 @@ function snapshot(
       supplierReturnDeadlineAt: null,
       createdAt: NOW,
       updatedAt: NOW,
+      vinRequestId: null,
     },
     items: options.items ?? [item('ordered'), item('ordered')],
     payments: options.payments ?? (scheme === 'prepay' ? [payment()] : []),

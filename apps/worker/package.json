@@ -13,6 +13,7 @@
     "@detaly/config": "workspace:*",
     "@detaly/db": "workspace:*",
     "@detaly/domain": "workspace:*",
+    "@detaly/files": "workspace:*",
     "@detaly/notify": "workspace:*",
     "@detaly/orders": "workspace:*",
     "@detaly/payments": "workspace:*",

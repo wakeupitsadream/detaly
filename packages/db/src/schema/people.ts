@@ -25,7 +25,9 @@ import {
   messengerChannel,
   staffRole,
 } from './enums';
-// Cycle (orders -> users, consents -> orders): the reference is lazy, see AnyPgColumn below.
+// Cycles (orders -> users, consents -> orders, carts -> users, consents -> vin_requests): the
+// references are lazy, see AnyPgColumn below.
+import { vinRequests } from './carts';
 import { orders } from './orders';
 
 /** Identity = phone (E.164). Anonymization sets phone to `anon:<id>` and clears name/email. */
@@ -93,10 +95,13 @@ export const consents = pgTable(
     revokedAt: tstz(),
     /** Order whose checkout recorded this consent (a consent is written per order). */
     orderId: uuid().references((): AnyPgColumn => orders.id),
+    /** Phase 1C: the VIN request form that recorded this consent (a consent without an order). */
+    vinRequestId: uuid().references((): AnyPgColumn => vinRequests.id),
   },
   (t) => [
     index('consents_user_id_kind_idx').on(t.userId, t.kind),
     index('consents_order_id_idx').on(t.orderId),
+    index('consents_vin_request_id_idx').on(t.vinRequestId),
     namedCheck('consents', 'text_sha256', sql`${t.textSha256} ~ '^[0-9a-f]{64}$'`),
   ],
 );

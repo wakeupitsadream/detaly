@@ -1,6 +1,7 @@
 // Client carts, seller proposals (VIN selection) and VIN requests.
 // carts.vin_request_id <-> vin_requests.proposal_cart_id form a cycle, hence AnyPgColumn.
-import type { Offer } from '@detaly/domain/types';
+import { VIN_OPEN_STATUSES } from '@detaly/domain/statuses';
+import type { Offer, VinPreview } from '@detaly/domain/types';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -15,8 +16,8 @@ import {
   uuid,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
-import { createdAt, id, kop, kopCheck, namedCheck, tstz, updatedAt } from './columns';
-import { cartStatus, vinProvider, vinRequestStatus } from './enums';
+import { createdAt, id, kop, kopCheck, namedCheck, sqlList, tstz, updatedAt } from './columns';
+import { cartStatus, notificationChannel, vinProvider, vinRequestStatus } from './enums';
 import { staff, users } from './people';
 
 /**
@@ -35,11 +36,18 @@ export const carts = pgTable(
     vinRequestId: uuid().references((): AnyPgColumn => vinRequests.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
+    /** Phase 1C: a proposal can be checked out until this moment (PROPOSAL_TTL_DAYS). */
+    proposalExpiresAt: tstz(),
   },
   (t) => [
     unique('carts_anon_token_unique').on(t.anonToken),
     unique('carts_proposal_token_unique').on(t.proposalToken),
     index('carts_user_id_idx').on(t.userId),
+    namedCheck(
+      'carts',
+      'proposal_expires_at',
+      sql`(${t.proposalToken} is null) = (${t.proposalExpiresAt} is null)`,
+    ),
   ],
 );
 
@@ -88,7 +96,11 @@ export const cartItems = pgTable(
   ],
 );
 
-/** Manual VIN selection request (phase 1C); photos are S3 keys, auto-deleted after 90 days. */
+/**
+ * Manual VIN selection request (phase 1C); photos are FileStore keys (vin/<id>/<uuid>.jpg),
+ * at most 3, deleted after 90 days (photos_deleted_at). preview/answer_text keep the master's
+ * last answer checked by GetSearch; proposal_count numbers the proposals sent.
+ */
 export const vinRequests = pgTable(
   'vin_requests',
   {
@@ -105,9 +117,34 @@ export const vinRequests = pgTable(
     resolver: vinProvider().notNull().default('manual'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
+    // --- phase 1C ---
+    /** The answer channel the client chose (telegram / sms; max in phase 2). */
+    channel: notificationChannel(),
+    /** Idempotency key of the form: a repeated submit returns the same request. */
+    requestKey: uuid(),
+    /** The master's answer as typed («БРЕНД АРТИКУЛ [КОЛ-ВО] [# заметка]» lines). */
+    answerText: text(),
+    preview: jsonb().$type<VinPreview>(),
+    answeredAt: tstz(),
+    /** The 4-hour «без ответа» reminder was queued. */
+    remindedAt: tstz(),
+    photosDeletedAt: tstz(),
+    closedAt: tstz(),
+    closeReason: text(),
+    proposalCount: integer().notNull().default(0),
   },
   (t) => [
     index('vin_requests_status_created_at_idx').on(t.status, t.createdAt),
+    index('vin_requests_open_created_at_idx')
+      .on(t.createdAt)
+      .where(sql`${t.status} in (${sqlList(VIN_OPEN_STATUSES)})`),
+    unique('vin_requests_request_key_unique').on(t.requestKey),
     namedCheck('vin_requests', 'vin', sql`${t.vin} ~ '^[A-HJ-NPR-Z0-9]{17}$'`),
+    namedCheck(
+      'vin_requests',
+      'photos',
+      sql`case when jsonb_typeof(${t.photos}) = 'array' then jsonb_array_length(${t.photos}) <= 3 else false end`,
+    ),
+    namedCheck('vin_requests', 'proposal_count', sql`${t.proposalCount} >= 0`),
   ],
 );

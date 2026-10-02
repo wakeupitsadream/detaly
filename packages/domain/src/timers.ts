@@ -1,7 +1,7 @@
 /**
- * Fixed periods of phase 1B (PLAN section 1, docs/phase-1b-implementation.md section 3.3) in
- * one place. Business deadlines that the owner may tune (payment TTL, pickup windows, QR TTL,
- * approval timeout) live in `settings`, not here.
+ * Fixed periods of phases 1B and 1C (PLAN section 1, docs/phase-1b-implementation.md section
+ * 3.3, docs/phase-1c-implementation.md section 3.3) in one place. Business deadlines that the
+ * owner may tune (payment TTL, pickup windows, QR TTL, approval timeout) live in `settings`.
  */
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -37,6 +37,17 @@ export const TIMERS = {
   refundDeadlineWarnMs: 2 * DAY,
   /** Outbox dispatcher poll period when no PUBLISH nudge arrives. */
   outboxPollMs: 2_000,
+  // phase 1C (docs/phase-1c-implementation.md section 3.3)
+  /** A VIN request without an answer is shown to the sellers again once, after 4 hours. */
+  vinAnswerReminderMs: 4 * HOUR,
+  /** The owner is warned 2 days before the 10-day claim answer deadline. */
+  claimDeadlineWarnMs: 2 * DAY,
+  /** The client is reminded of a confirmed installation slot 24 hours before it. */
+  installReminderBeforeMs: DAY,
+  /** The client's «arrived» waits 2 minutes so a packaging photo sent right after can join it. */
+  arrivedPhotoGraceMs: 2 * MINUTE,
+  /** VIN photo retention runs daily. */
+  retentionEveryMs: DAY,
 } as const;
 
 export type TimerName = keyof typeof TIMERS;

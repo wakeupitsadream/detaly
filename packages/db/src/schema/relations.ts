@@ -1,10 +1,11 @@
 // Relations for the relational query API (`db.query.<table>.findFirst({ with: ... })`).
 // They describe existing foreign keys only and do not affect SQL or migrations.
 import { relations } from 'drizzle-orm';
-import { cartItems, carts } from './carts';
-import { orderEvents, orderItems, orders } from './orders';
+import { cartItems, carts, vinRequests } from './carts';
+import { linkTokens, orderEvents, orderItems, orders } from './orders';
 import { payments, receipts, refunds } from './payments';
-import { consents, documentVersions, users } from './people';
+import { consents, documentVersions, messengerBindings, users } from './people';
+import { claims, installBookings, orderPhotos } from './service';
 import { supplierOrderItems, supplierOrders } from './supplier';
 import { notifications } from './system';
 import { clientApprovals, sellerCards } from './workflow';
@@ -21,6 +22,8 @@ export const cartItemsRelations = relations(cartItems, ({ one }) => ({
 export const usersRelations = relations(users, ({ many }) => ({
   orders: many(orders),
   consents: many(consents),
+  messengerBindings: many(messengerBindings),
+  vinRequests: many(vinRequests),
 }));
 
 export const ordersRelations = relations(orders, ({ many, one }) => ({
@@ -38,6 +41,11 @@ export const ordersRelations = relations(orders, ({ many, one }) => ({
     fields: [orders.offerVersionId],
     references: [documentVersions.id],
   }),
+  // phase 1C
+  claims: many(claims),
+  installBookings: many(installBookings),
+  photos: many(orderPhotos),
+  vinRequest: one(vinRequests, { fields: [orders.vinRequestId], references: [vinRequests.id] }),
 }));
 
 export const orderItemsRelations = relations(orderItems, ({ many, one }) => ({
@@ -100,8 +108,52 @@ export const clientApprovalsRelations = relations(clientApprovals, ({ one }) => 
 
 export const sellerCardsRelations = relations(sellerCards, ({ one }) => ({
   order: one(orders, { fields: [sellerCards.orderId], references: [orders.id] }),
+  vinRequest: one(vinRequests, {
+    fields: [sellerCards.vinRequestId],
+    references: [vinRequests.id],
+  }),
 }));
 
 export const notificationsRelations = relations(notifications, ({ one }) => ({
   order: one(orders, { fields: [notifications.orderId], references: [orders.id] }),
+  vinRequest: one(vinRequests, {
+    fields: [notifications.vinRequestId],
+    references: [vinRequests.id],
+  }),
+}));
+
+// --- phase 1C (docs/phase-1c-implementation.md section 1.1) -----------------------------------
+
+export const claimsRelations = relations(claims, ({ many, one }) => ({
+  order: one(orders, { fields: [claims.orderId], references: [orders.id] }),
+  item: one(orderItems, { fields: [claims.orderItemId], references: [orderItems.id] }),
+  photos: many(orderPhotos),
+  refund: one(refunds, { fields: [claims.refundId], references: [refunds.id] }),
+}));
+
+export const installBookingsRelations = relations(installBookings, ({ one }) => ({
+  order: one(orders, { fields: [installBookings.orderId], references: [orders.id] }),
+  user: one(users, { fields: [installBookings.userId], references: [users.id] }),
+}));
+
+export const orderPhotosRelations = relations(orderPhotos, ({ one }) => ({
+  order: one(orders, { fields: [orderPhotos.orderId], references: [orders.id] }),
+  claim: one(claims, { fields: [orderPhotos.claimId], references: [claims.id] }),
+  item: one(orderItems, { fields: [orderPhotos.orderItemId], references: [orderItems.id] }),
+}));
+
+export const vinRequestsRelations = relations(vinRequests, ({ many, one }) => ({
+  user: one(users, { fields: [vinRequests.userId], references: [users.id] }),
+  proposalCart: one(carts, { fields: [vinRequests.proposalCartId], references: [carts.id] }),
+  orders: many(orders),
+  sellerCards: many(sellerCards),
+}));
+
+export const linkTokensRelations = relations(linkTokens, ({ one }) => ({
+  user: one(users, { fields: [linkTokens.userId], references: [users.id] }),
+  order: one(orders, { fields: [linkTokens.orderId], references: [orders.id] }),
+}));
+
+export const messengerBindingsRelations = relations(messengerBindings, ({ one }) => ({
+  user: one(users, { fields: [messengerBindings.userId], references: [users.id] }),
 }));

@@ -5,6 +5,7 @@
 import type { Env, Logger, QueueName, Redis } from '@detaly/config';
 import type { Db } from '@detaly/db';
 import type { OrderNotifyTemplate } from '@detaly/domain';
+import type { FileStore } from '@detaly/files';
 import type { ChannelDriver } from '@detaly/notify';
 import type { EngineDeps } from '@detaly/orders';
 import type { PaymentProvider, ReceiptProvider } from '@detaly/payments';
@@ -44,6 +45,13 @@ export interface SellerCardPort {
     confirmationData: string;
     expiresAt: Date | null;
   }): Promise<void>;
+  /**
+   * Phase 1C: a new card of a VIN request (seller_cards kind 'vin'); closes its older open
+   * cards. `note` is an extra line without PD («Без ответа 4 ч»).
+   */
+  postVin(input: { vinRequestId: string; note?: string | null }): Promise<SellerCardPostResult>;
+  /** Phase 1C: redraws the latest open card of the VIN request (preview, status). */
+  refreshVin(vinRequestId: string): Promise<void>;
 }
 
 /** Alerts to the sellers chat or the owner's private chat (Б19); deduplicated by key. */
@@ -91,6 +99,13 @@ export interface QueueInspector {
  */
 export type SellerTelegramApi = Api;
 
+/**
+ * Telegram Bot API of the client bot (TG_CLIENT_BOT_TOKEN, phase 1C): client notifications go
+ * through createTelegramDriver over it, the client bot polls with its own Bot. null without the
+ * token (Telegram is then skipped for clients).
+ */
+export type ClientTelegramApi = Api;
+
 export interface WorkerDeps {
   db: Db;
   /** Commands client (createRedis): heartbeat, SMS limits, bot state. */
@@ -118,6 +133,14 @@ export interface WorkerDeps {
   /** null with SMS_PROVIDER=none. */
   smsDriver: ChannelDriver | null;
   telegram: SellerTelegramApi | null;
+  /** Phase 1C: the client bot API; null without TG_CLIENT_BOT_TOKEN. */
+  clientTelegram: ClientTelegramApi | null;
+  /** Phase 1C: the MAX driver is phase 2 — always null, selectChannel skips MAX. */
+  maxDriver: ChannelDriver | null;
+  /** Phase 1C: photos (FILES_STORAGE; `none` throws FilesDisabledError on put). */
+  files: FileStore;
+  /** Phase 1C: HTTP for downloading Telegram files (photos sent to the bots); tests fake it. */
+  fetch: typeof fetch;
   sellerCards: SellerCardPort;
   alerts: AlertPort;
   inspector: QueueInspector;

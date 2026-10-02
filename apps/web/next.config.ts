@@ -55,6 +55,7 @@ const nextConfig: NextConfig = {
     '@detaly/config',
     '@detaly/db',
     '@detaly/domain',
+    '@detaly/files',
     '@detaly/notify',
     '@detaly/orders',
     '@detaly/payments',
@@ -62,7 +63,8 @@ const nextConfig: NextConfig = {
     '@detaly/vin',
   ],
   // Node-only libraries loaded at runtime instead of being bundled (must be direct deps of web).
-  serverExternalPackages: ['soap', 'pino', 'ioredis'],
+  // sharp (photo re-encoding in @detaly/files, phase 1C) is a native module, imported lazily.
+  serverExternalPackages: ['soap', 'pino', 'ioredis', 'sharp'],
   poweredByHeader: false,
   // Lets src/proxy.ts see `rsc` and `next-router-prefetch` (stripped from the proxy request by
   // default), so genuine router prefetches are not counted against the search limit. The proxy never rewrites or
@@ -70,10 +72,12 @@ const nextConfig: NextConfig = {
   skipProxyUrlNormalize: true,
   experimental: {
     // Next buffers a request body for the proxy (10 MB by default) before any route handler
-    // runs. The forms here are tiny (cart 8 KB, checkout 16 KB, cancel 256 B, each also read as
-    // a bounded stream in its handler): past this size Next keeps only the first 64 KB, which
-    // the handlers then reject as malformed.
-    proxyClientMaxBodySize: '64kb',
+    // runs; past this size it keeps only the first part, which the handlers then reject as
+    // malformed. Phase 1C forms carry up to 3 photos (decision С19): 12 MB in total, read by
+    // server/uploads.ts with its own per-file and total limits. Every other handler still reads
+    // its body as a bounded stream with its own small limit (cart 8 KB, checkout 16 KB, cancel
+    // 256 B), and Caddy refuses bodies over 12 MB on /api/* before they reach Next.
+    proxyClientMaxBodySize: '12mb',
   },
   // `next build` must not need a database or env: pages are dynamic (see (site)/layout.tsx).
   // NOINDEX_ALL is a runtime switch (one image for prod and stage), so it is applied in
@@ -81,18 +85,28 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: '/:path*', headers: securityHeaders },
-      // Referrer-Policy is split by path instead of being global: the order page /o/<token>
-      // carries its access token in the URL and must never leak it through Referer. When two
-      // rules set the same key the later one wins, and the proxy sets no-referrer on /o/* and
-      // /api/orders/* as well (its headers are applied after these), so neither can be
-      // overridden by a global value.
+      // Referrer-Policy is split by path instead of being global: the order page /o/<token>,
+      // the VIN proposal /p/<token> and the VIN confirmation /vin/sent/<link token> carry a
+      // token in the URL and must never leak it through Referer. When two rules set the same
+      // key the later one wins, and the proxy sets no-referrer on these paths and their APIs as
+      // well (its headers are applied after these), so none can be overridden by a global value.
       {
-        source: '/((?!o/).*)',
+        source: '/((?!o/|p/|vin/sent).*)',
         headers: [{ key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' }],
       },
       { source: '/o/:path*', headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] },
+      { source: '/p/:path*', headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] },
+      { source: '/vin/sent', headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] },
+      {
+        source: '/vin/sent/:path*',
+        headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],
+      },
       {
         source: '/api/orders/:path*',
+        headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],
+      },
+      {
+        source: '/api/proposals/:path*',
         headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],
       },
       {

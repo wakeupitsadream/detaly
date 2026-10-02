@@ -16,6 +16,7 @@ import {
   PARTIAL_REFUND_STATUSES,
   type OrderStatus,
   receiptFor,
+  REFUSABLE_STATUSES,
   resolveTransition,
   rulesFor,
   TERMINAL_ORDER_STATUSES,
@@ -461,6 +462,13 @@ const EXPECTED: readonly Row[] = [
     'refund_pending',
   ],
   ['completed', 'claim_refund_approved', staff({ scope: 'item', claimKind: 'delay' }), 'completed'],
+  // phase 1C: a delay claim before the handover, money held (a self-transition)
+  ...REFUSABLE_STATUSES.map((status): Row => [
+    status,
+    'claim_opened',
+    client({ claimKind: 'delay' }),
+    status,
+  ]),
 
   // client refusal before handover: prepay -> refund_pending, pay_on_handover -> cancelled
   ['confirmed', 'client_refused', client(), 'refund_pending'],
@@ -1266,6 +1274,94 @@ describe('guards', () => {
       ['create_refund'],
     ]);
     expect(b.ok && [receiptFor(b.rule, cod), effectsFor(b.rule, cod)]).toEqual([null, []]);
+  });
+});
+
+describe('phase 1C rules (docs/phase-1c-implementation.md section 3.4)', () => {
+  it('before the handover only a delay claim opens, and only while money is held', () => {
+    expect(
+      resolveTransition('ordered_at_supplier', 'claim_opened', client({ claimKind: 'refusal' })),
+    ).toEqual({ ok: false, reason: 'guard_failed', failed: ['claim_is_delay'] });
+    expect(
+      resolveTransition('ordered_at_supplier', 'claim_opened', client({ claimKind: 'delay' })),
+    ).toMatchObject({ ok: true, rule: { to: 'ordered_at_supplier' } });
+    // pay_on_handover without a handover payment: nothing to refund, no delay claim
+    expect(
+      resolveTransition('ready', 'claim_opened', client({ ...COD, claimKind: 'delay' })),
+    ).toEqual({ ok: false, reason: 'guard_failed', failed: ['money_held'] });
+    // a missing kind fails closed
+    expect(resolveTransition('confirmed', 'claim_opened', staff())).toMatchObject({
+      ok: false,
+      failed: ['claim_is_delay'],
+    });
+    // the system does not open claims
+    expect(
+      resolveTransition('confirmed', 'claim_opened', system({ claimKind: 'delay' })),
+    ).toMatchObject({ ok: false, failed: ['actor'] });
+  });
+
+  it('every claim_opened rule notifies the client, the owner and the sellers and opens a claim', () => {
+    const rules = TRANSITIONS.filter((rule) => rule.event === 'claim_opened');
+    expect(rules.length).toBe(REFUSABLE_STATUSES.length + 2);
+    for (const rule of rules) {
+      expect(rule.to).toEqual(rule.from[0]);
+      expect(rule.notify).toEqual([
+        { audience: 'client', template: 'claim_received' },
+        { audience: 'owner', template: 'staff_claim_deadline' },
+        { audience: 'sellers', template: 'staff_claim_opened' },
+      ]);
+      expect(effectsFor(rule, client({ claimKind: 'delay' }))).toEqual(['open_claim']);
+    }
+  });
+
+  it('completion waits while a claim is open', () => {
+    expect(
+      resolveTransition('handed', 'completion_timeout', system({ openClaims: 1 })),
+    ).toMatchObject({ ok: false, reason: 'guard_failed', failed: ['no_open_claims'] });
+    expect(
+      resolveTransition('handed', 'completion_timeout', system({ openClaims: 0 })),
+    ).toMatchObject({ ok: true, rule: { to: 'completed' } });
+  });
+
+  it('a claim refund without an accepted return: seller no, owner with a reason yes', () => {
+    const facts = { scope: 'order', claimKind: 'not_fit', returnAccepted: false } as const;
+    expect(resolveTransition('handed', 'claim_refund_approved', staff(facts))).toMatchObject({
+      ok: false,
+      reason: 'guard_failed',
+      failed: ['claim_refund_allowed'],
+    });
+    expect(
+      resolveTransition(
+        'handed',
+        'claim_refund_approved',
+        ownerCtx({ ...facts, ownerOverrideReason: 'Клиент прислал видео брака' }),
+      ),
+    ).toMatchObject({ ok: true, rule: { to: 'refund_pending' } });
+    expect(
+      resolveTransition(
+        'handed',
+        'claim_refund_approved',
+        ownerCtx({ ...facts, ownerOverrideReason: '' }),
+      ),
+    ).toMatchObject({ ok: false, failed: ['claim_refund_allowed'] });
+    // a delay claim needs no return
+    expect(
+      resolveTransition('handed', 'claim_refund_approved', staff({ ...facts, claimKind: 'delay' })),
+    ).toMatchObject({ ok: true });
+  });
+
+  it('phase 1C notification templates are registered', () => {
+    for (const template of [
+      'claim_decided',
+      'install_requested',
+      'install_confirmed',
+      'install_declined',
+      'install_reminder',
+      'staff_claim_opened',
+      'staff_install_request',
+    ] as const) {
+      expect(ORDER_NOTIFY_TEMPLATES).toContain(template);
+    }
   });
 });
 

@@ -108,6 +108,16 @@ const envShape = {
     .regex(/^age1[0-9a-z]+$/, 'expected an age public key (age1...)')
     .optional(),
 
+  // --- Photos: VIN requests, claims, packaging [ф1C] (@detaly/files, decision С18) ---
+  /** none: photos off (forms hide the field); local: FILES_LOCAL_DIR (dev, e2e); s3: S3_*. */
+  FILES_STORAGE: z.enum(['none', 'local', 's3']).default('none'),
+  FILES_LOCAL_DIR: z.string().trim().min(1).default('var/files'),
+  /** Bucket of the photos; default S3_BUCKET (backups live under BACKUP_PREFIX there). */
+  FILES_S3_BUCKET: optionalString,
+  FILES_S3_PREFIX: z.string().trim().min(1).default('files/'),
+  /** One uploaded photo, megabytes (decision С19). */
+  FILES_MAX_UPLOAD_MB: int(1).max(12).default(8),
+
   // --- Backup container [infra] (infra/backup/*.sh; see docs/runbook.md) ---
   BACKUP_STORAGE: z.enum(['s3', 'local']).default('s3'),
   BACKUP_PREFIX: z.string().trim().min(1).default('postgres'),
@@ -171,6 +181,12 @@ const envShape = {
   // Chat of the pickup point for a VIN request with a photo of the СТС, e.g. https://t.me/name
   PICKUP_TELEGRAM_URL: z.url({ protocol: /^https$/ }).optional(),
   STAFF_SEED_JSON: staffSeedJson.default([]),
+
+  // --- Installation partner [ф1C] (decision С6): without the name booking is hidden ---
+  /** The service that installs parts and bills the client itself (e.g. «Сервис56»). */
+  INSTALL_PARTNER_NAME: optionalString,
+  /** «ИП …, ИНН …» in the text «установка оплачивается в сервисе по его чеку». */
+  INSTALL_PARTNER_REQUISITES: optionalString,
 
   // --- Rossko [ф0] ---
   ROSSKO_MODE: z.enum(ROSSKO_MODES).default('fixtures'),
@@ -292,11 +308,33 @@ export const envSchema = z.object(envShape).superRefine((env, ctx) => {
         message: 'not allowed when DEMO_MODE=true',
       });
     }
+    // The demo never stores files (decision С21).
+    if (env.FILES_STORAGE !== 'none') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['FILES_STORAGE'],
+        message: 'must be none when DEMO_MODE=true',
+      });
+    }
   } else {
     for (const key of ['DATABASE_URL', 'REDIS_URL'] as const) {
       if (!env[key]) {
         ctx.addIssue({ code: 'custom', path: [key], message: 'required unless DEMO_MODE=true' });
       }
+    }
+  }
+  if (env.FILES_STORAGE === 's3') {
+    for (const key of ['S3_ENDPOINT', 'S3_KEY', 'S3_SECRET'] as const) {
+      if (!env[key]) {
+        ctx.addIssue({ code: 'custom', path: [key], message: 'required when FILES_STORAGE=s3' });
+      }
+    }
+    if (!env.FILES_S3_BUCKET && !env.S3_BUCKET) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['FILES_S3_BUCKET'],
+        message: 'FILES_S3_BUCKET or S3_BUCKET is required when FILES_STORAGE=s3',
+      });
     }
   }
   if (env.ROSSKO_MODE === 'live') {

@@ -95,6 +95,22 @@ export const HIDDEN_TIMELINE_EVENTS: ReadonlySet<OrderEvent | JournalEvent> = ne
   'webhook_stale',
   'deferred_1a_processed',
   'claim_deferred',
+  // Phase 1C journal events: hidden until the web-order package phrases them (section 10.5).
+  'claim_return_accepted',
+  'claim_decided',
+  'claim_closed',
+  'claim_compensation',
+  'install_requested',
+  'install_confirmed',
+  'install_declined',
+  'install_cancelled',
+  'install_done',
+  'install_no_show',
+  'install_reminder',
+  'messenger_bound',
+  'messenger_unbound',
+  'photo_added',
+  'vin_order',
 ]);
 
 type PhraseInput = Pick<TimelineEvent, 'type' | 'toStatus'> &
@@ -268,6 +284,23 @@ function journalPhrase(event: PhraseInput): string | null {
     case 'webhook_stale':
     case 'deferred_1a_processed':
     case 'claim_deferred':
+      return null;
+    // Hidden (HIDDEN_TIMELINE_EVENTS) until web-order phrases them (phase 1C section 10.5).
+    case 'claim_return_accepted':
+    case 'claim_decided':
+    case 'claim_closed':
+    case 'claim_compensation':
+    case 'install_requested':
+    case 'install_confirmed':
+    case 'install_declined':
+    case 'install_cancelled':
+    case 'install_done':
+    case 'install_no_show':
+    case 'install_reminder':
+    case 'messenger_bound':
+    case 'messenger_unbound':
+    case 'photo_added':
+    case 'vin_order':
       return null;
     default:
       // Not a JournalEvent: an unknown type.

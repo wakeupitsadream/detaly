@@ -24,3 +24,7 @@ export * from './journal';
 export * from './work-hours';
 export * from './install-window';
 export * from './install-load-demo';
+// phase 1C
+export * from './claims';
+export * from './vin-requests';
+export * from './install-params';

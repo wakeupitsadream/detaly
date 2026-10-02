@@ -102,9 +102,14 @@ describe('hitRateLimit: checkout, cancel, cart, pay, order_action, admin_auth', 
     { kind: 'pay', limit: 10, ip: '198.51.100.34' },
     { kind: 'order_action', limit: 20, ip: '198.51.100.35' },
     { kind: 'admin_auth', limit: 20, ip: '198.51.100.36' },
+    // phase 1C (decision С27)
+    { kind: 'link', limit: 20, ip: '198.51.100.37' },
+    { kind: 'install', limit: 20, ip: '198.51.100.38' },
+    { kind: 'claim', limit: 10, ip: '198.51.100.39' },
+    { kind: 'proposal', limit: 30, ip: '198.51.100.40' },
   ];
 
-  it('declares the hourly limits of 1A section 8 and 1B section 15', () => {
+  it('declares the hourly limits of 1A section 8, 1B section 15 and 1C decision С27', () => {
     for (const { kind, limit } of cases) {
       expect(RATE_LIMITS[kind], kind).toEqual([
         { window: 'hour', keySegment: 'hour', limit, windowMs: HOUR_MS },
@@ -132,6 +137,37 @@ describe('hitRateLimit: checkout, cancel, cart, pay, order_action, admin_auth', 
       expect(later.allowed).toBe(true);
     });
   }
+
+  it('limits VIN requests to 5 per hour and 20 per 24 hours', async () => {
+    expect(RATE_LIMITS.vin).toEqual([
+      { window: 'hour', keySegment: 'hour', limit: 5, windowMs: HOUR_MS },
+      { window: 'day', keySegment: 'day', limit: 20, windowMs: 24 * HOUR_MS },
+    ]);
+    const start = Date.UTC(2026, 9, 4, 6, 0, 0);
+    const options = {
+      kind: 'vin' as const,
+      secret: SECRET,
+      ip: '198.51.100.41',
+      keyPrefix: prefix,
+    };
+    let sent = 0;
+    // 5 an hour for 4 hours: the 21st within the day is refused by the day window.
+    for (let hour = 0; hour < 4; hour += 1) {
+      for (let i = 0; i < 5; i += 1) {
+        const decision = await hitRateLimit(redis, {
+          ...options,
+          now: start + hour * HOUR_MS + i * 1_000 + 1,
+        });
+        expect(decision.allowed, `vin ${hour}:${i}`).toBe(true);
+        sent += 1;
+      }
+      const sixth = await hitRateLimit(redis, { ...options, now: start + hour * HOUR_MS + 10_000 });
+      expect(sixth).toMatchObject({ allowed: false, window: 'hour' });
+    }
+    expect(sent).toBe(20);
+    const nextHour = await hitRateLimit(redis, { ...options, now: start + 4 * HOUR_MS + 20_000 });
+    expect(nextHour).toMatchObject({ allowed: false, window: 'day' });
+  });
 
   it('keeps the kinds apart: an exhausted checkout leaves cart, cancel and search open', async () => {
     const now = Date.UTC(2026, 9, 4, 9, 0, 0);

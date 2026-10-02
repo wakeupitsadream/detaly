@@ -1,5 +1,6 @@
 import { HEARTBEAT_KEY, HEARTBEAT_TTL_SEC, type Redis } from '@detaly/config';
 import { UnrecoverableError, type Job } from 'bullmq';
+import { GrammyError } from 'grammy';
 import { describe, expect, inject, it, vi } from 'vitest';
 import type { WorkerDeps } from '../src/deps';
 import { createSellerCards } from '../src/bots/seller/cards';
@@ -7,7 +8,7 @@ import { PROCESSORS } from '../src/jobs';
 import { processHousekeeping } from '../src/jobs/housekeeping';
 import { unknownJobMessage } from '../src/jobs/unknown-job';
 import { HEARTBEAT_EVERY_MS, PROCESSED_QUEUES, registerSchedulers } from '../src/queues';
-import { createTestDeps } from './helpers/test-deps';
+import { createTestDeps, fakeClientTelegram, noNetworkFetch } from './helpers/test-deps';
 
 function fakeRedis() {
   const set = vi.fn(async (..._args: unknown[]) => 'OK');
@@ -99,6 +100,36 @@ describe('phase 1B processors', () => {
     expect((error as Error).message).toBe('housekeeping timers needs WorkerDeps');
   });
 
+  it('phase 1C stubs: notify/vin fails without retries, retention deletes nothing', async () => {
+    const vin = await PROCESSORS.notify({ name: 'vin', data: {} } as Job, deps).catch(
+      (e: unknown) => e,
+    );
+    expect(vin).toBeInstanceOf(UnrecoverableError);
+    expect((vin as Error).message).toBe('notify/vin: not implemented');
+    const debug = vi.fn();
+    const full = { db: {}, engine: {}, logger: { debug } } as unknown as WorkerDeps;
+    await expect(processHousekeeping({ name: 'retention' }, full)).resolves.toEqual({
+      deleted: 0,
+    });
+    const { redis } = fakeRedis();
+    await expect(
+      processHousekeeping(
+        { name: 'retention' },
+        { redis, now: () => new Date(), heartbeatKey: 'k' },
+      ),
+    ).rejects.toBeInstanceOf(UnrecoverableError);
+  });
+
+  it('seller cards port: VIN cards are stubs until the seller-bot-1c package', async () => {
+    const warn = vi.fn();
+    const logger = { warn } as unknown as WorkerDeps['logger'];
+    const cards = createSellerCards({ ...deps, telegram: null, logger });
+    await expect(
+      cards.postVin({ vinRequestId: '00000000-0000-7000-8000-000000000000' }),
+    ).resolves.toEqual({ status: 'skipped', fallbackReason: 'not_implemented' });
+    await expect(cards.refreshVin('00000000-0000-7000-8000-000000000000')).resolves.toBeUndefined();
+  });
+
   it('seller cards port: without a bot token a card is skipped, not failed', async () => {
     const warn = vi.fn();
     const logger = { warn } as unknown as WorkerDeps['logger'];
@@ -162,5 +193,27 @@ describe.skipIf(!inject('workerDatabaseUrl'))('createTestDeps (test/helpers/test
     } finally {
       await t.close();
     }
+  });
+});
+
+describe('phase 1C test fakes', () => {
+  it('the fake client bot records messages and answers 403 / 429 like Telegram', async () => {
+    const fake = fakeClientTelegram();
+    await fake.api.sendMessage(42, 'Заказ DT-000001 приехал');
+    fake.failWith(403);
+    const blocked = await fake.api.sendMessage(42, 'x').catch((e: unknown) => e);
+    expect(blocked).toBeInstanceOf(GrammyError);
+    expect((blocked as GrammyError).error_code).toBe(403);
+    fake.failWith(429);
+    const limited = await fake.api.sendMessage(42, 'x').catch((e: unknown) => e);
+    expect((limited as GrammyError).error_code).toBe(429);
+    expect((limited as GrammyError).parameters.retry_after).toBe(5);
+    fake.failWith(null);
+    expect(fake.sent()).toEqual([
+      { method: 'sendMessage', chatId: '42', text: 'Заказ DT-000001 приехал' },
+      { method: 'sendMessage', chatId: '42', text: 'x' },
+      { method: 'sendMessage', chatId: '42', text: 'x' },
+    ]);
+    await expect(noNetworkFetch('https://api.telegram.org/')).rejects.toThrow(/network/);
   });
 });

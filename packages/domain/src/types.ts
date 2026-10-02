@@ -11,6 +11,7 @@
  *   round trips (offer_snapshot jsonb, Redis cache).
  */
 import type {
+  ClaimKind,
   DocumentKind,
   ExcludedKind,
   Fulfillment,
@@ -354,6 +355,89 @@ export type ApprovalProposal =
       /** Free text from staff shown to the client; must not contain PD. */
       note: string | null;
     };
+
+// ---------------------------------------------------------------------------
+// Phase 1C: VIN answer preview, install slots, claim facts
+// (docs/phase-1c-implementation.md section 3.2)
+// ---------------------------------------------------------------------------
+
+/** Why a line of the master's answer cannot be offered (decision С13). */
+export type VinPreviewErrorReason =
+  'parse' | 'not_found' | 'brand_mismatch' | 'excluded' | 'no_stock' | 'supplier_unavailable';
+
+/**
+ * One line of the master's answer «БРЕНД АРТИКУЛ [КОЛ-ВО] [# заметка]», checked by GetSearch.
+ * Stored in vin_requests.preview (jsonb); an `ok` line becomes a cart_items row of the proposal.
+ */
+export type VinPreviewLine =
+  | {
+      /** 1-based line number in the answer text. */
+      line: number;
+      /** The line as typed (trimmed). */
+      raw: string;
+      status: 'ok';
+      brand: string;
+      article: string;
+      name: string;
+      qty: number;
+      /** The chosen supplier offer (becomes cart_items.offer_snapshot). */
+      offer: Offer;
+      /** Normalized article the offer was searched by (cart_items.search_article_norm). */
+      searchArticleNorm: string;
+      /** offerViewId(offer) (cart_items.offer_key). */
+      offerKey: string;
+      /** Client price per unit (price()). */
+      priceClientKop: Kop;
+      priceSupplierKop: Kop;
+      markupBp: BasisPoints;
+      etaDate: IsoDate;
+      isLocal: boolean;
+      /** The `# заметка` part; shown to the client, must not contain PD. */
+      note: string | null;
+    }
+  | {
+      line: number;
+      raw: string;
+      status: 'error';
+      reason: VinPreviewErrorReason;
+      /** brand_mismatch: brands that do have the article. */
+      brands?: string[];
+      /** Russian text for the master. */
+      message: string;
+    };
+
+export interface VinPreview {
+  lines: VinPreviewLine[];
+  /** The `>` line: the master's comment to the client (no PD). */
+  comment: string | null;
+  /** Sum of client price x qty over the `ok` lines. */
+  totalKop: Kop;
+  okCount: number;
+  errorCount: number;
+  /** ISO timestamp of the GetSearch check. */
+  checkedAt: string;
+}
+
+/** A free installation slot offered to the client (listInstallSlots -> installSlotOf). */
+export interface InstallSlot {
+  /** ISO timestamp with offset, e.g. '2026-10-08T14:00:00+05:00'. */
+  startAt: string;
+  endAt: string;
+  /** 'чт 8 окт' */
+  dayText: string;
+  /** '14:00' */
+  timeText: string;
+}
+
+/** Facts of a claim the claims service passes to the order engine (claim_refund_approved). */
+export interface ClaimFacts {
+  claimId: string;
+  claimKind: ClaimKind;
+  /** claims.return_accepted_at is set. */
+  returnAccepted: boolean;
+  /** claims.opened_at (ISO): the refund deadline counts from the client's request. */
+  claimOpenedAt: string;
+}
 
 // ---------------------------------------------------------------------------
 // Seeds

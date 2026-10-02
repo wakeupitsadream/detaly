@@ -2,7 +2,13 @@
  * Channel-neutral message model. Templates return text plus abstract buttons; drivers turn
  * them into Telegram inline keyboards, MAX buttons or plain SMS text.
  */
-import type { MessengerChannel, NotificationChannel, PaymentScheme } from '@detaly/domain/statuses';
+import type {
+  ClaimDecision,
+  ClaimKind,
+  MessengerChannel,
+  NotificationChannel,
+  PaymentScheme,
+} from '@detaly/domain/statuses';
 import type { IsoDate, Kop } from '@detaly/domain/types';
 
 /** Callback button: drivers encode it (Telegram callback_data `a:<action>:<orderId>:<nonce>`). */
@@ -31,6 +37,11 @@ export interface RenderedMessage {
    * `text` and appends the URL buttons. Set by the SMS allowlisted templates.
    */
   smsText?: string;
+  /**
+   * FileStore keys of photos to attach (phase 1C: only the packaging photo of `arrived`; never
+   * VIN or claim photos). Drivers that cannot send photos ignore them.
+   */
+  photos?: readonly string[];
 }
 
 /** One messenger_bindings row, reduced to what channel selection needs. */
@@ -92,6 +103,17 @@ export interface OrderTemplateData {
   replyBy?: Date | string | null;
   /** Storage window by the offer (pickup.window_prepaid_days / pickup.window_cod_days). */
   storageDays?: number | null;
+  /** Phase 1C: the installation slot, e.g. 'чт 9 окт 14:00' (install_* templates). */
+  slotText?: string | null;
+  /** Phase 1C: the installation partner (INSTALL_PARTNER_NAME) for install_* templates. */
+  installPartner?: string | null;
+  /**
+   * Phase 1C: the claim of claim_* templates. The decision text is never here: it may contain
+   * PD and is shown only on /o/<token> (decision С2).
+   */
+  claim?: { kind: ClaimKind; decision: ClaimDecision | null; deadlineDate: IsoDate } | null;
+  /** Phase 1C: FileStore keys of packaging photos (arrived), at most one is sent. */
+  photos?: readonly string[];
 }
 
 export interface VinProposalData {

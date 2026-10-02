@@ -1,26 +1,22 @@
 /**
- * Install window numbers (docs/design.md, section 4) and their wording. No imports, so the
- * server planner (server/install/config.ts) and the client texts («Как мы считаем», the home
- * explanation) read the same values: change a number here and every text follows.
+ * Install window numbers (docs/design.md, section 4) and their wording. The numbers come from the
+ * import-free `@detaly/domain/install-params`, so the server planner (server/install/config.ts),
+ * the client texts («Как мы считаем», the home explanation) and the worker read the same values:
+ * change a number there and every text follows.
  */
 
-/** Lifts the partner service can give to our clients at the same time. VERIFY with Лёша. */
-export const INSTALL_LIFTS = 2;
-
-/** A typical replacement job, minutes (filter, pads, plugs). VERIFY with Лёша. */
-export const INSTALL_JOB_MIN = 120;
-
-/** Supplier deliveries reach the service by this time of the pickup day. VERIFY with Лёша. */
-export const INSTALL_ARRIVAL_TIME = '12:00';
-
-/** A part already at the point can go on the lift no sooner than this, minutes. */
-export const INSTALL_LEAD_MIN = 60;
-
-/** Slot starts are tried with this step, minutes. */
-export const INSTALL_STEP_MIN = 60;
-
-/** How far ahead the planner looks, days. */
-export const INSTALL_HORIZON_DAYS = 14;
+// The numbers live in @detaly/domain/install-params (decision С22): the worker's client bot
+// offers slots from the same values.
+export {
+  INSTALL_ARRIVAL_TIME,
+  INSTALL_CLIENT_CANCEL_BEFORE_MIN,
+  INSTALL_HORIZON_DAYS,
+  INSTALL_JOB_MIN,
+  INSTALL_LEAD_MIN,
+  INSTALL_LIFTS,
+  INSTALL_SLOTS_SHOWN,
+  INSTALL_STEP_MIN,
+} from '@detaly/domain/install-params';
 
 const HOURS_WORDS: Readonly<Record<number, readonly [string, string]>> = {
   60: ['час', 'часа'],

@@ -16,10 +16,11 @@ import {
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { createdAt, id, kop, kopCheck, namedCheck, tstz, updatedAt } from './columns';
-import { carts } from './carts';
+import { carts, vinRequests } from './carts';
 import {
   actorType,
   fulfillment,
+  messengerChannel,
   notificationChannel,
   orderItemState,
   orderStatus,
@@ -95,9 +96,12 @@ export const orders = pgTable(
     supplierReturnDeadlineAt: tstz(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
+    /** Phase 1C: the VIN request whose proposal (/p/<token>) this order was checked out from. */
+    vinRequestId: uuid().references((): AnyPgColumn => vinRequests.id, { onDelete: 'set null' }),
   },
   (t) => [
     unique('orders_number_unique').on(t.number),
+    index('orders_vin_request_id_idx').on(t.vinRequestId),
     unique('orders_access_token_unique').on(t.accessToken),
     unique('orders_checkout_key_unique').on(t.checkoutKey),
     index('orders_cart_id_idx').on(t.cartId),
@@ -187,7 +191,10 @@ export const orderEvents = pgTable(
   (t) => [index('order_events_order_id_created_at_idx').on(t.orderId, t.createdAt)],
 );
 
-/** One-time deep-link payload (`?start=<token>`): <= 64 chars for Telegram. */
+/**
+ * One-time deep-link payload (`?start=<token>`): <= 64 chars for Telegram. Phase 1C: used once
+ * (`used_at`, by `used_by_external_id`), 24 hours, never the order page token (decision С3).
+ */
 export const linkTokens = pgTable(
   'link_tokens',
   {
@@ -197,9 +204,14 @@ export const linkTokens = pgTable(
     expiresAt: tstz().notNull(),
     usedAt: tstz(),
     createdAt: createdAt(),
+    // --- phase 1C ---
+    channel: messengerChannel().notNull().default('telegram'),
+    /** Messenger user id that consumed the token (Telegram from.id as text). */
+    usedByExternalId: text(),
   },
   (t) => [
     index('link_tokens_expires_at_idx').on(t.expiresAt),
+    index('link_tokens_user_id_idx').on(t.userId),
     namedCheck('link_tokens', 'token', sql`${t.token} ~ '^[A-Za-z0-9_-]{1,64}$'`),
   ],
 );

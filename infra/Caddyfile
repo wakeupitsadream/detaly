@@ -22,7 +22,8 @@
 	}
 
 	# Every other log (http.log.error with the failed request, TLS, ...): the same filter as
-	# the access log in (common), so a 502 does not log the full IP, User-Agent or token.
+	# the access log in (common), so a 502 does not log the full IP, User-Agent, token or a
+	# redirect target.
 	log default {
 		output stdout
 		format filter {
@@ -40,7 +41,8 @@
 				request>headers>Referer delete
 				request>headers>X-Real-Ip delete
 				request>headers>X-Forwarded-For delete
-				request>uri regexp ^/(o|p|api/orders)/[^/?]+ /$1/[redacted]
+				resp_headers>Location delete
+				request>uri regexp ^/(o|p|api/orders|api/proposals|vin/sent)/[^/?]+ /$1/[redacted]
 			}
 		}
 	}
@@ -48,6 +50,13 @@
 
 (common) {
 	encode zstd gzip
+
+	# Request bodies of the API: the largest are photo forms (3 photos, phase 1C decision С19),
+	# which the app also limits per file; anything bigger never reaches Next.
+	@api path /api/*
+	request_body @api {
+		max_size 12MB
+	}
 
 	header {
 		Strict-Transport-Security "max-age=31536000"
@@ -58,10 +67,12 @@
 
 	# Access log without personal data in clear form (152-FZ, privacy policy section 3):
 	# client IPs are truncated to the subnet (/24, /48), browser and forwarding headers are
-	# dropped, and secret order/proposal tokens in /o/<token>, /p/<token> and the client
-	# routes /api/orders/<token>/{pay,actions,cancel} are redacted (Caddy already omits Cookie
-	# and Authorization; apps/web/test/caddyfile.test.ts checks the filter). Retention is the docker json-file
-	# rotation (10m x 3 per service, infra/docker-compose.yml).
+	# dropped, and secret tokens in the path are redacted: orders /o/<token> and
+	# /api/orders/<token>/..., VIN proposals /p/<token> and /api/proposals/<token>/take, VIN
+	# confirmations /vin/sent/<link token> (phase 1C). The Location response header is dropped
+	# too: redirects carry t.me/<bot>?start=<link token> and /p/<token>. Caddy already omits
+	# Cookie and Authorization; apps/web/test/caddyfile.test.ts checks the filter. Retention is
+	# the docker json-file rotation (10m x 3 per service, infra/docker-compose.yml).
 	log {
 		output stdout
 		format filter {
@@ -79,7 +90,8 @@
 				request>headers>Referer delete
 				request>headers>X-Real-Ip delete
 				request>headers>X-Forwarded-For delete
-				request>uri regexp ^/(o|p|api/orders)/[^/?]+ /$1/[redacted]
+				resp_headers>Location delete
+				request>uri regexp ^/(o|p|api/orders|api/proposals|vin/sent)/[^/?]+ /$1/[redacted]
 			}
 		}
 	}

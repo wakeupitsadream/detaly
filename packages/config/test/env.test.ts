@@ -209,6 +209,75 @@ describe('parseEnv', () => {
     expect(demo({}).YOOKASSA_API_URL).toBe('https://api.yookassa.ru/v3');
   });
 
+  it('phase 1C: photo storage and the installation partner', () => {
+    expect(parseEnv(minimalEnvSource())).toMatchObject({
+      FILES_STORAGE: 'none',
+      FILES_LOCAL_DIR: 'var/files',
+      FILES_S3_PREFIX: 'files/',
+      FILES_MAX_UPLOAD_MB: 8,
+    });
+    const env = parseEnv(minimalEnvSource());
+    expect(env.FILES_S3_BUCKET).toBeUndefined();
+    expect(env.INSTALL_PARTNER_NAME).toBeUndefined();
+    expect(env.INSTALL_PARTNER_REQUISITES).toBeUndefined();
+    expect(
+      parseEnv(
+        minimalEnvSource({
+          FILES_STORAGE: 'local',
+          FILES_LOCAL_DIR: '/tmp/files',
+          FILES_MAX_UPLOAD_MB: '12',
+          INSTALL_PARTNER_NAME: 'Сервис56',
+          INSTALL_PARTNER_REQUISITES: 'ИП Тестов Т. Т., ИНН 561234567890',
+        }),
+      ),
+    ).toMatchObject({
+      FILES_STORAGE: 'local',
+      FILES_LOCAL_DIR: '/tmp/files',
+      FILES_MAX_UPLOAD_MB: 12,
+      INSTALL_PARTNER_NAME: 'Сервис56',
+    });
+    expect(() => parseEnv(minimalEnvSource({ FILES_STORAGE: 'ftp' }))).toThrow(/FILES_STORAGE/);
+    expect(() => parseEnv(minimalEnvSource({ FILES_MAX_UPLOAD_MB: '13' }))).toThrow(
+      /FILES_MAX_UPLOAD_MB/,
+    );
+    expect(() => parseEnv(minimalEnvSource({ FILES_MAX_UPLOAD_MB: '0' }))).toThrow(
+      /FILES_MAX_UPLOAD_MB/,
+    );
+  });
+
+  it('FILES_STORAGE=s3 needs the S3 credentials and a bucket', () => {
+    const s3 = {
+      FILES_STORAGE: 's3',
+      S3_ENDPOINT: 'https://s3.example.ru',
+      S3_KEY: 'key',
+      S3_SECRET: 'secret',
+    };
+    let issues: readonly string[] = [];
+    try {
+      parseEnv(minimalEnvSource({ FILES_STORAGE: 's3' }));
+    } catch (error) {
+      issues = (error as EnvError).issues;
+    }
+    expect(issues).toEqual([
+      'S3_ENDPOINT: required when FILES_STORAGE=s3',
+      'S3_KEY: required when FILES_STORAGE=s3',
+      'S3_SECRET: required when FILES_STORAGE=s3',
+      'FILES_S3_BUCKET: FILES_S3_BUCKET or S3_BUCKET is required when FILES_STORAGE=s3',
+    ]);
+    expect(() => parseEnv(minimalEnvSource(s3))).toThrow(/FILES_S3_BUCKET/);
+    expect(parseEnv(minimalEnvSource({ ...s3, S3_BUCKET: 'backups' })).FILES_STORAGE).toBe('s3');
+    expect(parseEnv(minimalEnvSource({ ...s3, FILES_S3_BUCKET: 'photos' })).FILES_S3_BUCKET).toBe(
+      'photos',
+    );
+  });
+
+  it('keeps DEMO_MODE without file storage', () => {
+    const demo = (extra: Record<string, string>) =>
+      parseEnv(minimalEnvSource({ DEMO_MODE: 'true', ...extra }));
+    expect(demo({}).FILES_STORAGE).toBe('none');
+    expect(() => demo({ FILES_STORAGE: 'local' })).toThrow(/FILES_STORAGE: must be none/);
+  });
+
   it('strips an "ИП" prefix from SELLER_REQUISITES_NAME', () => {
     const name = (value: string) =>
       parseEnv(minimalEnvSource({ SELLER_REQUISITES_NAME: value })).SELLER_REQUISITES_NAME;

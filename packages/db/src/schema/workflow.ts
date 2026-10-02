@@ -1,5 +1,6 @@
 // Phase 1B tables (docs/phase-1b-implementation.md section 1.1): the transactional outbox,
-// client approvals and seller bot cards.
+// client approvals and seller bot cards (VIN request cards since phase 1C).
+import { SELLER_CARD_KINDS } from '@detaly/domain/statuses';
 import type { ApprovalProposal } from '@detaly/domain/types';
 import { sql } from 'drizzle-orm';
 import {
@@ -12,7 +13,8 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { createdAt, id, namedCheck, tstz, updatedAt } from './columns';
+import { vinRequests } from './carts';
+import { createdAt, id, namedCheck, sqlList, tstz, updatedAt } from './columns';
 import { approvalDecision, approvalKind } from './enums';
 import { orderEvents, orderItems, orders } from './orders';
 import { staff } from './people';
@@ -123,15 +125,17 @@ export const clientApprovals = pgTable(
 /**
  * Seller bot cards (decision Б17): one Telegram message per card, one nonce per card. A button
  * press must carry the nonce of an open card (`a:<action>:<id>:<nonce>`); the pressed card is
- * edited and older open cards of the order are closed.
+ * edited and older open cards of the order are closed. Phase 1C: a card belongs to exactly one
+ * owner, an order (kinds order, qr) or a VIN request (kind vin).
  */
 export const sellerCards = pgTable(
   'seller_cards',
   {
     id: id(),
-    orderId: uuid()
-      .notNull()
-      .references(() => orders.id),
+    /** Null for a VIN request card (phase 1C). */
+    orderId: uuid().references(() => orders.id),
+    /** Phase 1C: the VIN request of a `vin` card. */
+    vinRequestId: uuid().references(() => vinRequests.id),
     /** Set for an item menu card. */
     orderItemId: uuid().references(() => orderItems.id),
     chatId: text().notNull(),
@@ -139,7 +143,7 @@ export const sellerCards = pgTable(
     messageId: integer(),
     /** 8 characters of base64url. */
     nonce: text().notNull(),
-    /** 'order' | 'qr' (SELLER_CARD_KINDS). */
+    /** 'order' | 'qr' | 'vin' (SELLER_CARD_KINDS). */
     kind: text().notNull(),
     orderEventId: uuid().references(() => orderEvents.id),
     createdAt: createdAt(),
@@ -150,7 +154,16 @@ export const sellerCards = pgTable(
     index('seller_cards_order_id_open_idx')
       .on(t.orderId)
       .where(sql`${t.closedAt} is null`),
+    index('seller_cards_vin_request_id_open_idx')
+      .on(t.vinRequestId)
+      .where(sql`${t.closedAt} is null`),
     namedCheck('seller_cards', 'nonce', sql`${t.nonce} ~ '^[A-Za-z0-9_-]{8}$'`),
-    namedCheck('seller_cards', 'kind', sql`${t.kind} in ('order', 'qr')`),
+    namedCheck('seller_cards', 'kind', sql`${t.kind} in (${sqlList(SELLER_CARD_KINDS)})`),
+    namedCheck('seller_cards', 'owner', sql`(${t.orderId} is null) <> (${t.vinRequestId} is null)`),
+    namedCheck(
+      'seller_cards',
+      'vin_owner',
+      sql`(${t.kind} = 'vin') = (${t.vinRequestId} is not null)`,
+    ),
   ],
 );

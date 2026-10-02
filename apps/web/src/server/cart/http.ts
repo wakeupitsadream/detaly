@@ -12,7 +12,7 @@ import type { Env } from '@detaly/config';
 import { cartCookieOptions, CART_COOKIE, readCartToken } from '../cart-store';
 import { isSameOrigin } from '../request-guards';
 import type { CartService, CartSnapshot } from './cart-service';
-import { CART_ERROR_MESSAGES, CartRequestError } from './errors';
+import { CART_ERROR_MESSAGES, CartRequestError, isCartRequestError } from './errors';
 
 export interface CartHandlerDeps {
   service: CartService;
@@ -138,7 +138,7 @@ async function run(
     if (body === null) throw new CartRequestError('invalid');
     return await action(body, readCartToken(requestCookies(request)));
   } catch (error) {
-    if (error instanceof CartRequestError) return failure(mode, error);
+    if (isCartRequestError(error)) return failure(mode, error);
     deps.onError?.(error);
     return failure(mode, new CartRequestError('internal', CART_ERROR_MESSAGES.internal));
   }

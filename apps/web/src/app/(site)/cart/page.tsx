@@ -119,7 +119,11 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
               minimums={summary.minimums}
               gate={gate.open ? { open: true } : { open: false, message: gate.message }}
             />
-            <PaymentModeNotice payment={summary.payment} checkoutOpen={gate.open} />
+            {/* Below the minimum no part of the cart can be checked out either. */}
+            <PaymentModeNotice
+              payment={summary.payment}
+              checkoutOpen={gate.open && summary.minimums.ok}
+            />
           </div>
         </div>
       ) : (

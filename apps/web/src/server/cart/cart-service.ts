@@ -41,7 +41,7 @@ import {
 } from '../cart-store';
 import { normalizeSearchInput, SearchInputError } from '../search-service';
 import type { SearchSettings } from '../settings';
-import { CartRequestError } from './errors';
+import { CartRequestError, isNamedError } from './errors';
 
 /** Longest offer id accepted (`${articleNorm}:${brand}:${stockId}`). */
 export const MAX_OFFER_ID_LENGTH = 200;
@@ -126,8 +126,18 @@ function parseLineId(value: unknown): string {
   return value.toLowerCase();
 }
 
+// The supplier client is a process-wide singleton that another bundle may have created, so
+// its errors are matched by name too (see isCartRequestError).
+function isRateLimit(error: unknown): error is RosskoRateLimitError {
+  return isNamedError(error, RosskoRateLimitError, 'RosskoRateLimitError');
+}
+
+function isQuotaBreaker(error: unknown): error is QuotaBreakerError {
+  return isNamedError(error, QuotaBreakerError, 'QuotaBreakerError');
+}
+
 function supplierError(error: unknown): CartRequestError {
-  if (error instanceof RosskoRateLimitError) {
+  if (isRateLimit(error) && Number.isFinite(error.retryAfterMs)) {
     return new CartRequestError(
       'supplier_unavailable',
       undefined,
@@ -256,7 +266,7 @@ export function createCartService(deps: CartServiceDeps): CartService {
         ({ offers } = await deps.supplier.rossko.search(articleNorm, { priority: 'search' }));
       } catch (error) {
         settingsPromise.then(undefined, () => undefined);
-        if (!(error instanceof QuotaBreakerError || error instanceof RosskoRateLimitError)) {
+        if (!(isQuotaBreaker(error) || isRateLimit(error))) {
           deps.onError?.(error, 'cart add: supplier search');
         }
         throw supplierError(error);

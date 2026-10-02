@@ -20,9 +20,20 @@ import {
   SPLIT_EXPLANATION,
 } from '@/components/PaymentModeNotice';
 import { cartCountLabel, SiteHeader } from '@/components/SiteHeader';
-import type { CartSettings } from '@/server/cart/cart-service';
-import { CART_ERROR_MESSAGES, CartRequestError, isCartErrorCode } from '@/server/cart/errors';
-import { cartSetCookie, requestCookies } from '@/server/cart/http';
+import { createCartService, type CartService, type CartSettings } from '@/server/cart/cart-service';
+import {
+  CART_ERROR_MESSAGES,
+  CartRequestError,
+  isCartErrorCode,
+  isCartRequestError,
+  safeErrorFields,
+} from '@/server/cart/errors';
+import {
+  cartSetCookie,
+  handleAddItem,
+  handleLineRequest,
+  requestCookies,
+} from '@/server/cart/http';
 import {
   FINAL_SCHEME_NOTE,
   MIXED_CART_TEXT,
@@ -150,9 +161,16 @@ describe('summarizeCart', () => {
     expect(summary.payment.sentences.at(-1)).toBe(FINAL_SCHEME_NOTE);
   });
 
-  it('only to-order lines: prepayment with the reason', () => {
+  it('only to-order lines: prepayment with the reason, final without a phone note', () => {
     const summary = summarizeCart([line('b', false, 64_200)], settings());
     expect(summary.payment.sentences[0]).toContain('предоплата 100%');
+    expect(summary.payment.sentences).not.toContain(FINAL_SCHEME_NOTE);
+    const overLimit = summarizeCart(
+      [line('a', true, 52_800)],
+      settings({ onPickupMaxTotalKop: 50_000 }),
+    );
+    expect(overLimit.payment.sentences[0]).toContain('нужна предоплата');
+    expect(overLimit.payment.sentences).not.toContain(FINAL_SCHEME_NOTE);
   });
 
   it('the minimum-order hint names the missing sum; the margin is never disclosed', () => {
@@ -348,5 +366,106 @@ describe('cart HTTP helpers', () => {
     expect(isCartErrorCode('cart_full')).toBe(true);
     expect(isCartErrorCode('toString')).toBe(false);
     expect(CART_ERROR_MESSAGES.cart_full).toContain('20');
+  });
+});
+
+/**
+ * Next bundles the /cart page and the /api/cart route handlers separately; the cart service
+ * and the supplier client are process-wide singletons built by whichever bundle ran first, so
+ * their errors may come from another copy of the error classes.
+ */
+describe('errors from another bundle copy', () => {
+  const env = { APP_BASE_URL: 'http://127.0.0.1:3100', CART_TTL_DAYS: 30 };
+  const ORIGIN_HEADERS = { origin: 'http://127.0.0.1:3100' };
+
+  /** A twin of CartRequestError, as another bundle's copy of errors.ts would define it. */
+  class ForeignCartRequestError extends Error {
+    override name = 'CartRequestError';
+    readonly code = 'qty';
+    readonly status = 422;
+    readonly retryAfterSec = null;
+  }
+
+  function throwingService(error: Error): CartService {
+    const fail = () => Promise.reject(error);
+    return { addItem: fail, updateItem: fail, removeItem: fail, viewCart: fail };
+  }
+
+  it('a foreign CartRequestError keeps its code and status (not a 500)', async () => {
+    const foreign = new ForeignCartRequestError('В наличии только 24 шт.');
+    expect(isCartRequestError(foreign)).toBe(true);
+    expect(isCartRequestError(Object.assign(new Error('x'), { name: 'CartRequestError' }))).toBe(
+      false,
+    );
+    const deps = { service: throwingService(foreign), env };
+    const viaForm = await handleLineRequest(
+      new Request('http://127.0.0.1:3100/api/cart/items/x', {
+        method: 'POST',
+        headers: { ...ORIGIN_HEADERS, 'content-type': 'application/x-www-form-urlencoded' },
+        body: '_method=patch&qty=99',
+      }),
+      '00000000-0000-7000-8000-000000000000',
+      deps,
+    );
+    expect(viaForm.status).toBe(303);
+    expect(viaForm.headers.get('location')).toBe('/cart?error=qty');
+    const viaJson = await handleAddItem(
+      new Request('http://127.0.0.1:3100/api/cart/items', {
+        method: 'POST',
+        headers: { ...ORIGIN_HEADERS, 'content-type': 'application/json' },
+        body: JSON.stringify({ q: 'OC90', offerId: 'x' }),
+      }),
+      deps,
+    );
+    expect(viaJson.status).toBe(422);
+    expect(await viaJson.json()).toEqual({ error: 'qty', message: 'В наличии только 24 шт.' });
+  });
+
+  it('a foreign Rossko rate-limit error -> 503 with Retry-After, not logged as a fault', async () => {
+    class ForeignRateLimit extends Error {
+      override name = 'RosskoRateLimitError';
+      readonly retryAfterMs = 4_200;
+    }
+    const logged: string[] = [];
+    const service = createCartService({
+      db: {} as never,
+      supplier: { rossko: { search: () => Promise.reject(new ForeignRateLimit('limit')) } },
+      loadSettings: () => Promise.resolve(settings()),
+      onError: (_error, what) => logged.push(what),
+    });
+    const res = await handleAddItem(
+      new Request('http://127.0.0.1:3100/api/cart/items', {
+        method: 'POST',
+        headers: { ...ORIGIN_HEADERS, 'content-type': 'application/json' },
+        body: JSON.stringify({ q: 'OC90', offerId: 'OC90:Knecht:ORB1' }),
+      }),
+      { service, env },
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get('retry-after')).toBe('5');
+    expect(logged).toEqual([]);
+  });
+
+  it('logged failures drop drizzle query parameters (the cart token)', () => {
+    const token = 'A'.repeat(43);
+    const cause = Object.assign(new Error('connection terminated'), {
+      name: 'PostgresError',
+      code: '57P01',
+    });
+    const queryError = Object.assign(
+      new Error(`Failed query: select 1 where anon_token = $1\nparams: ${token}`),
+      { query: 'select 1 where anon_token = $1', params: [token], cause },
+    );
+    const fields = safeErrorFields(queryError);
+    expect(fields).toMatchObject({
+      name: 'PostgresError',
+      code: '57P01',
+      message: 'connection terminated',
+    });
+    expect(JSON.stringify(fields)).not.toContain(token);
+    expect(safeErrorFields(new TypeError('boom'))).toMatchObject({
+      name: 'TypeError',
+      message: 'boom',
+    });
   });
 });

@@ -120,14 +120,13 @@ export function summarizeCart(
       onPickupMaxTotalKop: order.onPickupMaxTotalKop,
       fulfillment: 'pickup',
     });
-    payment = {
-      mixed: false,
-      sentences: [
-        ...explainPaymentScheme(decision, { onPickupMaxTotalKop: order.onPickupMaxTotalKop }),
-        FINAL_SCHEME_NOTE,
-      ],
-      offerSplit: false,
-    };
+    const sentences = explainPaymentScheme(decision, {
+      onPickupMaxTotalKop: order.onPickupMaxTotalKop,
+    });
+    // Only payment on handover can still change with the phone (no-shows); a prepayment for
+    // to-order goods or a sum over the limit is final already.
+    if (decision.scheme === 'pay_on_handover') sentences.push(FINAL_SCHEME_NOTE);
+    payment = { mixed: false, sentences, offerSplit: false };
   }
   return {
     lines: lines.map((line) => toLineView(line, settings)),

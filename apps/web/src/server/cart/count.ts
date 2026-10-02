@@ -8,6 +8,7 @@ import { and, cartItems, carts, eq, sql, type Executor } from '@detaly/db';
 import { isCartToken, readCartToken } from '../cart-store';
 import { getDb } from '../db';
 import { getLogger } from '../logger';
+import { safeErrorFields } from './errors';
 
 /** Lines of the active cart of this token (0 for unknown, converted or malformed tokens). */
 export async function countCartLines(db: Executor, token: string | null): Promise<number> {
@@ -28,10 +29,7 @@ export const requestCartCount = cache(async (): Promise<number> => {
     return await countCartLines(getDb(), token);
   } catch (error) {
     try {
-      getLogger().warn(
-        { err: error instanceof Error ? error.message : String(error) },
-        'cart count failed',
-      );
+      getLogger().warn({ err: safeErrorFields(error) }, 'cart count failed');
     } catch {
       // Logger unavailable (env not parsed): the header still renders.
     }

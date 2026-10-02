@@ -15,7 +15,7 @@ export function PaymentModeNotice({
   checkoutOpen,
 }: {
   payment: PaymentNotice;
-  /** Without an open checkout gate no checkout links are shown. */
+  /** Checkout gate open and the order minimums met; otherwise no checkout links. */
   checkoutOpen: boolean;
 }) {
   return (

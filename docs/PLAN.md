@@ -40,7 +40,9 @@
 | 11 | Новый независимый бренд; домен на ИП Максима (с 01.09.2026 — идентификация через ЕСИА) |
 | 12 | Бюджет на сервисы 5–15 тыс ₽/мес |
 
-Допущения (фаундер не подтверждал, можно поправить при утверждении): возврат клиенту строго по ЗоЗПП без удержаний при самовывозе; решение об АУСН 20% до 20.12.2026 по расчёту (точка равенства ≈67% наценки) и фактическим наценкам первых недель — трёх месяцев статистики к этой дате не будет; поток 50–200 заказов/мес; установка — запись через бот без оплаты на сайте. **Отклонение от решения 2, требующее явной санкции:** оплата при выдаче предлагается только при `total ≤ ON_PICKUP_MAX_TOTAL` (предлагаю 15 000 ₽) и `no_show_count < 2`, иначе предоплата — защита от шуточных заказов.
+Допущения (фаундер не подтверждал, можно поправить при утверждении): возврат клиенту строго по ЗоЗПП без удержаний при самовывозе; решение об АУСН 20% до 20.12.2026 по расчёту (точка равенства ≈67% наценки) и фактическим наценкам первых недель — трёх месяцев статистики к этой дате не будет; поток 50–200 заказов/мес; установка — запись через бот без оплаты на сайте.
+
+Решения раунда 4 (02.10.2026): оплата при выдаче только при `total ≤ ON_PICKUP_MAX_TOTAL = 15 000 ₽` и `no_show_count < NO_SHOW_LIMIT = 2`, иначе предоплата — **санкционировано фаундером**; рабочее название бренда «Детали», название и реквизиты только из env (`BRAND_NAME`, `SELLER_REQUISITES_*`), без хардкода; в текущей сессии реализуется вся кодовая часть фазы 0 (см. раздел «Текущий шаг» в конце).
 
 ## 1. Архитектура и стек
 
@@ -176,7 +178,7 @@ Env (дефолты перекрываются `settings`):
 | ready | хранение истекло: prepay 10 дней, pay_on_handover 7 дней | prepay → refund_pending (**обязательно**, удержание только фактического courier_fee, если прямо в оферте); pay_on_handover → cancelled | система | prepay: возврат full_prepayment | клиенту; no_show_count+1; продавцу: задача «вернуть Rossko до <supplier_return_deadline_at>» |
 | handed | 7 дней без обращений | completed | система | — | «как деталь?» |
 | handed, completed | «Претензия» (отказ 7 дней; брак — в пределах гарантии, ст. 18–19) | claims open; decision refund → refund_pending только после кнопки продавца «Принял возврат» (order_photos kind=return обязательно) либо override Максима с причиной в order_events; replace → новый заказ позиции; reject → мотивированный ответ в 10 дней | клиент, продавец, Максим | возврат full_payment (+ строка доставки при полном) | клиенту: порядок действий; Максиму: дедлайн 10 дней |
-| любой после confirmed до handed | «Отказ клиента до передачи» (ст. 26.1): кнопка на /o/<token> с подтверждением или продавец | refund_pending; продавцу задача «отменить у Rossko через ЛК/менеджера до отгрузки», иначе supplier_returns / stock_items | клиент / продавец | возврат full_prepayment | клиенту |
+| любой после confirmed до handed | «Отказ клиента до передачи» (ст. 26.1): кнопка на /o/<token> с подтверждением или продавец | prepay → refund_pending, pay_on_handover (денег ещё нет) → cancelled; продавцу задача «отменить у Rossko через ЛК/менеджера до отгрузки», иначе supplier_returns / stock_items | клиент / продавец | возврат full_prepayment | клиенту |
 | ordered_at_supplier | order.eta_changed (сдвиг срока) | без смены статуса; claims kind=delay при превышении | система | — | клиенту: «Жду до <дата>» / «Вернуть деньги»; продавцу подсказка о 0,5%/день |
 | refund_pending | refund.succeeded, подтверждён GET /refunds | refunded | вебхук / reconciliation | чек возврата формирует ЮKassa | «деньги отправлены» |
 
@@ -390,3 +392,51 @@ Env (дефолты перекрываются `settings`):
 6. **Дни 6–8.** Спайк ЮKassa на тестовом магазине: платёж → вебхук на stage → POST /receipts с settlements; фиксация результата гейта.
 
 Критерий конца недели: сайт по HTTPS с документами, бэкап восстановлен, бот отвечает staff, поиск работает на фикстурах или живых ключах, все внешние заявки поданы с датами, сравнение цен начато, статус маркировки по группам записан.
+
+
+## Текущий шаг: реализация кодовой части фазы 0 в этой сессии
+
+Окружение проверено 02.10.2026: Node 22.22, pnpm 10.28, бинарники PostgreSQL 16 и Redis 7 (демоны не запущены, поднимаются локально без Docker; `initdb` только через `runuser -u postgres`), dockerd не запущен (compose проверяется `docker compose config`), npm доступен, Chromium для Playwright в `/opt/pw-browsers` (ревизия под Playwright 1.56.1). Rossko, ЮKassa, MAX, Telegram недоступны: работаем на синтетических фикстурах и msw-моках. Не установлены rclone, shellcheck, caddy; есть age, gpg, jq, yq, pg_dump 16.
+
+### Сквозные решения
+
+| № | Решение |
+|---|---|
+| 1 | Без turbo: `pnpm -r` и `--filter`; в Docker `pnpm fetch` + `--filter` |
+| 2 | Внутренние пакеты не собираются: `exports` → `./src/index.ts`, `moduleResolution: Bundler`; Next через `transpilePackages`; worker, миграции, скрипты через `node --import tsx` (и в production) |
+| 3 | Драйвер БД `postgres` (porsager) 3.4.9; `pg` не ставим |
+| 4 | Версии: next 16.3.8, react 19.3.0, **typescript 6.0.3** (fallback 5.9.3; TS 7 нативный — несовместим с JS API тулинга), drizzle-orm 0.45.3, drizzle-kit 0.31.11, bullmq 6.3.11 (Job Schedulers вместо repeatable), ioredis 6.0.0 (`protocol: 2`, `maxRetriesPerRequest: null` у воркеров), grammy 1.46.0, @maxhub/max-bot-api 1.0.1, soap 1.13.1, vitest 5.0.3, msw 3.0.1, zod 4.6.5, tailwindcss 4.3.3, uuid 14.0.2, pino 10.3.1, tsx 4.23.15, eslint 10 (fallback 9), **@playwright/test 1.56.1** |
+| 5 | Тесты с I/O — против настоящих PG 16 и Redis 7 (`scripts/dev-db.sh`: PG на 127.0.0.1:55432, Redis на 56379); ioredis-mock не используем (Lua-лимитер) |
+| 6 | `ROSSKO_MODE=fixtures\|live`; в fixtures поиск работает до ключей и показывает плашку «демо-данные» |
+| 7 | Юридические тексты — markdown в `content/legal/<kind>/<version>.md` с плейсхолдерами реквизитов; сид кладёт в `document_versions` с подставленными реквизитами и sha256; правка текста опубликованной версии валит сид (нужна новая версия) |
+| 8 | Бэкап: `pg_dump -Fc \| age -r <публичный ключ>` (приватный у Максима офлайн), fallback `gpg --symmetric`; `STORAGE=local` для локальной проверки |
+| 9 | Сторож worker — `healthwatch.sh` в backup-контейнере (не зависит от web и worker); `/api/health` (503 при сбое БД/Redis/heartbeat > 300 с) и `/api/health/live` (всегда 200, только для Docker healthcheck web) |
+| 10 | Next 16: `src/proxy.ts` вместо middleware (лимит 20/мин и 300/сутки на HMAC(SESSION_SECRET, ip), IP только из `X-Real-IP`, который ставит Caddy); при проблемах со сборкой — лимит в route handler; Tailwind v4 через `@tailwindcss/postcss` и `@theme`; системные шрифты |
+| 11 | Деньги в БД — integer с суффиксом `_kop`, наценка в базисных пунктах (`markup_bp`, 2800 = 28%); формула `ceil(p·(10000+bp)/1 000 000)·100` без float |
+| 12 | Фильтр маркировки — слова, а не префиксы: `масло`, `масла`, `шина`, `шины`, `антифриз*`, `тосол`, `жидкость тормозн*` (префикс «масл» отсёк бы масляные фильтры); ё→е |
+| 13 | Бренд и реквизиты только из env (`BRAND_NAME=Детали`, `SELLER_REQUISITES_*`, `PICKUP_*`); тест грепает `src` на хардкод |
+| 14 | `/vin` в фазе 0 без формы (адрес и телефон сервиса) — формы сбора ПД только после номера РКН |
+
+### Порядок работ (Workflow, ultracode)
+
+1. **Шаг 0, последовательно.** Корневые файлы (package.json, pnpm-workspace.yaml, .npmrc с `onlyBuiltDependencies`, tsconfig.base.json, eslint/prettier, .gitignore, .dockerignore, .env.example, vitest.config.ts), `scripts/dev-db.sh`, полный `packages/config` (env на zod, redis, скользящее окно, суточный счётчик по МСК, heartbeat, logger, имена очередей), во всех workspace — `package.json` со всеми зависимостями точными версиями и типизированные заглушки публичных API. Один `pnpm install`, lock коммитится. Приёмка: install, lint, typecheck, test зелёные.
+2. **Волна A, параллельно в git worktree.** П1 `packages/db` (Drizzle-схема всех таблиц фазы 1, pgEnum из `@detaly/domain/statuses`, уникальности и check-ограничения, `DT-000001` через sequence, миграции, идемпотентные сиды settings/staff/excluded/legal, `prepareTestDb`); П2 `packages/domain` + контракты `payments`/`notify`/`vin` (price, validateMarkupRules, localDate/etaDate/promisedDate/formatPromise, isExcluded, buildOfferViews, декларативная таблица `TRANSITIONS` + `resolveTransition` + тест-спецификация ≈45 строк и полный перебор запрещённых пар; msw-обработчики ЮKassa; `buildCallbackData` ≤64 байт; `isValidVin`); П3 `packages/rossko` (ленивый SOAP-клиент, fixture-caller, устойчивый маппер, `rubToKop` без float, нормализация артикула, Lua-лимитер 250/мин + сутки по МСК + предохранитель 70%, кэш 15 мин с single-flight, `CheckoutDisabledError`, `scripts/rossko-smoke.ts` с кодом 2 без ключей, синтетические фикстуры с `_meta.synthetic`); П4 infra/CI/docs (compose с профилем stage и лимитами памяти, Caddyfile без rate_limit, Dockerfile web/worker/backup, backup.sh/restore.sh/healthwatch.sh, deploy.sh с откатом и `DRY_RUN`, `.github/workflows/ci.yml` с jobs check/e2e/images, `docs/external.md`, `docs/budget.md`, `docs/runbook.md`, черновики `content/legal`). Правила: агент правит только свои пути; корень, lock, `packages/config`, `statuses.ts`, `types.ts` — только чтение; своя тестовая БД `detaly_test_<worktree>`, Redis-ключи с префиксом `test:<uuid>:`, `FLUSHDB` запрещён; новые env перечисляются в отчёте.
+3. **Ревью волны A.** На каждый пакет — независимый ревьюер: прогон тестов, сверка с PLAN.md и этим разделом, поиск багов (деньги, даты, уникальности, лимитер). Найденное чинится до слияния.
+4. **Слияние A, затем волна B параллельно.** П5 `apps/web` (layout, /, /search, /about, /docs/[slug], /returns, /vin, robots, /api/health, /api/health/live, /api/search, proxy-лимиты, search-service с search_log, компоненты SearchBar/OfferRow/StockBadge/EmptyState/VinCta/HowItWorks/TrustBlock/Footer/DemoDataBanner, Playwright mobile 375 и desktop 1280 со скриншотами и проверкой горизонтального скролла, `limits.spec.ts`); П6 `apps/worker` (BullMQ, семь очередей, Job Scheduler heartbeat 30 с, заглушки с `UnrecoverableError`, seller-бот на grammY с `/ping` только для staff и молчанием для чужих, graceful shutdown ≤25 с, healthcheck, тесты без сети через подмену транспорта grammY).
+5. **Ревью волны B** тем же способом.
+6. **Шаг И, последовательно.** Слияние, итоговый `pnpm install` и lock, env из отчётов агентов, README, полный прогон проверки ниже, просмотр скриншотов, коммит и push в `claude/auto-parts-resale-platform-5j8nfs`. Рабочие ветки worktree наружу не пушатся.
+
+### Проверка фазы 0 в этой сессии
+
+1. `pnpm install --frozen-lockfile`; `scripts/dev-db.sh up && eval "$(scripts/dev-db.sh env)"`.
+2. `pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm --filter @detaly/db db:drift`.
+3. `pnpm db:migrate && pnpm db:seed`, повторный сид ничего не меняет.
+4. `pnpm build`; web из standalone на порту 3100 с `ROSSKO_MODE=fixtures`; worker без токена бота.
+5. `curl /api/health` → 200 и возраст heartbeat < 60 с; `curl '/api/search?q=OC90'` → предложения с ценой `ceil(опт × 1,28)`, `search_log` растёт; 21-й запрос с одного `X-Real-IP` → 429.
+6. SIGTERM worker → код 0; удаление ключа heartbeat → `/api/health` 503.
+7. Playwright на 375 и 1280: все страницы без горизонтального скролла, ИНН в футере, `noindex` на /search; скриншоты просмотрены глазами.
+8. `docker compose -f infra/docker-compose.yml --env-file .env.example config -q` (и с `--profile stage`); `bash -n` по всем скриптам; разбор ci.yml через yq.
+9. Бэкап и восстановление в локальном режиме: число строк в `settings` и `document_versions` совпадает.
+10. `tsx scripts/rossko-smoke.ts --articles OC90` без ключей → код 2 и «ждём ключи».
+
+После сессии остаётся Максиму: VPS, DNS, `.env` с секретами, сертификат Минцифры в `infra/certs`, PAT `read:packages` для ghcr, первый `deploy.sh` и проверка TLS, бакет S3 и восстановление на stage, ключи Rossko и сверка маппера с реальным ответом, спайк ЮKassa, токены BotFather и живой `/ping`, первый прогон CI на GitHub, юридическая вычитка, заполнение `docs/external.md`.

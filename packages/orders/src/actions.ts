@@ -92,7 +92,7 @@ const GUARD_MESSAGES: Record<string, string> = {
   payment_succeeded: 'Ждём оплату',
   item: 'Позиция не найдена',
   item_state: 'Позиция в другом состоянии',
-  proposal: 'Нет предложения для клиента',
+  proposal: 'Предложение не подходит: аналог — только по цене клиента, срок — не в прошлом',
   approval: 'Нет открытого вопроса клиенту',
   payments_disabled: 'Оплата не настроена (ЮKassa)',
   no_refundable_payment: 'Нет платежа для возврата',

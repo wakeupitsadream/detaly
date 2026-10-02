@@ -23,7 +23,7 @@ import type {
 
 const DROPPED: readonly OrderItemState[] = DROPPED_ORDER_ITEM_STATES;
 
-/** A live item belongs to the order: not failed, replaced or refunded (pending refund included). */
+/** A live item belongs to the order: not failed, replaced, refund_pending or refunded. */
 export function isLiveState(state: OrderItemState): boolean {
   return !DROPPED.includes(state);
 }
@@ -115,13 +115,32 @@ export function heldPayments(snapshot: OrderSnapshot): PaymentRow[] {
   });
 }
 
-/** The payment a refund of the order is taken from: the latest held one with money left. */
+/**
+ * The payment a refund of the order is taken from: the oldest held one with money left. The
+ * oldest is the order's own payment (earlier partial refunds were taken from it); a later
+ * succeeded payment is a duplicate that a whole-order refund returns separately.
+ */
 export function refundablePayment(snapshot: OrderSnapshot): PaymentRow | null {
   const held = heldPayments(snapshot).filter((payment) => {
     const sums = refundSums(snapshot, payment.id);
     return sums.succeeded + sums.pending < payment.amountKop;
   });
-  return held.at(-1) ?? null;
+  return held[0] ?? null;
+}
+
+/**
+ * Held payments other than `paymentId` with no refund at all (pending or succeeded): duplicates
+ * (two tabs, an old QR) that a whole-order refund returns whole.
+ */
+export function untouchedDuplicatePayments(
+  snapshot: OrderSnapshot,
+  paymentId: string,
+): PaymentRow[] {
+  return heldPayments(snapshot).filter((payment) => {
+    if (payment.id === paymentId) return false;
+    const sums = refundSums(snapshot, payment.id);
+    return sums.succeeded + sums.pending === 0;
+  });
 }
 
 /** TransitionContext.paymentHeld: a succeeded payment exists and is not fully refunded. */

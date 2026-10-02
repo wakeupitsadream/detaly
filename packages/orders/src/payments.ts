@@ -16,7 +16,7 @@ import {
 } from '@detaly/db';
 import type { OrderEvent, PaymentStatus, ReceiptStatus, WebhookResult } from '@detaly/domain';
 import type { ProviderReceipt, ProviderRefund } from '@detaly/payments';
-import { planItemChanges } from './context';
+import { heldPayments, planItemChanges } from './context';
 import { applyTransitionInTx, clock, nudge, writeItemChanges } from './engine';
 import { enqueueNotify, enqueueOutbox, recordJournalEvent } from './journal';
 import { createPaymentRows, createRefund, EngineError, paymentsEnabled } from './rows';
@@ -357,6 +357,24 @@ async function onPaymentSucceeded(
     { snapshot },
   );
   if (transition.ok) {
+    // A second payment the rule accepted silently (both QR of a handover paid, say): the
+    // order now holds money twice, so the owner is told even though the status is right.
+    const duplicate = heldPayments(snapshot).some((held) => held.id !== row.id);
+    if (duplicate && !transition.rule.notify.some((spec) => spec.audience === 'owner')) {
+      const { orderEventId } = await recordJournalEvent(tx, {
+        orderId: row.orderId,
+        type: 'payment_status',
+        actor,
+        payload: { paymentId: row.id, status: 'succeeded', note: 'duplicate_payment' },
+        at,
+      });
+      await enqueueNotify(tx, {
+        orderId: row.orderId,
+        orderEventId,
+        audience: 'owner',
+        template: 'staff_unexpected_payment',
+      });
+    }
     return {
       result: paidAmountKop === snapshot.order.totalKop ? 'processed' : 'amount_mismatch',
       transition,
@@ -450,7 +468,7 @@ async function findRefundRow(tx: Tx, r: ProviderRefund): Promise<RefundRow | nul
   return candidates.length === 1 ? (candidates[0]?.refund ?? null) : null;
 }
 
-/** receipt_registration of a refund object as received (VERIFY: Ю9 — field of the refund). */
+/** receipt_registration of a refund object as received (VERIFY: Ю10 — field of the refund). */
 function refundReceiptRegistration(raw: unknown): string | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const value = (raw as { receipt_registration?: unknown }).receipt_registration;

@@ -30,6 +30,7 @@ import {
   amountMismatch,
   effectsFor,
   isIsoDate,
+  localDate,
   promisedDate,
   ReceiptLinesError,
   receiptFor,
@@ -37,6 +38,7 @@ import {
   refundReasonFor,
   resolveTransition,
   type ApprovalDecision,
+  type ApprovalProposal,
   type OrderEvent,
   type OrderItemState,
   type OrderStatus,
@@ -52,6 +54,7 @@ import {
   itemsAfterChanges,
   planItemChanges,
   refundablePayment,
+  untouchedDuplicatePayments,
 } from './context';
 import { canReachClient, enqueueNotify, enqueueOutbox, recordJournalEvent } from './journal';
 import {
@@ -70,6 +73,7 @@ import type {
   AttentionReason,
   EngineDeps,
   ItemChange,
+  OrderItemRow,
   OrderRow,
   OrderSettings,
   OrderSnapshot,
@@ -123,6 +127,31 @@ function isProposalEvent(event: OrderEvent): event is keyof typeof PROPOSAL_EVEN
   return event in PROPOSAL_EVENTS;
 }
 
+/**
+ * A proposal the client may be asked about: of the event's kind; an alternative replaces the
+ * item at the client's price of that item («Аналог по цене клиента», PLAN section 3), so the
+ * order total and the payment already taken stay valid; dates are ISO and not in the past
+ * (the client's calendar).
+ */
+function proposalValid(
+  proposal: ApprovalProposal | undefined,
+  kind: ApprovalProposal['kind'],
+  item: OrderItemRow | null,
+  now: Date,
+): proposal is ApprovalProposal {
+  if (proposal?.kind !== kind) return false;
+  const today = localDate(now);
+  const dateOk = (date: string | null) => date === null || (isIsoDate(date) && date >= today);
+  if (proposal.kind === 'new_eta') return isIsoDate(proposal.etaDate) && dateOk(proposal.etaDate);
+  return (
+    item !== null &&
+    proposal.priceClientKop === item.priceClientKop &&
+    Number.isSafeInteger(proposal.priceSupplierKop) &&
+    proposal.priceSupplierKop > 0 &&
+    dateOk(proposal.etaDate)
+  );
+}
+
 function failure(
   status: OrderStatus | null,
   failed: string[],
@@ -174,7 +203,10 @@ export async function applyTransitionInTx(
   }
 
   if (isProposalEvent(event)) {
-    if (facts.proposal?.kind !== PROPOSAL_EVENTS[event]) return failure(status, ['proposal']);
+    const item = itemId === null ? null : (snapshot.items.find((i) => i.id === itemId) ?? null);
+    if (!proposalValid(facts.proposal, PROPOSAL_EVENTS[event], item, now)) {
+      return failure(status, ['proposal']);
+    }
     facts.clientReachable ??= await canReachClient(tx, snapshot.order.id, {
       smsEnabled: deps.env.SMS_PROVIDER !== 'none',
       template: 'decision_needed',
@@ -519,15 +551,37 @@ async function persistDecision(
       }
       case 'create_refund': {
         const target = refundTargetFor(snapshot, event, ctx, facts, itemId);
+        // A wrong-amount payment parked in needs_attention is refunded as such.
+        const mismatch =
+          amountMismatch.test(ctx) ||
+          (from === 'needs_attention' && order.attentionReason === 'amount_mismatch');
         const refund = await createRefund(tx, snapshot, {
           ...target,
-          reason: refundReasonFor(event, { amountMismatch: amountMismatch.test(ctx) }),
+          reason: refundReasonFor(event, { amountMismatch: mismatch }),
           requestedAt: at,
           actor,
           env: deps.env,
         });
         payload.refundId = refund.refundId;
         payload.refundKop = refund.amountKop;
+        if (target.scope === 'order') {
+          // The whole order goes back: a duplicate payment (two tabs, an old QR) goes back
+          // whole too, as an orphan refund that does not drive the order status.
+          const extra: string[] = [];
+          for (const duplicate of untouchedDuplicatePayments(snapshot, target.paymentId)) {
+            const orphan = await createRefund(tx, snapshot, {
+              scope: 'orphan',
+              paymentId: duplicate.id,
+              reason: 'other',
+              requestedAt: at,
+              actor,
+              env: deps.env,
+              note: 'duplicate_payment',
+            });
+            extra.push(orphan.refundId);
+          }
+          if (extra.length > 0) payload.duplicateRefundIds = extra;
+        }
         break;
       }
       case 'start_approval_timer': {

@@ -63,8 +63,11 @@ describe('timeline', () => {
       'Вы отменили заказ',
     );
     expect(eventPhrase({ type: 'supplier_order_requested', toStatus: 'ordering' })).toBe(
-      'Статус заказа: Заказываем у поставщика',
+      'Заказываем детали у поставщика',
     );
+    expect(
+      eventPhrase({ type: 'some_future_event', fromStatus: 'ready', toStatus: 'handed' }),
+    ).toBe('Статус заказа: Выдан');
     expect(eventPhrase({ type: 'staff_note', toStatus: null })).toBeNull();
   });
 

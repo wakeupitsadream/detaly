@@ -12,6 +12,12 @@
  * consents, items, state-machine transition, event, cart cleanup; a payment scheme other than
  * the one shown rolls it back (409 scheme_changed) -> 201.
  *
+ * Phase 1B (section 14.5): the `checkout` transition is written by the order engine
+ * (persistTransition) inside the order transaction: status, expires_at (payment TTL for
+ * prepay, the confirmation window for pay_on_handover), the journal row and the client
+ * notification (confirm_request / payment_link) as an outbox row. The payment itself is created
+ * lazily by «Оплатить» on /o/<token> (decision Б5).
+ *
  * Personal data (phone, name, IP, user agent) goes only to the database: log lines carry the
  * order number, scheme and counts.
  */
@@ -24,10 +30,10 @@ import {
   consents,
   eq,
   inArray,
-  orderEvents,
   orderItems,
   orders,
   users,
+  type Database,
   type Executor,
 } from '@detaly/db';
 import {
@@ -50,6 +56,7 @@ import {
   type RepricedLine,
   type TransitionContext,
 } from '@detaly/domain';
+import { loadOrderSnapshot, persistTransition, type EngineDeps } from '@detaly/orders';
 import { RosskoRateLimitError, type RosskoClient } from '@detaly/rossko';
 import {
   fetchFreshOffers,
@@ -89,14 +96,26 @@ export type CheckoutSettings = Pick<
 
 export interface CheckoutServiceDeps {
   /** The database (transactions are opened on it). */
-  db: Executor;
+  db: Database;
   supplier: { rossko: Pick<RosskoClient, 'search'> };
   loadSettings: () => Promise<CheckoutSettings>;
   /** getCheckoutGate bound to env and db (decision Д4). */
   gate: () => Promise<CheckoutGate>;
   logger: CheckoutLogger;
-  env: Pick<Env, 'APP_BASE_URL' | 'TRUSTED_IP_HEADER'>;
+  /** Full env: the order engine reads settings defaults from it (payment TTL, confirmation). */
+  env: Env;
   now?: () => Date;
+  /**
+   * Wakes the worker's outbox dispatcher after the order commit (decision Б1). Default: the
+   * process engine's nudge (server/engine.ts); without it the dispatcher polls every 2 s.
+   */
+  nudge?: () => void;
+}
+
+/** The process engine's nudge, resolved lazily (no Redis connection until an order exists). */
+async function defaultNudge(): Promise<void> {
+  const { getEngineDeps } = await import('../engine');
+  getEngineDeps().nudge?.();
 }
 
 export interface CheckoutRequest {
@@ -225,6 +244,20 @@ type TxOutcome =
 export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutService {
   const now = deps.now ?? (() => new Date());
   const { db, logger } = deps;
+  const nudge = (): void => {
+    try {
+      if (deps.nudge) deps.nudge();
+      else void defaultNudge().catch(() => undefined);
+    } catch {
+      // best effort (decision Б1): the dispatcher polls anyway
+    }
+  };
+  /** The engine runs in the order transaction; its clock is the checkout clock. */
+  const engineDeps = (at: Date): EngineDeps => ({
+    db,
+    env: deps.env,
+    now: () => at,
+  });
 
   /** The order created with this key from this browser's cart (any cart status), if any. */
   async function replayOf(
@@ -348,10 +381,8 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
           preferredChannel: input.channel,
           checkoutKey: input.checkoutKey,
           cartId,
-          expiresAt:
-            decision.scheme === 'pay_on_handover'
-              ? new Date(at.getTime() + settings.order.onPickupConfirmTtlH * 3_600_000)
-              : null,
+          // expires_at is set by the transition below (engine, decision Б5).
+          expiresAt: null,
         })
         .returning({ id: orders.id, number: orders.number });
       if (!order) throw new CheckoutInvariantError('order insert returned nothing');
@@ -438,29 +469,27 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
         );
       }
 
-      // 6. Status and the journal entry (no phone, no name).
-      await tx
-        .update(orders)
-        .set({ status: rule.to, updatedAt: at })
-        .where(eq(orders.id, order.id));
-      // Effects that 1A does not run yet (decision Д12): the payment is created in 1B.
-      const deferredEffects = effects.filter((e) => e === 'create_payment');
-      await tx.insert(orderEvents).values({
-        orderId: order.id,
-        type: 'checkout',
-        fromStatus: 'draft',
-        toStatus: rule.to,
-        actorType: 'client',
-        actorId: user.id,
-        payload: {
-          part,
-          scheme: decision.scheme,
-          ...(decision.reasons.length > 0 ? { schemeReasons: decision.reasons } : {}),
-          items: lines.length,
-          ...(deferredEffects.length > 0 ? { deferredEffects } : {}),
+      // 6. The engine writes the status, expires_at, the journal entry (no phone, no name) and
+      // the client notification through the outbox, in this transaction.
+      const snapshot = await loadOrderSnapshot(tx, order.id, { lock: true });
+      if (snapshot === null) throw new CheckoutInvariantError('order snapshot missing');
+      await persistTransition(
+        tx,
+        snapshot,
+        { rule, ctx, changes: [] },
+        {
+          deps: engineDeps(at),
+          orderId: order.id,
+          event: 'checkout',
+          actor: { type: 'client', id: user.id },
+          payload: {
+            part,
+            scheme: decision.scheme,
+            ...(decision.reasons.length > 0 ? { schemeReasons: decision.reasons } : {}),
+            items: lines.length,
+          },
         },
-        createdAt: at,
-      });
+      );
 
       // 7. The checked-out lines leave the cart; an empty cart is converted.
       await removeCartLines(tx, cartId, ids);
@@ -663,6 +692,7 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
     if (outcome.kind === 'replay') {
       return respond(200, { orderUrl: orderUrl(outcome.accessToken), number: outcome.number });
     }
+    nudge();
     logger.info(
       { number: outcome.number, scheme: outcome.scheme, items: okLines.length, part },
       'order created',

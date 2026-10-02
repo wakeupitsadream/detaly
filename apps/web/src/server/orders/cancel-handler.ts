@@ -10,13 +10,8 @@ import { readBoundedJson } from '../body';
 import { errorInfo, isNamedError } from '../errors';
 import { isSameOrigin } from '../request-guards';
 import { isOrderToken } from './access';
-import {
-  CancelUnavailableError,
-  cancelOrderByToken,
-  isLast4,
-  type CancelDeps,
-  type CancelResult,
-} from './cancel';
+import { cancelOrderByToken, type CancelDeps, type CancelResult } from './cancel';
+import { DigitsUnavailableError, isLast4 } from './digits';
 
 const NO_STORE = { 'Cache-Control': 'no-store' } as const;
 
@@ -102,7 +97,7 @@ export async function handleCancelRequest(
     }
     return respond(result, deps.logger);
   } catch (error) {
-    if (isNamedError(error, CancelUnavailableError, 'CancelUnavailableError')) {
+    if (isNamedError(error, DigitsUnavailableError, 'DigitsUnavailableError')) {
       deps.logger?.warn(errorInfo(error.cause), 'order cancel: attempt counter unavailable');
       return json({ error: 'unavailable', message: CANCEL_MESSAGES.unavailable }, 503, {
         'Retry-After': '60',

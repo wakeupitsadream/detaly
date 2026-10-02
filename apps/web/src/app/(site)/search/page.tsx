@@ -4,7 +4,9 @@ import { DemoDataBanner } from '@/components/DemoDataBanner';
 import { EmptyState } from '@/components/EmptyState';
 import { OfferRow } from '@/components/OfferRow';
 import { SearchBar } from '@/components/SearchBar';
-import { getBrand, telHref } from '@/server/brand';
+import { cartCountLabel } from '@/components/SiteHeader';
+import { getBrand } from '@/server/brand';
+import { requestCartCount } from '@/server/cart/count';
 import { parseLocalFlag } from '@/server/api/search-handler';
 import { getLogger } from '@/server/logger';
 import { getSearchService } from '@/server/search';
@@ -65,14 +67,22 @@ function Chip({ href, active, children }: { href: string; active: boolean; child
   );
 }
 
-function OfferList({ title, offers }: { title: string; offers: OfferView[] }) {
+function OfferList({
+  title,
+  offers,
+  searchArticleNorm,
+}: {
+  title: string;
+  offers: OfferView[];
+  searchArticleNorm: string;
+}) {
   if (offers.length === 0) return null;
   return (
     <section className="space-y-3">
       <h2 className="text-lg font-semibold">{title}</h2>
       <ul className="space-y-3">
         {offers.map((offer) => (
-          <OfferRow key={offer.id} offer={offer} />
+          <OfferRow key={offer.id} offer={offer} searchArticleNorm={searchArticleNorm} />
         ))}
       </ul>
     </section>
@@ -134,8 +144,12 @@ function Results({ result }: { result: SearchResponse }) {
         </div>
       ) : (
         <>
-          <OfferList title="Запрошенный артикул" offers={exact} />
-          <OfferList title="Аналоги" offers={crosses} />
+          <OfferList
+            title="Запрошенный артикул"
+            offers={exact}
+            searchArticleNorm={result.articleNorm}
+          />
+          <OfferList title="Аналоги" offers={crosses} searchArticleNorm={result.articleNorm} />
         </>
       )}
     </div>
@@ -152,6 +166,7 @@ export default async function SearchPage({
   const brandName = first(params.brand).trim();
   const localOnly = parseLocalFlag(first(params.local) || null);
   const brand = getBrand();
+  const cartCount = await requestCartCount();
 
   let result: SearchResponse | null = null;
   let problem: string | null = null;
@@ -182,19 +197,18 @@ export default async function SearchPage({
         </p>
       ) : null}
       {result ? <Results result={result} /> : null}
-      {result && result.offers.length > 0 ? (
-        <p className="rounded-xl border border-line bg-card px-4 py-3 text-sm text-muted">
-          Оформление заказа на сайте скоро откроется.
-          {brand.contactPhone ? (
-            <>
-              {' '}
-              Сейчас заказать можно по телефону{' '}
-              <a className="whitespace-nowrap underline" href={telHref(brand.contactPhone)}>
-                {brand.contactPhone}
-              </a>
-              .
-            </>
-          ) : null}
+      {cartCount > 0 ? (
+        <p
+          className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-card px-4 py-3 text-sm"
+          data-testid="search-cart-link"
+        >
+          <span className="text-muted">В корзине {cartCountLabel(cartCount)}</span>
+          <a
+            href="/cart"
+            className="inline-flex h-11 items-center rounded-xl border border-ink px-4 font-semibold hover:bg-ink hover:text-white"
+          >
+            Перейти в корзину
+          </a>
         </p>
       ) : null}
     </div>

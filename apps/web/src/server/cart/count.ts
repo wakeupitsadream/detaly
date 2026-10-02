@@ -1,0 +1,40 @@
+/**
+ * Number of lines in the browser's cart for the header and the /search hint: one query, no
+ * supplier call. A database failure counts as 0 so a page never fails because of the header.
+ */
+import { cookies } from 'next/headers';
+import { cache } from 'react';
+import { and, cartItems, carts, eq, sql, type Executor } from '@detaly/db';
+import { isCartToken, readCartToken } from '../cart-store';
+import { getDb } from '../db';
+import { getLogger } from '../logger';
+
+/** Lines of the active cart of this token (0 for unknown, converted or malformed tokens). */
+export async function countCartLines(db: Executor, token: string | null): Promise<number> {
+  if (!isCartToken(token)) return 0;
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(cartItems)
+    .innerJoin(carts, eq(carts.id, cartItems.cartId))
+    .where(and(eq(carts.anonToken, token), eq(carts.status, 'active')));
+  return row?.count ?? 0;
+}
+
+/** The current request's cart line count, memoized per request; any failure -> 0. */
+export const requestCartCount = cache(async (): Promise<number> => {
+  try {
+    const token = readCartToken(await cookies());
+    if (token === null) return 0;
+    return await countCartLines(getDb(), token);
+  } catch (error) {
+    try {
+      getLogger().warn(
+        { err: error instanceof Error ? error.message : String(error) },
+        'cart count failed',
+      );
+    } catch {
+      // Logger unavailable (env not parsed): the header still renders.
+    }
+    return 0;
+  }
+});

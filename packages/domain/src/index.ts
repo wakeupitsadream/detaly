@@ -10,3 +10,6 @@ export * from './dates';
 export * from './excluded';
 export * from './offers';
 export * from './state-machine';
+export * from './phone';
+export * from './cart';
+export * from './checkout';

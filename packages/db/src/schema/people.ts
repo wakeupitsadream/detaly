@@ -14,6 +14,7 @@ import {
   unique,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { createdAt, id, namedCheck, tstz, updatedAt } from './columns';
 import {
@@ -24,6 +25,8 @@ import {
   messengerChannel,
   staffRole,
 } from './enums';
+// Cycle (orders -> users, consents -> orders): the reference is lazy, see AnyPgColumn below.
+import { orders } from './orders';
 
 /** Identity = phone (E.164). Anonymization sets phone to `anon:<id>` and clears name/email. */
 export const users = pgTable(
@@ -88,9 +91,12 @@ export const consents = pgTable(
     userAgent: text(),
     textSha256: char({ length: 64 }).notNull(),
     revokedAt: tstz(),
+    /** Order whose checkout recorded this consent (a consent is written per order). */
+    orderId: uuid().references((): AnyPgColumn => orders.id),
   },
   (t) => [
     index('consents_user_id_kind_idx').on(t.userId, t.kind),
+    index('consents_order_id_idx').on(t.orderId),
     namedCheck('consents', 'text_sha256', sql`${t.textSha256} ~ '^[0-9a-f]{64}$'`),
   ],
 );

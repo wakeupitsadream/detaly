@@ -51,6 +51,13 @@ export const cartItems = pgTable(
     cartId: uuid()
       .notNull()
       .references(() => carts.id, { onDelete: 'cascade' }),
+    /** offerViewId(offer) = `${articleNorm}:${brand}:${stockId}`; one line per offer and cart. */
+    offerKey: text().notNull(),
+    /**
+     * Normalized article of the search query that found the offer: repricing searches by it, so
+     * a cross (W 712/75 found by OC90) is looked up with OC90 again.
+     */
+    searchArticleNorm: text().notNull(),
     brand: text().notNull(),
     article: text().notNull(),
     name: text().notNull(),
@@ -68,6 +75,12 @@ export const cartItems = pgTable(
   },
   (t) => [
     index('cart_items_cart_id_idx').on(t.cartId),
+    unique('cart_items_cart_id_offer_key_unique').on(t.cartId, t.offerKey),
+    namedCheck(
+      'cart_items',
+      'search_article_norm',
+      sql`${t.searchArticleNorm} ~ '^[A-Z0-9]{1,64}$'`,
+    ),
     namedCheck('cart_items', 'qty', sql`${t.qty} > 0`),
     kopCheck('cart_items', 'price_supplier_kop', t.priceSupplierKop),
     kopCheck('cart_items', 'price_client_kop', t.priceClientKop),

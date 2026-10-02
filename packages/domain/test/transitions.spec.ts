@@ -150,6 +150,9 @@ const EXPECTED: readonly Row[] = [
     'ready',
   ],
 
+  // client cancellation before payment (phase 1A, decision Д3)
+  ['awaiting_payment', 'client_cancelled', client({ providerPaymentStatus: null }), 'cancelled'],
+
   // cancelled: late payment must be refunded
   ['cancelled', 'payment_succeeded', paid(500_000), 'refund_pending'],
   ['cancelled', 'payment_succeeded', paid(500_000, { ...COD }), 'refund_pending'],
@@ -157,6 +160,7 @@ const EXPECTED: readonly Row[] = [
   // awaiting_confirmation (pay_on_handover)
   ['awaiting_confirmation', 'client_confirmed', client({ ...COD }), 'confirmed'],
   ['awaiting_confirmation', 'confirmation_timeout', system({ ...COD }), 'cancelled'],
+  ['awaiting_confirmation', 'client_cancelled', client({ ...COD }), 'cancelled'],
 
   // confirmed -> ordering after the recheck, or needs_attention
   ['confirmed', 'supplier_order_requested', recheck(300), 'ordering'],
@@ -906,6 +910,69 @@ describe('guards', () => {
     ).toMatchObject({
       ok: false,
       failed: ['prepay'],
+    });
+  });
+
+  describe('client cancellation before payment or confirmation (client_cancelled)', () => {
+    it.each([null, 'pending', 'canceled'] as const)(
+      'awaiting_payment with the latest payment %s -> cancelled, nobody notified',
+      (status) => {
+        const result = resolveTransition(
+          'awaiting_payment',
+          'client_cancelled',
+          client({ providerPaymentStatus: status }),
+        );
+        expect(result).toMatchObject({ ok: true, rule: { to: 'cancelled', notify: [] } });
+        if (result.ok) expect(effectsFor(result.rule, client())).toEqual([]);
+      },
+    );
+
+    it('a succeeded (or captured) payment cannot be cancelled by the client', () => {
+      for (const status of ['succeeded', 'waiting_for_capture'] as const) {
+        expect(
+          resolveTransition(
+            'awaiting_payment',
+            'client_cancelled',
+            client({ providerPaymentStatus: status }),
+          ),
+        ).toEqual({ ok: false, reason: 'guard_failed', failed: ['no_payment_succeeded'] });
+      }
+    });
+
+    it('without providerPaymentStatus the guard fails closed', () => {
+      expect(resolveTransition('awaiting_payment', 'client_cancelled', client())).toEqual({
+        ok: false,
+        reason: 'guard_failed',
+        failed: ['no_payment_succeeded'],
+      });
+    });
+
+    it('awaiting_confirmation is cancelled without payment data, by the client only', () => {
+      expect(
+        resolveTransition('awaiting_confirmation', 'client_cancelled', client({ ...COD })),
+      ).toMatchObject({ ok: true, rule: { to: 'cancelled', notify: [] } });
+      expect(
+        resolveTransition('awaiting_confirmation', 'client_cancelled', staff({ ...COD })),
+      ).toEqual({ ok: false, reason: 'guard_failed', failed: ['actor'] });
+      expect(
+        resolveTransition(
+          'awaiting_payment',
+          'client_cancelled',
+          system({ providerPaymentStatus: null }),
+        ),
+      ).toMatchObject({ ok: false, reason: 'guard_failed', failed: ['actor'] });
+    });
+
+    it('after confirmation client_cancelled has no rule (client_refused applies there)', () => {
+      for (const status of ['confirmed', 'ready', 'draft', 'cancelled', 'handed'] as const) {
+        expect(
+          resolveTransition(status, 'client_cancelled', client({ providerPaymentStatus: null })),
+        ).toEqual({ ok: false, reason: 'no_rule', failed: [] });
+      }
+      expect(resolveTransition('confirmed', 'client_refused', client({ ...COD }))).toMatchObject({
+        ok: true,
+        rule: { to: 'cancelled' },
+      });
     });
   });
 

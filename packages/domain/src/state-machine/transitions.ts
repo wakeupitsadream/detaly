@@ -23,6 +23,9 @@
  * - payment cancel/expiry only applies to the order's current payment (eventPaymentIsCurrent);
  *   a payment that succeeds while the order does not wait for one is never dropped: it sends
  *   the order to needs_attention (before handover) or alerts the owner (after it);
+ * - the client may cancel an order on /o/<token> before paying (awaiting_payment, while no
+ *   payment succeeded) or before confirming (awaiting_confirmation): `client_cancelled`, no
+ *   notification (phase 1A, docs/phase-1a-implementation.md decision Д3);
  * - the client (or staff) may cancel one delayed item in ordered_at_supplier ("Жду до" /
  *   "Отменить позицию", order.eta_changed): partial refund, the order stays with the others.
  */
@@ -50,6 +53,7 @@ import {
   noMoneyHeld,
   noItemErrors,
   noOpenClaims,
+  noPaymentSucceeded,
   noPrepayInvoice,
   not,
   onPickupEligible,
@@ -85,6 +89,8 @@ export const ORDER_EVENTS = [
   // pay_on_handover confirmation
   'client_confirmed',
   'confirmation_timeout',
+  // client cancellation before payment / confirmation (phase 1A, decision Д3)
+  'client_cancelled',
   // supplier
   'supplier_order_requested',
   'supplier_checkout_succeeded',
@@ -405,6 +411,16 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     effects: ['set_scheme_pay_on_handover'],
   },
 
+  {
+    label: 'Клиент отменил заказ до оплаты',
+    from: ['awaiting_payment'],
+    event: 'client_cancelled',
+    to: 'cancelled',
+    actors: ['client'],
+    guard: noPaymentSucceeded,
+    notify: [],
+  },
+
   // --- cancelled ---------------------------------------------------------------------------
   {
     label: 'Поздняя оплата отменённого заказа',
@@ -433,6 +449,14 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     to: 'cancelled',
     actors: ['system'],
     notify: [client('confirmation_expired')],
+  },
+  {
+    label: 'Клиент отменил заказ до подтверждения',
+    from: ['awaiting_confirmation'],
+    event: 'client_cancelled',
+    to: 'cancelled',
+    actors: ['client'],
+    notify: [],
   },
 
   // --- confirmed / ordering / supplier invoice ---------------------------------------------

@@ -10,7 +10,7 @@
  * - Optional values from external systems are `null`, not `undefined`, so they survive JSON
  *   round trips (offer_snapshot jsonb, Redis cache).
  */
-import type { DocumentKind, ExcludedKind, StaffRole } from './statuses';
+import type { DocumentKind, ExcludedKind, Fulfillment, PaymentScheme, StaffRole } from './statuses';
 
 /** Integer kopecks. */
 export type Kop = number;
@@ -167,6 +167,94 @@ export interface OfferView {
   /** Excluded rows are shown with "не продаём онлайн, спросите в сервисе" and cannot be added. */
   excluded: boolean;
   excludedReason: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Cart and checkout (phase 1A, docs/phase-1a-implementation.md section 3)
+// ---------------------------------------------------------------------------
+
+/** Which part of a cart is checked out: everything, the Orenburg lines or the to-order lines. */
+export type CartPart = 'all' | 'local' | 'order';
+
+/** A `cart_items` row in domain form. Prices are per unit. */
+export interface CartLine {
+  id: string;
+  /** offerViewId(offer): `${articleNorm}:${brand}:${stockId}`. */
+  offerKey: string;
+  /** Normalized article of the search query that found the offer (repricing searches by it). */
+  searchArticleNorm: string;
+  qty: number;
+  priceSupplierKop: Kop;
+  priceClientKop: Kop;
+  markupBp: BasisPoints;
+  isLocal: boolean;
+  etaDate: IsoDate | null;
+  /** offer_snapshot: the supplier offer the prices were computed from. */
+  offer: Offer;
+}
+
+/** What repricing changed in a line (shown by DiffBanner). `title` is lineTitle(offer). */
+export type LineChange =
+  | {
+      kind: 'price';
+      lineId: string;
+      offerKey: string;
+      title: string;
+      oldPriceKop: Kop;
+      newPriceKop: Kop;
+      /** newPriceKop - oldPriceKop per unit (negative when cheaper). */
+      deltaKop: number;
+    }
+  | { kind: 'qty'; lineId: string; offerKey: string; title: string; oldQty: number; newQty: number }
+  | { kind: 'unavailable'; lineId: string; offerKey: string; title: string }
+  | { kind: 'excluded'; lineId: string; offerKey: string; title: string; reason: string };
+
+export interface RepricedLine extends CartLine {
+  /** unavailable and excluded lines are removed from the cart by the caller. */
+  status: 'ok' | 'unavailable' | 'excluded';
+  /** Fresh supplier stock count (the old snapshot's when the search failed). */
+  available: number;
+  multiplicity: number;
+  /** The search for this line's article failed: the line is kept unchanged, not re-checked. */
+  stale: boolean;
+}
+
+export interface RepriceContext {
+  markupRules: readonly MarkupRule[];
+  excludedRules: readonly ExcludedRule[];
+  eta: EtaSettings;
+  now: Date;
+  /** Zone for client-facing dates; default 'Asia/Yekaterinburg'. */
+  timeZone?: string;
+}
+
+export interface CartTotals {
+  /** Sum of client price x qty. */
+  subtotalKop: Kop;
+  /** Sum of supplier price x qty. */
+  supplierKop: Kop;
+  /** subtotal - supplier; negative when sold below cost. */
+  marginKop: number;
+  /** Sum of quantities. */
+  itemsCount: number;
+}
+
+/** Why an order needs prepayment (several may apply). */
+export type PrepayReason = 'to_order' | 'over_limit' | 'no_show' | 'courier';
+
+export interface PaymentSchemeInput {
+  allItemsLocal: boolean;
+  totalKop: Kop;
+  noShowCount: number;
+  noShowLimit: number;
+  onPickupMaxTotalKop: Kop;
+  fulfillment: Fulfillment;
+}
+
+export interface PaymentSchemeDecision {
+  scheme: PaymentScheme;
+  /** Empty for pay_on_handover. */
+  reasons: PrepayReason[];
 }
 
 // ---------------------------------------------------------------------------

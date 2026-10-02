@@ -8,10 +8,12 @@
  * 3. otherwise the latest draft, shown with a "черновик" banner.
  */
 import type { Env } from '@detaly/config';
-import { LEGAL_VERSION_ENV, type Database } from '@detaly/db';
+import { LEGAL_VERSION_ENV, type Executor } from '@detaly/db';
 import type { DocumentKind } from '@detaly/domain';
 
 export interface LegalDocument {
+  /** document_versions.id: consents.document_version_id, orders.offer_version_id. */
+  id: string;
   kind: DocumentKind;
   version: string;
   title: string;
@@ -38,6 +40,7 @@ export function docKindForSlug(slug: string): DocumentKind | null {
 }
 
 const COLUMNS = {
+  id: true,
   kind: true,
   version: true,
   title: true,
@@ -54,7 +57,7 @@ function toDocument(row: Row | undefined): LegalDocument | null {
 
 export async function getPublishedDocument(
   kind: DocumentKind,
-  { db, env }: { db: Database; env: Env },
+  { db, env }: { db: Executor; env: Env },
 ): Promise<LegalDocument | null> {
   const wanted = env[LEGAL_VERSION_ENV[kind]];
   if (wanted) {

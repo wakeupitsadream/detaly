@@ -12,6 +12,7 @@ function setup(
   };
   const resources: ShutdownResources = {
     bot: { stop: track('bot.stop') },
+    dispatcher: { stop: track('dispatcher.stop') },
     workers: [{ close: track('worker.close') }, { close: track('worker.close') }],
     queues: [{ close: track('queue.close') }],
     redis: [
@@ -55,6 +56,7 @@ describe('installShutdown', () => {
     await vi.waitFor(() => expect(exit).toHaveBeenCalled());
     expect(order).toEqual([
       'bot.stop',
+      'dispatcher.stop',
       'worker.close',
       'worker.close',
       'queue.close',
@@ -70,7 +72,21 @@ describe('installShutdown', () => {
     const { order, proc, exit } = setup({ bot: null });
     proc.emit('SIGINT', 'SIGINT');
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0));
+    expect(order[0]).toBe('dispatcher.stop');
+  });
+
+  it('stops the outbox dispatcher before the queues close', async () => {
+    const { order, proc, exit } = setup({ bot: null, dispatcher: null });
+    proc.emit('SIGTERM', 'SIGTERM');
+    await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0));
     expect(order[0]).toBe('worker.close');
+
+    const second = setup();
+    second.proc.emit('SIGTERM', 'SIGTERM');
+    await vi.waitFor(() => expect(second.exit).toHaveBeenCalledWith(0));
+    expect(second.order.indexOf('dispatcher.stop')).toBeLessThan(
+      second.order.indexOf('queue.close'),
+    );
   });
 
   it('exits with 1 on a second signal', async () => {

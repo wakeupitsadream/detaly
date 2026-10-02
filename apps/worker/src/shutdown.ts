@@ -14,6 +14,8 @@ export interface RedisLike {
 
 export interface ShutdownResources {
   bot?: { stop(): Promise<unknown> } | null;
+  /** Outbox dispatcher: stopped before the queues close (it adds jobs to them). */
+  dispatcher?: { stop(): Promise<unknown> } | null;
   workers: readonly Closable[];
   queues: readonly Closable[];
   redis: readonly RedisLike[];
@@ -66,8 +68,8 @@ function quitRedis(client: RedisLike): Promise<unknown> {
 }
 
 /**
- * Order: bot.stop → worker.close (waits for running jobs) → queue.close → redis.quit →
- * sql.end. A failing step is logged and the next one still runs.
+ * Order: bot.stop → dispatcher.stop → worker.close (waits for running jobs) → queue.close →
+ * redis.quit → sql.end. A failing step is logged and the next one still runs.
  */
 export function installShutdown({
   resources,
@@ -96,8 +98,9 @@ export function installShutdown({
     }, timeoutMs);
     hardExit.unref();
 
-    const { bot, workers, queues, redis, sql } = resources;
+    const { bot, dispatcher, workers, queues, redis, sql } = resources;
     if (bot) await step('bot.stop', () => bot.stop());
+    if (dispatcher) await step('dispatcher.stop', () => dispatcher.stop());
     // Running jobs may take a while: workers get the remaining budget, not the step cap.
     await step('worker.close', () => Promise.all(workers.map((w) => w.close())), timeoutMs);
     await step('queue.close', () => Promise.all(queues.map((q) => q.close())));

@@ -1,25 +1,18 @@
-// Worker composition: Redis, Postgres, queues, Job Schedulers, Workers, the seller bot and
-// graceful shutdown. main.ts calls runWorker() with the real env; the shutdown integration
-// test runs the same function with test-only key prefixes.
-import {
-  createRedis,
-  createWorkerRedis,
-  HEARTBEAT_KEY,
-  type Env,
-  type Logger,
-} from '@detaly/config';
-import { createDb } from '@detaly/db';
+// Worker composition: WorkerDeps (create-deps.ts), Job Schedulers, Workers with dead-letter, the
+// outbox dispatcher, the seller bot and graceful shutdown. main.ts calls runWorker() with the
+// real env; the process integration test runs the same function with test-only key prefixes.
+import { HEARTBEAT_KEY, type Env, type Logger } from '@detaly/config';
 import { createSellerBot, startSellerBot, type SellerBotRunner } from './bots/seller/bot';
 import { createStaffCache, loadStaffTgIds } from './bots/seller/staff';
+import { createWorkerDeps, type CreateWorkerDepsOptions } from './create-deps';
 import { createHealthProbe } from './health';
-import { createQueues, registerSchedulers } from './queues';
+import { createOutboxDispatcher } from './outbox/dispatcher';
+import { registerSchedulers } from './queues';
 import { installShutdown, type ShutdownHandle } from './shutdown';
 import { createWorkers } from './workers';
 
-export type WorkerEnv = Pick<
-  Env,
-  'DATABASE_URL' | 'REDIS_URL' | 'GIT_SHA' | 'TG_SELLER_BOT_TOKEN' | 'TG_SELLER_CHAT_ID'
->;
+/** The worker reads the whole env (payments, Rossko, SMS, bots) through packages/config. */
+export type WorkerEnv = Env;
 
 export interface RunWorkerOptions {
   env: WorkerEnv;
@@ -28,8 +21,14 @@ export interface RunWorkerOptions {
   bullPrefix?: string;
   /** Heartbeat key; default HEARTBEAT_KEY. */
   heartbeatKey?: string;
+  /** Prefix of the worker's own Redis keys; '' in production (tests: `test:<uuid>:`). */
+  keyPrefix?: string;
+  /** Outbox pub/sub channel; default OUTBOX_CHANNEL (tests use a prefixed one). */
+  outboxChannel?: string;
   /** Exit function for shutdown (default process.exit). */
   exit?: (code: number) => void;
+  /** Transport overrides for tests (Rossko caller, fetch, Telegram API, seller cards). */
+  overrides?: Pick<CreateWorkerDepsOptions, 'rosskoCaller' | 'fetch' | 'telegram' | 'sellerCards'>;
 }
 
 export async function runWorker({
@@ -37,31 +36,33 @@ export async function runWorker({
   logger,
   bullPrefix,
   heartbeatKey = HEARTBEAT_KEY,
+  keyPrefix,
+  outboxChannel,
   exit,
+  overrides,
 }: RunWorkerOptions): Promise<ShutdownHandle> {
-  // App commands and queues: RESP2. Workers: RESP2 + maxRetriesPerRequest: null.
-  const redis = createRedis(env.REDIS_URL);
-  const workerRedis = createWorkerRedis(env.REDIS_URL);
-  for (const [name, client] of [
-    ['redis', redis],
-    ['workerRedis', workerRedis],
-  ] as const) {
-    client.on('error', (error: Error) => logger.error({ client: name, err: error }, 'redis error'));
-  }
-  const db = createDb(env.DATABASE_URL, { max: 5 });
-
-  const queues = createQueues(redis, { prefix: bullPrefix });
-  for (const [name, queue] of Object.entries(queues)) {
-    queue.on('error', (error) => logger.error({ queue: name, err: error }, 'queue error'));
-  }
-  const workers = createWorkers({
-    connection: workerRedis,
-    redis,
+  const resources = createWorkerDeps({
+    env,
     logger,
-    prefix: bullPrefix,
+    bullPrefix,
     heartbeatKey,
+    keyPrefix,
+    outboxChannel,
+    ...overrides,
+  });
+  const { deps, workerRedis } = resources;
+  const { db, redis, queues } = deps;
+
+  const workers = createWorkers({ connection: workerRedis, logger, deps });
+  const dispatcher = createOutboxDispatcher({
+    db,
+    queues,
+    logger,
+    createSubscriber: resources.createSubscriber,
+    channel: resources.outboxChannel,
   });
 
+  // --- seller bot (wave 4 extends this block) ---
   let bot: ReturnType<typeof createSellerBot> | null = null;
   if (env.TG_SELLER_BOT_TOKEN) {
     const staffCache = createStaffCache({ load: () => loadStaffTgIds(db), logger });
@@ -76,10 +77,12 @@ export async function runWorker({
       }),
       sellerChatId: env.TG_SELLER_CHAT_ID,
       logger,
+      deps,
     });
   } else {
     logger.warn('TG_SELLER_BOT_TOKEN is empty: the seller bot is not started');
   }
+  // --- end of the seller bot block ---
 
   // Polling starts after the schedulers are registered; shutdown stops whatever is running.
   let botRunner: SellerBotRunner | null = null;
@@ -88,6 +91,7 @@ export async function runWorker({
   const handle = installShutdown({
     resources: {
       bot: bot ? { stop: async () => botRunner?.stop() } : null,
+      dispatcher,
       workers,
       queues: Object.values(queues),
       redis: [workerRedis, redis],
@@ -105,9 +109,18 @@ export async function runWorker({
     throw error;
   }
   if (handle.isShuttingDown()) return handle;
+  dispatcher.start();
   if (bot) botRunner = startSellerBot(bot, { logger, token: env.TG_SELLER_BOT_TOKEN });
   logger.info(
-    { queues: Object.keys(queues), workers: workers.map((w) => w.name), bot: bot !== null },
+    {
+      queues: Object.keys(queues),
+      workers: workers.map((w) => w.name),
+      bot: bot !== null,
+      payments: deps.payments !== null,
+      sms: deps.smsDriver !== null,
+      rosskoMode: env.ROSSKO_MODE,
+      rosskoCheckout: env.ROSSKO_ALLOW_CHECKOUT,
+    },
     'worker started',
   );
   return handle;

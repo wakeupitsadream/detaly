@@ -1,5 +1,6 @@
 // Real processes: `node --import tsx` like the Dockerfile CMD and the compose healthcheck.
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRedis, type Redis } from '@detaly/config';
@@ -9,7 +10,9 @@ import {
   testKeyPrefix,
   testRedisUrl,
 } from '@detaly/config/testing';
-import { afterAll, beforeAll, describe, expect, inject, it, vi } from 'vitest';
+import { createDb, eq, outbox, type Db } from '@detaly/db';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { hasTestDatabase, prepareOwnDatabase } from './fixtures/databases';
 
 const WORKER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const prefix = testKeyPrefix();
@@ -55,7 +58,6 @@ function baseEnv(overrides: Record<string, string | undefined> = {}) {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
     ...minimalEnvSource({
-      DATABASE_URL: inject('workerDatabaseUrl') ?? undefined,
       REDIS_URL: testRedisUrl(),
       NODE_ENV: 'test',
       LOG_LEVEL: 'info',
@@ -65,18 +67,38 @@ function baseEnv(overrides: Record<string, string | undefined> = {}) {
   };
 }
 
-describe('worker process shutdown', () => {
-  it('exits with 0 within 10 s of SIGTERM after the first heartbeat', async () => {
-    const heartbeatKey = `${prefix}proc:heartbeat`;
+describe.skipIf(!hasTestDatabase)('worker process', () => {
+  let databaseUrl: string;
+  let db: Db;
+
+  beforeAll(async () => {
+    // Own database: the worker's outbox dispatcher takes every pending row of its database.
+    const url = await prepareOwnDatabase('proc');
+    if (!url) throw new Error('DATABASE_URL_TEST is not set');
+    databaseUrl = url;
+    db = createDb(databaseUrl, { max: 2 });
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('runs without bot tokens and YooKassa keys, dispatches the outbox, exits 0 on SIGTERM', async () => {
+    const procPrefix = `${prefix}proc:`;
+    const heartbeatKey = `${procPrefix}heartbeat`;
     const child = spawnTsx(
       'test/fixtures/worker-process.ts',
       [],
       baseEnv({
+        DATABASE_URL: databaseUrl,
         TG_SELLER_BOT_TOKEN: '',
-        WORKER_TEST_BULL_PREFIX: `${prefix}proc:bull`,
-        WORKER_TEST_HEARTBEAT_KEY: heartbeatKey,
+        YOOKASSA_SHOP_ID: '',
+        YOOKASSA_SECRET_KEY: '',
+        SMS_PROVIDER: 'none',
+        WORKER_TEST_PREFIX: procPrefix,
       }),
     );
+    const outboxKey = `process-test:${randomUUID()}`;
     try {
       await vi.waitFor(
         async () => {
@@ -84,11 +106,26 @@ describe('worker process shutdown', () => {
         },
         { timeout: 20_000, interval: 200 },
       );
+      // The running process moves an outbox row into BullMQ (nudge or poll).
+      await db
+        .insert(outbox)
+        .values({ queue: 'housekeeping', name: 'heartbeat', jobId: outboxKey });
+      await redis.publish(`${procPrefix}outbox`, '1');
+      await vi.waitFor(
+        async () => {
+          const [row] = await db.select().from(outbox).where(eq(outbox.jobId, outboxKey));
+          expect(row?.dispatchedAt, child.output()).toBeInstanceOf(Date);
+        },
+        { timeout: 10_000, interval: 100 },
+      );
     } catch (error) {
       child.kill('SIGKILL');
       throw error;
     }
     expect(child.output()).toContain('the seller bot is not started');
+    expect(child.output()).toContain('worker started');
+    expect(child.output()).toContain('"payments":false');
+    expect(child.output()).toContain('"rosskoCheckout":false');
 
     const sentAt = Date.now();
     child.kill('SIGTERM');
@@ -100,7 +137,12 @@ describe('worker process shutdown', () => {
 
     expect(result, child.output()).toEqual({ code: 0, signal: null });
     expect(Date.now() - sentAt).toBeLessThan(10_000);
-    expect(child.output()).toContain('shutdown complete');
+    const output = child.output();
+    expect(output).toContain('shutdown complete');
+    expect(output).not.toContain('shutdown step failed');
+    // No secrets or phones in the log.
+    expect(output).not.toContain(String(minimalEnvSource().SESSION_SECRET));
+    expect(output).not.toMatch(/\+7\d{10}/);
   });
 });
 

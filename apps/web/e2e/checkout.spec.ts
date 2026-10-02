@@ -10,19 +10,27 @@
  * hour) and its own phone number. Screenshots: test-results/screens/<project>-<slug>.png.
  *
  * Optional E2E_WEB_LOG=<path of the server log>: after the tests the log is checked for the
- * phones and names typed here (no personal data in logs).
+ * phones and names typed here (no personal data in logs). With E2E_PAYMENTS=on (phase 1B,
+ * scripts/e2e-1b.sh with the YooKassa mock) «Оплатить N ₽» is expected live instead of
+ * «Оплата подключается».
  */
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type Response } from '@playwright/test';
-import { expectNoHorizontalScroll, randomIp, screenshot, testName, testPhone } from './helpers';
+import { expectNoHorizontalScroll, randomIp, screenshot } from './helpers';
+import {
+  addToCart,
+  BOSCH_TO_ORDER,
+  fillContacts,
+  giveConsents,
+  KNECHT_LOCAL,
+  newClient as newShopClient,
+  OIL_EXCLUDED,
+  PAYMENTS_ON,
+  submitAndOpenOrder as submitOrder,
+  submitButton,
+  type Client,
+} from './shop';
 
-/** Offer ids (OfferView.id = articleNorm:brand:stockId) in the GetSearch.OC90 fixture. */
-const KNECHT_LOCAL = 'OC90:Knecht:ORB1';
-const BOSCH_TO_ORDER = '0451103079:BOSCH:MSK7';
-/** Engine oil in GetSearch.EDGE5W40: an excluded (marked goods) group. */
-const OIL_EXCLUDED = 'EDGE5W40:CASTROL:ORB1';
-
-const ORDER_PATH_RE = /^\/o\/[A-Za-z0-9_-]{43}$/;
 const PROMISE_RE = /к (пн|вт|ср|чт|пт|сб|вс) \d{1,2} [а-я]+/;
 
 /**
@@ -43,23 +51,11 @@ test.use({
   },
 });
 
-function newClient(): { phone: ReturnType<typeof testPhone>; name: string } {
-  const phone = testPhone();
-  const name = testName();
-  typed.phones.push(phone.e164, phone.national);
-  typed.names.push(name);
-  return { phone, name };
-}
-
-/** "В корзину" on the search row of one offer; the form answers 303 -> /cart?added=1. */
-async function addToCart(page: Page, query: string, offerId: string): Promise<void> {
-  await page.goto(`/search?q=${encodeURIComponent(query)}`);
-  const form = page
-    .getByTestId('add-to-cart')
-    .filter({ has: page.locator(`input[name="offerId"][value="${offerId}"]`) });
-  await expect(form).toHaveCount(1);
-  await form.getByRole('button', { name: /В корзину/ }).click();
-  await expect(page).toHaveURL(/\/cart\?added=1$/);
+function newClient(): Client {
+  const client = newShopClient();
+  typed.phones.push(client.phone.e164, client.phone.national);
+  typed.names.push(client.name);
+  return client;
 }
 
 /** «к …» of every line by brand, e.g. { Knecht: 'к сб 3 октября' }. */
@@ -79,35 +75,9 @@ async function linePromises(
   return result;
 }
 
-function submitButton(page: Page) {
-  return page.getByTestId('checkout-form').getByRole('button', { name: 'Оформить заказ' });
-}
-
-async function fillContacts(
-  page: Page,
-  client: { phone: ReturnType<typeof testPhone>; name: string },
-): Promise<void> {
-  await page.getByLabel('Телефон', { exact: true }).fill(client.phone.typed);
-  await page.getByLabel('Имя', { exact: true }).fill(client.name);
-  await page.getByRole('radio', { name: 'MAX' }).check();
-}
-
-async function giveConsents(page: Page): Promise<void> {
-  await page.getByRole('checkbox', { name: /Принимаю условия/ }).check();
-  await page.getByRole('checkbox', { name: /согласие на обработку персональных данных/ }).check();
-}
-
 /** Submits the checkout form and waits for the order page document. */
 async function submitAndOpenOrder(page: Page): Promise<Response> {
-  const orderDocument = page.waitForResponse(
-    (r) =>
-      r.request().resourceType() === 'document' && ORDER_PATH_RE.test(new URL(r.url()).pathname),
-  );
-  await submitButton(page).click();
-  const response = await orderDocument;
-  await expect(page).toHaveURL((url) => ORDER_PATH_RE.test(url.pathname));
-  typed.tokens.push(new URL(response.url()).pathname.slice('/o/'.length));
-  expect(response.status()).toBe(200);
+  const { response } = await submitOrder(page, (token) => typed.tokens.push(token));
   return response;
 }
 
@@ -181,9 +151,16 @@ test('mixed cart: prepayment order from search to the order page', async ({ page
   await expectPickupPoint(page);
   const payment = page.getByTestId('order-payment');
   await expect(payment).toContainText('Предоплата 100% онлайн');
-  await expect(payment.getByTestId('pay-button')).toBeDisabled();
   await expect(payment.getByTestId('pay-button')).toContainText('Оплатить');
-  await expect(payment).toContainText('Оплата подключается');
+  if (PAYMENTS_ON) {
+    // Phase 1B with the YooKassa mock (scripts/e2e-1b.sh): «Оплатить N ₽» is live.
+    await expect(payment.getByTestId('pay-button')).toBeEnabled();
+    await expect(payment.getByTestId('pay-button')).toContainText(totalText);
+    await expect(payment).not.toContainText('Оплата подключается');
+  } else {
+    await expect(payment.getByTestId('pay-button')).toBeDisabled();
+    await expect(payment).toContainText('Оплата подключается');
+  }
   await expect(page.getByTestId('order-items').getByTestId('order-item')).toHaveCount(2);
   await expect(page.getByTestId('order-total')).toHaveText(totalText);
   await expect(page.getByTestId('order-timeline')).toContainText('Заказ оформлен');

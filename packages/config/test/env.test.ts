@@ -1,7 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ENV_KEYS, EnvError, getEnv, parseEnv, resetEnvCache } from '../src/env';
+import {
+  databaseUrl,
+  ENV_KEYS,
+  EnvError,
+  getEnv,
+  parseEnv,
+  redisUrl,
+  resetEnvCache,
+} from '../src/env';
 import { minimalEnvSource } from '../src/testing';
 
 const ENV_EXAMPLE = fileURLToPath(new URL('../../../.env.example', import.meta.url));
@@ -143,6 +151,62 @@ describe('parseEnv', () => {
       minimalEnvSource({ ROSSKO_MODE: 'live', ROSSKO_KEY1: 'k1', ROSSKO_KEY2: 'k2' }),
     );
     expect(env.ROSSKO_MODE).toBe('live');
+  });
+
+  it('runs DEMO_MODE without a database and Redis', () => {
+    const source = { SESSION_SECRET: 'test-session-secret-0123456789abcdef', DEMO_MODE: 'true' };
+    const env = parseEnv(source);
+    expect(env.DEMO_MODE).toBe(true);
+    expect(env.DATABASE_URL).toBeUndefined();
+    expect(env.REDIS_URL).toBeUndefined();
+    expect(() => databaseUrl(env)).toThrow(/DATABASE_URL/);
+    expect(() => redisUrl(env)).toThrow(/REDIS_URL/);
+    expect(parseEnv(minimalEnvSource()).DEMO_MODE).toBe(false);
+    expect(databaseUrl(parseEnv(minimalEnvSource()))).toMatch(/^postgres:/);
+    expect(redisUrl(parseEnv(minimalEnvSource()))).toMatch(/^redis:/);
+    // SESSION_SECRET stays required in the demo (cart cookie signature, rate-limit buckets).
+    expect(() => parseEnv({ DEMO_MODE: 'true' })).toThrow(/SESSION_SECRET/);
+  });
+
+  it('takes the demo address from Vercel when APP_BASE_URL is not set', () => {
+    const demo = { SESSION_SECRET: 'test-session-secret-0123456789abcdef', DEMO_MODE: 'true' };
+    const vercel = {
+      VERCEL_URL: 'detaly-git-x-team.vercel.app',
+      VERCEL_PROJECT_PRODUCTION_URL: 'detaly-demo.vercel.app',
+    };
+    expect(parseEnv({ ...demo, ...vercel, VERCEL_ENV: 'production' }).APP_BASE_URL).toBe(
+      'https://detaly-demo.vercel.app',
+    );
+    expect(parseEnv({ ...demo, ...vercel, VERCEL_ENV: 'preview' }).APP_BASE_URL).toBe(
+      'https://detaly-git-x-team.vercel.app',
+    );
+    // An explicit APP_BASE_URL wins, and outside the demo Vercel's variables are ignored.
+    expect(
+      parseEnv({ ...demo, ...vercel, APP_BASE_URL: 'https://demo.example.ru' }).APP_BASE_URL,
+    ).toBe('https://demo.example.ru');
+    expect(parseEnv(minimalEnvSource(vercel)).APP_BASE_URL).toBe('http://localhost:3000');
+    expect(parseEnv(demo).APP_BASE_URL).toBe('http://localhost:3000');
+  });
+
+  it('requires DATABASE_URL and REDIS_URL outside DEMO_MODE', () => {
+    const secret = { SESSION_SECRET: 'test-session-secret-0123456789abcdef' };
+    expect(() => parseEnv(secret)).toThrow(/DATABASE_URL/);
+    expect(() => parseEnv({ ...secret, DEMO_MODE: 'false' })).toThrow(/REDIS_URL/);
+  });
+
+  it('keeps DEMO_MODE on fixtures and without YooKassa', () => {
+    const demo = (extra: Record<string, string>) =>
+      parseEnv(minimalEnvSource({ DEMO_MODE: 'true', ...extra }));
+    expect(() => demo({ ROSSKO_MODE: 'live', ROSSKO_KEY1: 'k1', ROSSKO_KEY2: 'k2' })).toThrow(
+      /ROSSKO_MODE/,
+    );
+    expect(() => demo({ YOOKASSA_SHOP_ID: '123' })).toThrow(/YOOKASSA_SHOP_ID/);
+    expect(() => demo({ YOOKASSA_SECRET_KEY: 'live_x' })).toThrow(/YOOKASSA_SECRET_KEY/);
+    expect(() => demo({ YOOKASSA_WEBHOOK_IP_ALLOWLIST: '185.71.76.0/27' })).toThrow(
+      /YOOKASSA_WEBHOOK_IP_ALLOWLIST/,
+    );
+    // The API URL has a default and is harmless without credentials.
+    expect(demo({}).YOOKASSA_API_URL).toBe('https://api.yookassa.ru/v3');
   });
 
   it('strips an "ИП" prefix from SELLER_REQUISITES_NAME', () => {

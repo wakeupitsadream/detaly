@@ -8,6 +8,7 @@ import { searchLog, type Database } from '@detaly/db';
 import type { RosskoCaller } from '@detaly/rossko';
 import { getDb } from './db';
 import { singleton } from './globals';
+import { isDemoMode } from './mode';
 import { createSearchService, type SearchService, type SearchServiceDeps } from './search-service';
 import { createSupplierDeps, getSupplier, logSupplierError, type Supplier } from './supplier';
 
@@ -39,7 +40,24 @@ export function createSearchDeps(options: SearchDepsOptions): SearchServiceDeps 
   return searchDepsFromSupplier(createSupplierDeps(options), options.db, options.onError);
 }
 
+/**
+ * DEMO_MODE: the same service over the demo supplier, without `search_log` (no database).
+ */
+export function demoSearchDeps(supplier: Supplier, onError?: SearchDepsOptions['onError']) {
+  return {
+    rossko: supplier.rossko,
+    limiter: supplier.limiter,
+    loadSettings: () => supplier.settings.get(),
+    onBackgroundError: onError,
+  } satisfies SearchServiceDeps;
+}
+
 export function getSearchService(): SearchService {
+  if (isDemoMode()) {
+    return singleton('demo-search-service', () =>
+      createSearchService(demoSearchDeps(getSupplier(), logSupplierError)),
+    );
+  }
   return singleton('search-service', () =>
     createSearchService(searchDepsFromSupplier(getSupplier(), getDb(), logSupplierError)),
   );

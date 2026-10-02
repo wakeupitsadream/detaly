@@ -1,3 +1,6 @@
+import { IconArrowRight, IconInfo, IconPhone } from '@/components/icons';
+import { buttonClass } from '@/components/ui/Button';
+import { cn } from '@/components/ui/cn';
 import { telHref } from '@/server/brand';
 
 /**
@@ -7,24 +10,31 @@ import { telHref } from '@/server/brand';
 export function CheckoutClosed({ message, phone }: { message: string; phone: string | null }) {
   return (
     <section
-      className="space-y-3 rounded-card border border-line bg-card p-6"
+      className="mx-auto max-w-2xl min-w-0 rounded border border-line bg-card p-6 md:p-8"
       data-testid="checkout-closed"
     >
-      <h2 className="text-lg font-semibold">Оформление на сайте пока закрыто</h2>
-      <p className="text-muted">{message}</p>
-      {phone ? (
+      <div className="flex items-start gap-3">
+        <IconInfo size={24} className="mt-0.5 shrink-0 text-info" />
+        <div className="min-w-0">
+          <h2 className="text-h3">Оформление на сайте пока закрыто</h2>
+          <p className="mt-3 text-muted">{message}</p>
+        </div>
+      </div>
+      <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3">
+        {phone ? (
+          <a href={telHref(phone)} className={cn(buttonClass({ size: 'lg' }), 'whitespace-nowrap')}>
+            <IconPhone size={18} />
+            Позвонить {phone}
+          </a>
+        ) : null}
         <a
-          href={telHref(phone)}
-          className="inline-flex h-11 items-center rounded-xl bg-accent px-5 font-semibold whitespace-nowrap text-white hover:bg-accent-strong"
+          className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold underline underline-offset-4"
+          href="/cart"
         >
-          Позвонить {phone}
-        </a>
-      ) : null}
-      <p>
-        <a className="text-sm underline" href="/cart">
           Вернуться в корзину
+          <IconArrowRight size={16} />
         </a>
-      </p>
+      </div>
     </section>
   );
 }

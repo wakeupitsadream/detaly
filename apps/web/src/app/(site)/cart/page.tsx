@@ -1,10 +1,17 @@
+import { promisedDate, type IsoDate } from '@detaly/domain';
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { CartLineRow } from '@/components/CartLineRow';
-import { CartSummary } from '@/components/CartSummary';
+import { CartCheckoutBar, CartSummary } from '@/components/CartSummary';
+import { CheckoutSteps } from '@/components/checkout/CheckoutSteps';
 import { DiffBanner } from '@/components/DiffBanner';
+import { IconArrowRight, IconCart, IconSearch } from '@/components/icons';
+import { Notice } from '@/components/page/Notice';
+import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
 import { PaymentModeNotice } from '@/components/PaymentModeNotice';
+import { buttonClass } from '@/components/ui/Button';
+import { cartCountLabel } from '@/lib/plural';
 import { getCartService } from '@/server/cart';
 import { CART_ERROR_MESSAGES, isCartErrorCode } from '@/server/cart/errors';
 import { STALE_PRICES_TEXT, summarizeCart } from '@/server/cart/summary';
@@ -13,6 +20,7 @@ import { getBrand } from '@/server/brand';
 import type { CartView } from '@/server/cart/cart-service';
 import { currentCheckoutGate } from '@/server/checkout-gate';
 import { errorInfo, PageDataError } from '@/server/errors';
+import { planInstallForDate, type InstallPlanView } from '@/server/install';
 import { getLogger } from '@/server/logger';
 
 export const metadata: Metadata = {
@@ -29,17 +37,21 @@ function first(value: string | string[] | undefined): string {
 function EmptyCart() {
   return (
     <div
-      className="rounded-card border border-dashed border-line bg-card p-6 text-center"
+      className="mx-auto flex max-w-xl min-w-0 flex-col items-center rounded border border-line bg-card px-5 py-10 text-center md:py-14"
       data-testid="cart-empty"
     >
-      <h2 className="text-lg font-semibold">Корзина пуста</h2>
-      <p className="mx-auto mt-2 max-w-md text-muted">
-        Найдите деталь по артикулу и нажмите «В корзину».
-      </p>
-      <Link
-        href="/"
-        className="mt-4 inline-flex h-11 items-center rounded-xl bg-accent px-5 font-semibold text-white hover:bg-accent-strong"
+      <div
+        aria-hidden
+        className="grid size-20 place-items-center rounded bg-graphite-800 bg-tread text-steel-200"
       >
+        <IconCart size={34} />
+      </div>
+      <h2 className="mt-6 text-h2">Корзина пуста</h2>
+      <p className="mt-3 max-w-sm text-muted">
+        Найдите деталь по артикулу и нажмите «В корзину». Цену и дату получения покажем сразу.
+      </p>
+      <Link href="/" className={`${buttonClass({ size: 'lg' })} mt-7`}>
+        <IconSearch size={18} strokeWidth={2} />
         Искать по артикулу
       </Link>
     </div>
@@ -64,74 +76,86 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
   const gate = lines.length > 0 ? await currentCheckoutGate() : null;
   const summary = view && lines.length > 0 ? summarizeCart(lines, view.settings) : null;
   const phone = getBrand().contactPhone;
+  // The lift slot after the whole order's date, as the order page will show it.
+  let install: InstallPlanView | null | undefined;
+  if (view && summary) {
+    const dates = view.lines
+      .map((line) => line.etaDate)
+      .filter((date): date is IsoDate => date !== null);
+    if (dates.length > 0) {
+      try {
+        install = await planInstallForDate(promisedDate(dates, view.settings.eta), new Date());
+      } catch (error) {
+        getLogger().warn({ err: error }, 'cart page: install plan unavailable');
+      }
+    }
+  }
+  const checkoutReady = Boolean(summary && gate?.open && summary.minimums.ok);
 
   return (
-    <div className="min-w-0 space-y-6">
-      <h1 className="text-2xl font-bold md:text-3xl">Корзина</h1>
+    <InnerPage>
+      <PageBand
+        eyebrow={summary ? `В корзине ${cartCountLabel(summary.lines.length)}` : 'Корзина'}
+        title="Корзина"
+        meta={<CheckoutSteps current={0} />}
+      />
+      <PageBody className="space-y-6">
+        {isCartErrorCode(errorCode) ? (
+          <Notice tone="danger" role="alert" data-testid="cart-error">
+            {CART_ERROR_MESSAGES[errorCode]}
+          </Notice>
+        ) : null}
+        {added && !isCartErrorCode(errorCode) && lines.length > 0 ? (
+          <Notice tone="ok" role="status">
+            Добавили в корзину
+          </Notice>
+        ) : null}
+        {view ? <DiffBanner changes={view.changes} /> : null}
+        {view?.stale && lines.length > 0 ? (
+          <Notice tone="neutral" role="status" data-testid="cart-stale">
+            {STALE_PRICES_TEXT}
+          </Notice>
+        ) : null}
 
-      {isCartErrorCode(errorCode) ? (
-        <p
-          className="rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-warn"
-          role="alert"
-          data-testid="cart-error"
-        >
-          {CART_ERROR_MESSAGES[errorCode]}
-        </p>
-      ) : null}
-      {added && !isCartErrorCode(errorCode) && lines.length > 0 ? (
-        <p
-          className="rounded-xl border border-local/30 bg-local-soft px-4 py-3 text-local"
-          role="status"
-        >
-          Добавили в корзину
-        </p>
-      ) : null}
-      {view ? <DiffBanner changes={view.changes} /> : null}
-      {view?.stale && lines.length > 0 ? (
-        <p
-          className="rounded-xl border border-line bg-card px-4 py-3 text-sm text-muted"
-          role="status"
-          data-testid="cart-stale"
-        >
-          {STALE_PRICES_TEXT}
-        </p>
-      ) : null}
-
-      {summary && gate ? (
-        <div className="grid min-w-0 gap-6 md:grid-cols-[minmax(0,1fr)_20rem] md:items-start">
-          <ul className="min-w-0 space-y-3">
-            {summary.lines.map((line) => (
-              <CartLineRow key={line.id} line={line} />
-            ))}
-          </ul>
-          <div className="min-w-0 space-y-4">
-            <CartSummary
-              subtotalText={summary.subtotalText}
-              itemsCount={summary.itemsCount}
-              promiseText={summary.promiseText}
-              minimums={summary.minimums}
-              gate={gate.open ? { open: true } : { open: false, message: gate.message, phone }}
-            />
-            {/* Below the minimum no part of the cart can be checked out either. */}
-            <PaymentModeNotice
-              payment={summary.payment}
-              checkoutOpen={gate.open && summary.minimums.ok}
-            />
+        {summary && gate ? (
+          <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-10">
+            <div className="min-w-0 space-y-5">
+              <ul className="min-w-0 space-y-3">
+                {summary.lines.map((line) => (
+                  <CartLineRow key={line.id} line={line} />
+                ))}
+              </ul>
+              <p className="min-w-0" data-testid="cart-more">
+                <Link href="/" className={buttonClass({ variant: 'secondary' })}>
+                  Найти ещё деталь
+                  <IconArrowRight size={18} />
+                </Link>
+              </p>
+            </div>
+            <div className="min-w-0 space-y-5 lg:sticky lg:top-24">
+              <CartSummary
+                subtotalText={summary.subtotalText}
+                itemsCount={summary.itemsCount}
+                promiseText={summary.promiseText}
+                minimums={summary.minimums}
+                install={install}
+                gate={gate.open ? { open: true } : { open: false, message: gate.message, phone }}
+              />
+              {/* Below the minimum no part of the cart can be checked out either. */}
+              <PaymentModeNotice
+                payment={summary.payment}
+                checkoutOpen={gate.open && summary.minimums.ok}
+                hasToOrder={summary.lines.some((line) => !line.isLocal)}
+              />
+            </div>
           </div>
-        </div>
-      ) : (
-        <EmptyCart />
-      )}
-      {summary ? (
-        <p className="min-w-0" data-testid="cart-more">
-          <Link
-            href="/"
-            className="inline-flex h-11 items-center rounded-xl border border-ink px-4 font-semibold hover:bg-ink hover:text-white"
-          >
-            Найти ещё деталь
-          </Link>
-        </p>
+        ) : (
+          <EmptyCart />
+        )}
+      </PageBody>
+      {summary && checkoutReady ? (
+        <CartCheckoutBar totalText={summary.subtotalText} itemsCount={summary.itemsCount} />
       ) : null}
-    </div>
+    </InnerPage>
   );
 }

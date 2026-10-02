@@ -9,6 +9,7 @@ import { readCartToken } from '@/server/cart-store';
 import { getDb } from '@/server/db';
 import { serverEnv } from '@/server/env';
 import { errorInfo, PageDataError } from '@/server/errors';
+import { planInstallForDate, type InstallPlanView } from '@/server/install';
 import { getLogger } from '@/server/logger';
 import { isOrderToken } from '@/server/orders/access';
 import { findCartReminder } from '@/server/orders/cart-reminder';
@@ -65,9 +66,22 @@ export default async function OrderPage({
     getLogger().warn(errorInfo(error), 'order page: cart lookup failed'),
   );
 
+  // The nearest lift slot after the order's date: a calculation shown in «Самовывоз», never a
+  // booking. A failure of the load source only hides the line.
+  let install: InstallPlanView | null | undefined;
+  if (view.promisedDate && !view.closed && view.fulfillment === 'pickup') {
+    try {
+      install = await planInstallForDate(view.promisedDate, new Date(nowMs));
+    } catch (error) {
+      getLogger().warn(errorInfo(error), 'order page: install plan unavailable');
+      install = undefined;
+    }
+  }
+
   return (
     <OrderDetails
       view={view}
+      install={install}
       pickup={brand.pickup}
       contactPhone={brand.contactPhone}
       cartReminder={cartReminder}

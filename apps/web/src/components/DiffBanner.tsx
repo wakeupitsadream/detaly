@@ -1,4 +1,5 @@
 import { formatRub, type LineChange } from '@detaly/domain';
+import { Notice } from './page/Notice';
 
 /** Signed per-unit price delta: '+53 ₽', '−120 ₽'. */
 export function formatDelta(deltaKop: number): string {
@@ -36,11 +37,7 @@ export function DiffBanner({
 }) {
   if (changes.length === 0 && !cartChanged) return null;
   return (
-    <div
-      className="rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn"
-      role="status"
-      data-testid="diff-banner"
-    >
+    <Notice tone="wait" role="status" data-testid="diff-banner">
       {changes.length === 0 ? (
         <p>{CART_CHANGED_TEXT}</p>
       ) : (
@@ -50,6 +47,6 @@ export function DiffBanner({
           ))}
         </ul>
       )}
-    </div>
+    </Notice>
   );
 }

@@ -1,3 +1,6 @@
+import { Badge } from './ui/Badge';
+
+/** Exact texts are part of the contract (e2e and the offer): do not reword. */
 export const STOCK_BADGE_TEXT = {
   local: 'В Оренбурге — оплата при получении',
   order: 'Под заказ — предоплата',
@@ -5,13 +8,8 @@ export const STOCK_BADGE_TEXT = {
 
 export function StockBadge({ isLocal }: { isLocal: boolean }) {
   return (
-    <span
-      className={`inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium ${
-        isLocal ? 'bg-local-soft text-local' : 'bg-order-soft text-order'
-      }`}
-      data-testid="stock-badge"
-    >
+    <Badge tone={isLocal ? 'ok' : 'info'} data-testid="stock-badge">
       {isLocal ? STOCK_BADGE_TEXT.local : STOCK_BADGE_TEXT.order}
-    </span>
+    </Badge>
   );
 }

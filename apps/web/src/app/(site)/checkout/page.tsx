@@ -1,13 +1,25 @@
+import {
+  cartTotals,
+  choosePaymentScheme,
+  explainPaymentScheme,
+  promisedDate,
+  type IsoDate,
+} from '@detaly/domain';
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { CheckoutClosed } from '@/components/checkout/CheckoutClosed';
 import { CheckoutForm } from '@/components/checkout/CheckoutForm';
+import { CheckoutSteps } from '@/components/checkout/CheckoutSteps';
 import { CheckoutSummary, PickupPoint } from '@/components/checkout/CheckoutSummary';
 import { PaymentSchemeNote } from '@/components/checkout/PaymentSchemeNote';
 import { DiffBanner } from '@/components/DiffBanner';
+import { IconArrowRight } from '@/components/icons';
+import { Notice } from '@/components/page/Notice';
+import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
 import { getBrand } from '@/server/brand';
-import { STALE_PRICES_TEXT } from '@/server/cart/summary';
+import { getCartService } from '@/server/cart';
+import { promiseFor, STALE_PRICES_TEXT } from '@/server/cart/summary';
 import { readCartToken } from '@/server/cart-store';
 import { getCheckoutGate } from '@/server/checkout-gate';
 import {
@@ -19,6 +31,7 @@ import { getDb } from '@/server/db';
 import { errorInfo, PageDataError } from '@/server/errors';
 import { serverEnv } from '@/server/env';
 import { getLogger } from '@/server/logger';
+import { isDemoMode } from '@/server/mode';
 import { getSupplier } from '@/server/supplier';
 
 // Personal data form and a cart-specific page: never indexed (also X-Robots-Tag from proxy).
@@ -29,11 +42,100 @@ export const metadata: Metadata = {
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
+function Band({ lead }: { lead?: string }) {
+  return (
+    <PageBand
+      eyebrow="Самовывоз в Оренбурге"
+      title="Оформление заказа"
+      lead={lead}
+      meta={<CheckoutSteps current={1} />}
+    />
+  );
+}
+
+const DEMO_DOCUMENTS = {
+  offerVersionId: 'demo',
+  consentPdVersionId: 'demo',
+  consentMarketingVersionId: null,
+} as const;
+
+async function DemoCheckout() {
+  const brand = getBrand();
+  const view = await getCartService().viewCart(readCartToken(await cookies()));
+  const lines = view?.lines ?? [];
+  if (!view || lines.length === 0) redirect('/cart');
+  const { settings } = view;
+  const totals = cartTotals(lines);
+  const dates = lines.map((line) => line.etaDate).filter((d): d is IsoDate => d !== null);
+  const promised = dates.length > 0 ? promisedDate(dates, settings.eta) : null;
+  const decision = choosePaymentScheme({
+    allItemsLocal: lines.every((line) => line.isLocal),
+    totalKop: totals.subtotalKop,
+    noShowCount: 0,
+    noShowLimit: settings.order.noShowLimit,
+    onPickupMaxTotalKop: settings.order.onPickupMaxTotalKop,
+    fulfillment: 'pickup',
+  });
+  const linePromises = Object.fromEntries(
+    lines.map((line) => [line.id, promiseFor([line.etaDate], settings)]),
+  );
+  return (
+    <InnerPage>
+      <Band lead="Один экран: телефон, имя и два согласия. В демо поля уже заполнены примером." />
+      <PageBody>
+        <div
+          className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_25rem] lg:items-start lg:gap-x-10"
+          data-testid="demo-checkout"
+        >
+          <div className="min-w-0 lg:col-start-2 lg:row-start-1">
+            <CheckoutSummary
+              lines={lines}
+              totalKop={totals.subtotalKop}
+              promisedDate={promised}
+              linePromises={linePromises}
+            />
+          </div>
+          <div className="min-w-0 lg:col-start-2 lg:row-start-2">
+            <PaymentSchemeNote
+              scheme={decision.scheme}
+              sentences={explainPaymentScheme(decision, {
+                onPickupMaxTotalKop: settings.order.onPickupMaxTotalKop,
+              })}
+            />
+          </div>
+          <div className="min-w-0 lg:col-start-1 lg:row-span-3 lg:row-start-1">
+            <CheckoutForm
+              part="all"
+              expectedTotalKop={totals.subtotalKop}
+              itemsHash=""
+              checkoutKey="demo"
+              documents={DEMO_DOCUMENTS}
+              expectedScheme={decision.scheme}
+              expectedPromisedDate={promised}
+              marketingAvailable={false}
+              blockedMessage={null}
+              contactPhone={brand.contactPhone}
+              demo={{ href: '/o/demo' }}
+            />
+          </div>
+          <div className="min-w-0 lg:col-start-2 lg:row-start-3">
+            <PickupPoint pickup={brand.pickup} />
+          </div>
+        </div>
+      </PageBody>
+    </InnerPage>
+  );
+}
+
 export default async function CheckoutPage({
   searchParams,
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  // Demo (no database): the real form over the demo cart, filled with an example; its button
+  // opens the sample order and nothing is sent (POST /api/checkout answers 403 in the demo).
+  if (isDemoMode()) return <DemoCheckout />;
+
   const params = await searchParams;
   const env = serverEnv();
   const db = getDb();
@@ -60,51 +162,76 @@ export default async function CheckoutPage({
 
   if (data.kind === 'no_cart') redirect('/cart');
 
-  return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold md:text-3xl">Оформление заказа</h1>
-      {data.kind === 'closed' ? (
-        <CheckoutClosed message={data.message} phone={brand.contactPhone} />
-      ) : data.kind === 'emptied' ? (
-        <div className="space-y-4">
-          <DiffBanner changes={data.changes} cartChanged />
-          <p className="text-muted">В этой части корзины не осталось деталей для заказа.</p>
-          <a className="underline" href="/cart">
-            Вернуться в корзину
+  if (data.kind === 'closed') {
+    return (
+      <InnerPage>
+        <Band />
+        <PageBody>
+          <CheckoutClosed message={data.message} phone={brand.contactPhone} />
+        </PageBody>
+      </InnerPage>
+    );
+  }
+
+  if (data.kind === 'emptied') {
+    return (
+      <InnerPage>
+        <Band />
+        <PageBody>
+          <div className="mx-auto max-w-2xl space-y-4">
+            <DiffBanner changes={data.changes} cartChanged />
+            <p className="text-muted">В этой части корзины не осталось деталей для заказа.</p>
+            <a
+              className="inline-flex min-h-11 items-center gap-1.5 font-semibold underline underline-offset-4"
+              href="/cart"
+            >
+              Вернуться в корзину
+              <IconArrowRight size={16} />
+            </a>
+          </div>
+        </PageBody>
+      </InnerPage>
+    );
+  }
+
+  const notes = (
+    <>
+      <DiffBanner changes={data.changes} />
+      {data.staleCount > 0 ? (
+        <Notice tone="neutral" data-testid="checkout-stale-prices">
+          {STALE_PRICES_TEXT}.
+        </Notice>
+      ) : null}
+      {data.mixed && data.part === 'local' ? (
+        <Notice tone="info">
+          Сначала оформляем детали со склада в Оренбурге. Позиции под заказ останутся в корзине — их
+          оформим вторым заказом.
+        </Notice>
+      ) : null}
+      {data.mixed && data.part === 'order' ? (
+        <Notice tone="info">
+          Оформляем детали под заказ. Позиции из Оренбурга останутся в корзине.
+        </Notice>
+      ) : null}
+      {data.offerSplit ? (
+        <Notice tone="info">
+          В корзине есть детали в Оренбурге и под заказ. Одним заказом — предоплата 100%.{' '}
+          <a className="font-semibold underline underline-offset-4" href="/checkout?part=local">
+            Разделить на два заказа
           </a>
-        </div>
-      ) : (
-        <div className="grid min-w-0 gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
-          <div className="min-w-0 space-y-4">
-            <DiffBanner changes={data.changes} />
-            {data.staleCount > 0 ? (
-              <p
-                className="rounded-xl border border-line bg-card px-4 py-3 text-sm text-muted"
-                data-testid="checkout-stale-prices"
-              >
-                {STALE_PRICES_TEXT}.
-              </p>
-            ) : null}
-            {data.mixed && data.part === 'local' ? (
-              <p className="rounded-xl border border-line bg-card px-4 py-3 text-sm text-muted">
-                Сначала оформляем детали со склада в Оренбурге. Позиции под заказ останутся в
-                корзине — их оформим вторым заказом.
-              </p>
-            ) : null}
-            {data.mixed && data.part === 'order' ? (
-              <p className="rounded-xl border border-line bg-card px-4 py-3 text-sm text-muted">
-                Оформляем детали под заказ. Позиции из Оренбурга останутся в корзине.
-              </p>
-            ) : null}
-            {data.offerSplit ? (
-              <p className="rounded-xl border border-line bg-card px-4 py-3 text-sm text-muted">
-                В корзине есть детали в Оренбурге и под заказ. Одним заказом — предоплата 100%.{' '}
-                <a className="font-medium text-ink underline" href="/checkout?part=local">
-                  Разделить на два заказа
-                </a>
-                : сначала детали из Оренбурга с оплатой при получении, затем — под заказ.
-              </p>
-            ) : null}
+          : сначала детали из Оренбурга с оплатой при получении, затем — под заказ.
+        </Notice>
+      ) : null}
+    </>
+  );
+
+  return (
+    <InnerPage>
+      <Band lead="Один экран: телефон, имя и два согласия. Цены и наличие сверим с поставщиком в момент оформления." />
+      <PageBody className="space-y-6">
+        <div className="space-y-3 empty:hidden">{notes}</div>
+        <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_25rem] lg:items-start lg:gap-x-10">
+          <div className="min-w-0 lg:col-start-2 lg:row-start-1">
             <CheckoutSummary
               lines={data.lines}
               totalKop={data.totals.subtotalKop}
@@ -112,9 +239,10 @@ export default async function CheckoutPage({
               linePromises={data.linePromises}
             />
           </div>
-          <div className="min-w-0 space-y-4">
+          <div className="min-w-0 lg:col-start-2 lg:row-start-2">
             <PaymentSchemeNote scheme={data.decision.scheme} sentences={data.explanation} />
-            <PickupPoint pickup={brand.pickup} />
+          </div>
+          <div className="min-w-0 lg:col-start-1 lg:row-span-3 lg:row-start-1">
             <CheckoutForm
               part={data.part}
               expectedTotalKop={data.totals.subtotalKop}
@@ -128,8 +256,11 @@ export default async function CheckoutPage({
               contactPhone={brand.contactPhone}
             />
           </div>
+          <div className="min-w-0 lg:col-start-2 lg:row-start-3">
+            <PickupPoint pickup={brand.pickup} />
+          </div>
         </div>
-      )}
-    </div>
+      </PageBody>
+    </InnerPage>
   );
 }

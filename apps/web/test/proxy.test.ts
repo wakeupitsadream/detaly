@@ -102,6 +102,29 @@ describe('proxy: which limit is spent', () => {
     expect(hits).toEqual([]);
   });
 
+  it('does not count a cross-site write: its handler answers 403 (CSRF lockout)', async () => {
+    rejectWith(3600);
+    const evil = { origin: 'https://evil.example' };
+    for (const [method, path] of [
+      ['POST', '/api/checkout'],
+      ['POST', '/api/orders/tok123/cancel'],
+      ['POST', '/api/cart/items'],
+    ] as const) {
+      const response = await proxy(request(method, path, evil));
+      expect(response.headers.get(MIDDLEWARE_NEXT), path).toBe('1');
+    }
+    expect(hits).toEqual([]);
+    // The shop's own origin and a request without Origin are counted.
+    const own = await proxy(request('POST', '/api/checkout', { origin: env().APP_BASE_URL }));
+    expect(own.status).toBe(429);
+    const bare = await proxy(request('POST', '/api/orders/tok123/cancel'));
+    expect(bare.status).toBe(429);
+    // A cross-site search is still counted: it runs the search.
+    const search = await proxy(request('GET', '/search?q=OC90', evil));
+    expect(search.status).toBe(429);
+    expect(hits.map((hit) => hit.kind)).toEqual(['checkout', 'cancel', 'search']);
+  });
+
   it('answers HEAD of a search itself, without counting it', async () => {
     const response = await proxy(request('HEAD', '/search?q=OC90'));
     expect(response.status).toBe(200);

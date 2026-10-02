@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canonicalPath,
   classifyLimitedRequest,
+  isForeignOriginWrite,
   pathSegments,
   type LimitedRequest,
 } from '@/server/request-limits';
@@ -160,5 +161,23 @@ describe('pathSegments and canonicalPath', () => {
   it('splits on the raw slash, as the router does', () => {
     expect(pathSegments('/o/a%2Fb')).toEqual(['o', 'a/b']);
     expect(pathSegments('/x/%2e%2e/y')).toEqual(['y']);
+  });
+});
+
+describe('isForeignOriginWrite', () => {
+  const base = 'https://detaly.example/';
+  const foreign = (headers: Record<string, string>): boolean =>
+    isForeignOriginWrite(new Headers(headers), base);
+
+  it('is true only for an Origin other than the shop origin', () => {
+    expect(foreign({ origin: 'https://evil.example' })).toBe(true);
+    expect(foreign({ origin: 'null' })).toBe(true);
+    expect(foreign({ origin: 'http://detaly.example' })).toBe(true);
+    expect(foreign({ origin: 'https://detaly.example' })).toBe(false);
+  });
+
+  it('is false without Origin, so scripts and curl are still counted', () => {
+    expect(foreign({})).toBe(false);
+    expect(foreign({ 'sec-fetch-site': 'cross-site' })).toBe(false);
   });
 });

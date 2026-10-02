@@ -10,6 +10,8 @@
  *    - checkout (POST /api/checkout): 10 per hour;
  *    - cancel (POST /api/orders/<token>/cancel): 5 per hour;
  *    - cart (writes to /api/cart and /api/cart/**): 120 per hour.
+ *    A write with a foreign Origin is not counted: its handler answers 403, and counting it
+ *    would let another site lock the visitor's bucket (request-limits.ts).
  *    Over the limit: 429 with Retry-After and Cache-Control: no-store; JSON for /api/ unless
  *    the client asks for text/html (a form navigation, e.g. the cart without JS), a short HTML
  *    page otherwise. Redis down: fail open with a warning (the search answers 503 itself,
@@ -29,7 +31,11 @@ import { serverEnv, type Env } from './server/env';
 import { getLogger } from './server/logger';
 import { hitRateLimit, type RateLimitDecision, type RateLimitKind } from './server/rate-limit';
 import { getRedis } from './server/redis';
-import { canonicalPath, classifyLimitedRequest } from './server/request-limits';
+import {
+  canonicalPath,
+  classifyLimitedRequest,
+  isForeignOriginWrite,
+} from './server/request-limits';
 import { withTimeout } from './server/timeout';
 
 const NOINDEX = 'noindex, nofollow';
@@ -173,7 +179,11 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     headers: request.headers,
   });
   if (limited.action === 'head') return applyPathHeaders(headResponse(path), path, env);
-  if (limited.action === 'count') {
+  // A cross-site write is answered 403 by its handler; it must not spend the visitor's limit.
+  const counted =
+    limited.action === 'count' &&
+    (limited.kind === 'search' || !isForeignOriginWrite(request.headers, env.APP_BASE_URL));
+  if (counted) {
     const decision = await decide(request, env, limited.kind);
     if (decision && !decision.allowed) {
       return applyPathHeaders(

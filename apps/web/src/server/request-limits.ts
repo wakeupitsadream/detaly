@@ -16,8 +16,13 @@
  * segment percent-decoded once, empty and `.` segments dropped, `..` resolved. So a spelling
  * the router may still map to a handler (`/api/%63heckout`, `/api//checkout/`) cannot skip the
  * counter. Counting a spelling the router rejects only costs the sender their own allowance.
+ *
+ * A write with a foreign `Origin` is not counted either (isForeignOriginWrite): the handlers
+ * reject it with 403 before doing any work, and counting it would let any site the visitor
+ * opens lock the visitor's bucket with hidden form posts.
  */
 import type { RateLimitKind } from './rate-limit';
+import { isSameOrigin } from './request-guards';
 import { classifySearchRequest, type HeaderSource } from './search-request';
 
 export type LimitedRequest =
@@ -87,4 +92,17 @@ export function classifyLimitedRequest(request: LimitedRequestLike): LimitedRequ
   if (SAFE_METHODS.has(request.method.toUpperCase())) return PASS;
   const kind = writeKind(segments);
   return kind === null ? PASS : { kind, action: 'count' };
+}
+
+/**
+ * True for a checkout, cancel or cart write that carries an `Origin` other than APP_BASE_URL's
+ * (`null` included). Browsers send `Origin` on every cross-site POST, and a cross-site PATCH or
+ * DELETE never gets past the CORS preflight, so this is exactly the CSRF case: the handler
+ * answers 403 (decision Д19) and the proxy does not spend the visitor's allowance on it.
+ * Otherwise five hidden forms on any page would block cancellation for the visitor's whole
+ * /64 or carrier NAT for an hour. Requests without `Origin` (scripts, curl, the e2e) are
+ * counted, and a forged foreign `Origin` buys an attacker nothing but a 403.
+ */
+export function isForeignOriginWrite(headers: HeaderSource, appBaseUrl: string): boolean {
+  return headers.get('origin') !== null && !isSameOrigin(headers, appBaseUrl);
 }

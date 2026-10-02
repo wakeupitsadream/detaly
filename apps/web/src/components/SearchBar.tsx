@@ -65,7 +65,9 @@ export function SearchBar({
           className={cn(
             buttonClass({ variant: 'primary', size: large ? 'lg' : 'md', onDark }),
             'shrink-0',
-            large ? 'h-14 px-6 md:px-8' : 'h-12',
+            // Narrow on phones so the placeholder «Например, OC90» fits next to the button.
+            // `!`: buttonClass lg already sets px-7, and cn() does not merge conflicting classes.
+            large ? 'h-14 px-4! sm:px-6! md:px-8!' : 'h-12',
           )}
         >
           Найти

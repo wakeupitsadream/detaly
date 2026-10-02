@@ -54,6 +54,7 @@
 | `BRAND_NAME` | название витрины (по умолчанию `Детали`) |
 | `PICKUP_POINT_NAME`, `PICKUP_ADDRESS`, `PICKUP_HOURS`, `PICKUP_PHONE` | точка выдачи и установки: автосервис-партнёр |
 | `SELLER_REQUISITES_*` | реквизиты в футере и документах. Без них документы показываются черновиками с пропусками |
+| `LEGAL_OFFER_VERSION`, `LEGAL_PRIVACY_VERSION`, `LEGAL_CONSENT_PD_VERSION`, `LEGAL_CONSENT_MARKETING_VERSION`, `LEGAL_RETURN_MEMO_VERSION` | `2026-10-d1` (версия файла в `content/legal`). С ними и реквизитами документ идёт как «Действующая редакция», без плашки черновика. Сама пометка юриста внутри текста остаётся, пока её не уберут из `content/legal` |
 | `APP_BASE_URL` | адрес демо, например `https://detaly-demo.vercel.app`. Если не задан, в демо берётся из системных переменных Vercel: в production это `VERCEL_PROJECT_PRODUCTION_URL`, в preview — `VERCEL_URL` |
 
 Не задавать: `DATABASE_URL`, `REDIS_URL`, любые `YOOKASSA_*`, `ROSSKO_KEY*`.
@@ -79,6 +80,18 @@ cp -r public .next/standalone/apps/web/public 2>/dev/null || true
 DEMO_MODE=true SESSION_SECRET=$(openssl rand -hex 32) PORT=3101 \
   APP_BASE_URL=http://localhost:3101 node .next/standalone/apps/web/server.js
 ```
+
+Пройти сценарий и снять скриншоты 375 и 1280 одной командой (из корня репозитория, сервер
+уже запущен):
+
+```bash
+PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers DEMO_URL=http://localhost:3101 \
+  node apps/web/scripts/demo-screens.mjs   # -> apps/web/test-results/design-final
+```
+
+Скрипт идёт главная → поиск OC90 → «В корзину» (OC90 и GDB1330) → корзина → оформление (экран
+демо) → `/o/demo` → документы, «О сервисе», VIN, возврат, проверяет, что нет горизонтальной
+прокрутки, и выходит с кодом 1 на первом сбое.
 
 Затем откройте и проверьте:
 

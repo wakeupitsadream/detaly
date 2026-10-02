@@ -25,7 +25,7 @@ import {
   type OfferView,
   type WeekSchedule,
 } from '@detaly/domain';
-import { DEMO_ARTICLES } from '@/components/DemoDataBanner';
+import { DEMO_ARTICLES } from '@/lib/demo-articles';
 import { getBrand } from '../brand';
 import { singleton } from '../globals';
 import { getLogger } from '../logger';

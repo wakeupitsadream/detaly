@@ -110,7 +110,7 @@ function InstallSlot({ plan }: { plan: InstallPlanView | null }) {
         </span>
       </p>
       <p className="mt-2 text-sm text-muted">
-        Запись подтверждает мастер; установка — услуга сервиса, оплачивается там.
+        Запись подтверждает мастер; установка&nbsp;— услуга сервиса, оплачивается там.
       </p>
       {plan?.demo ? (
         <Badge tone="demo" className="mt-3">

@@ -136,8 +136,8 @@ export function PickupPoint({ pickup }: { pickup: Brand['pickup'] }) {
         </div>
       </div>
       <p className="mt-4 border-t border-dashed border-line pt-3 text-sm text-muted">
-        Заказ выдаём прямо в автосервисе: там же детали можно сразу поставить. Установка — услуга
-        сервиса, оплачивается там.
+        Заказ выдаём прямо в автосервисе: там же детали можно сразу поставить. Установка&nbsp;—
+        услуга сервиса, оплачивается там.
       </p>
     </section>
   );

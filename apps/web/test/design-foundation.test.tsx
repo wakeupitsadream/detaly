@@ -198,8 +198,15 @@ describe('base components', () => {
     expect(html).toContain('dateTime="2026-10-08T14:00:00+05:00"');
   });
 
-  it('install contract stub answers "no plan" without failing', async () => {
+  it('install contract never fails: no offers give an empty map, a date gives a plan or null', async () => {
     expect((await planInstallForOffers([], new Date())).size).toBe(0);
-    expect(await planInstallForDate('2026-10-08', new Date())).toBeNull();
+    // Null when the env has no parsable PICKUP_HOURS (or the load source fails); otherwise a
+    // full plan. Either way the page never sees an exception.
+    const plan = await planInstallForDate('2026-10-08', new Date());
+    if (plan !== null) {
+      expect(plan.slotText).not.toBe('');
+      expect(plan.carReadyText).toMatch(/^к \d{1,2}:\d{2}$/);
+      expect(plan.slotStartIso).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
+    }
   });
 });

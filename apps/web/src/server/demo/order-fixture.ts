@@ -10,6 +10,7 @@
 import {
   buildOfferViews,
   formatPromise,
+  promisedDate as promisedDateOf,
   safeMul,
   sumKop,
   type IsoDate,
@@ -40,9 +41,14 @@ export interface DemoOrderDeps {
   now?: Date;
 }
 
-/** The offer a client would most likely pick: the requested article, sellable, cheapest. */
+/**
+ * The offer of the sample order: the requested article from the Orenburg stock, because the
+ * order is paid on handover and only Orenburg parts qualify for that (otherwise the page would
+ * say «Оплата при получении» next to parts on order). Falls back to the cheapest sellable one.
+ */
 function pickView(views: readonly OfferView[]): OfferView | null {
   return (
+    views.find((view) => !view.isCross && !view.excluded && view.isLocal) ??
     views.find((view) => !view.isCross && !view.excluded) ??
     views.find((view) => !view.excluded) ??
     null
@@ -85,10 +91,11 @@ export async function buildDemoOrderView(deps: DemoOrderDeps): Promise<OrderView
       canCancel: false,
     };
   });
-  const promisedDate = picked
-    .map((view) => view.etaDate)
-    .sort()
-    .at(-1) as IsoDate;
+  // The same date the cart and checkout promise: the latest supplier date plus the ETA buffer.
+  const promisedDate: IsoDate = promisedDateOf(
+    picked.map((view) => view.etaDate),
+    settings.eta,
+  );
   const subtotalKop = sumKop(items.map((item) => item.lineTotalKop));
 
   const at = (hoursAgo: number) => new Date(now.getTime() - hoursAgo * HOUR_MS);

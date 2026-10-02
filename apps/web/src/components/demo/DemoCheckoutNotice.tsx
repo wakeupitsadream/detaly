@@ -22,7 +22,7 @@ export function DemoCheckoutNotice() {
           Демо-версия
         </Badge>
         <h2 className="mt-4 font-display text-xl leading-tight font-semibold text-balance md:text-2xl">
-          {DEMO_CHECKOUT_TITLE} — посмотрите пример заказа
+          {DEMO_CHECKOUT_TITLE}&nbsp;— посмотрите пример заказа
         </h2>
         <p className="mt-3 text-muted">
           Это показ витрины: заказы здесь не создаются и не уходят поставщику. Что видит покупатель

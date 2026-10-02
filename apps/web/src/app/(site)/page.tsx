@@ -6,6 +6,7 @@ import { InstallWindowDemo } from '@/components/home/InstallWindowDemo';
 import { OrderRoute } from '@/components/home/OrderRoute';
 import { PickupPointSection } from '@/components/home/PickupPointSection';
 import { Eyebrow } from '@/components/ui/Eyebrow';
+import { INSTALL_JOB_MIN, durationWords } from '@/lib/install-params';
 import { FullBleed, Section } from '@/components/ui/Section';
 import { getBrand } from '@/server/brand';
 import { planInstallShowcase, type InstallShowcase } from '@/server/install';
@@ -89,7 +90,7 @@ function InstallSection({ showcase }: { showcase: InstallShowcase }) {
               ],
               [
                 'Время работы',
-                'Типовая замена — около двух часов. Сложную работу мастер оценит сам.',
+                `Типовая замена — около ${durationWords(INSTALL_JOB_MIN, 'gen')}. Сложную работу мастер оценит сам.`,
               ],
             ].map(([title, text], index) => (
               <li

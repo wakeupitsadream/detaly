@@ -1,6 +1,7 @@
 // /o/demo: the sample order of DEMO_MODE, built from the fixtures and rendered by the same
 // OrderDetails as a real order. It carries no client data and offers no action.
 import { parseEnv } from '@detaly/config';
+import { buildOfferViews, formatPromise, promisedDate, type IsoDate } from '@detaly/domain';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -55,6 +56,23 @@ describe('demo order', () => {
     expect(view.items.every((item) => !item.canCancel)).toBe(true);
     // Never mistaken for a real order link.
     expect(isOrderToken(view.token)).toBe(false);
+  });
+
+  it('is paid on handover, so it holds Orenburg parts, and promises the date the cart does', async () => {
+    const view = await build();
+    expect(view.items.every((item) => item.isLocal)).toBe(true);
+    const settings = await supplier.settings.get();
+    const etaDates: string[] = [];
+    for (const article of ['OC90', 'GDB1330']) {
+      const { offers } = await supplier.rossko.search(article, { priority: 'search' });
+      const local = buildOfferViews(offers, { ...settings, now: NOW }).find(
+        (offer) => offer.isLocal && !offer.isCross && !offer.excluded,
+      );
+      expect(local).toBeDefined();
+      etaDates.push(local!.etaDate);
+    }
+    expect(view.promisedDate).toBe(promisedDate(etaDates as IsoDate[], settings.eta));
+    expect(view.promiseText).toBe(formatPromise(view.promisedDate!));
   });
 
   it('is deterministic for the same clock', async () => {

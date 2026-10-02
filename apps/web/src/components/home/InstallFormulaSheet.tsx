@@ -1,6 +1,18 @@
 import { Sheet } from '@/components/ui/Sheet';
 import { cn } from '@/components/ui/cn';
 
+import {
+  INSTALL_ARRIVAL_TIME,
+  INSTALL_HORIZON_DAYS,
+  INSTALL_JOB_MIN,
+  INSTALL_LEAD_MIN,
+  INSTALL_STEP_MIN,
+  durationWords,
+  horizonWords,
+} from '@/lib/install-params';
+
+const JOB = durationWords(INSTALL_JOB_MIN);
+
 const RULES: readonly { term: string; text: string }[] = [
   {
     term: 'Дата детали',
@@ -8,21 +20,21 @@ const RULES: readonly { term: string; text: string }[] = [
   },
   {
     term: 'Когда можно ставить',
-    text: 'Поставка приходит в сервис к обеду, поэтому считаем с 12:00 дня получения. Если деталь уже здесь — не раньше чем через час.',
+    text: `Поставка приходит в сервис к ${INSTALL_ARRIVAL_TIME}, в день получения считаем от этого времени. Если деталь уже здесь — не раньше чем через ${durationWords(INSTALL_LEAD_MIN)}.`,
   },
   {
     term: 'Окно на подъёмнике',
-    text: 'Ищем ближайшие два часа подряд в рабочее время точки, когда свободен хотя бы один подъёмник. Шаг — час, смотрим на две недели вперёд.',
+    text: `Ищем ближайшие ${JOB} подряд в рабочее время точки, когда свободен хотя бы один подъёмник. Шаг — ${durationWords(INSTALL_STEP_MIN)}, смотрим на ${horizonWords(INSTALL_HORIZON_DAYS)} вперёд.`,
   },
   {
     term: 'Машина готова',
-    text: 'Начало окна плюс два часа — столько занимает типовая замена: фильтры, колодки, свечи. Сложную работу мастер оценит отдельно.',
+    text: `Начало окна плюс ${JOB} — столько занимает типовая замена: фильтры, колодки, свечи. Сложную работу мастер оценит отдельно.`,
   },
 ];
 
 /**
- * "Как мы считаем" in plain words, in a bottom sheet on phones. The numbers are the ones of
- * server/install/config.ts; keep them in sync when the partner's lifts or job time change.
+ * "Как мы считаем" in plain words, in a bottom sheet on phones. Every number comes from
+ * lib/install-params.ts, the same values the planner uses.
  */
 export function InstallFormulaSheet({
   demo,

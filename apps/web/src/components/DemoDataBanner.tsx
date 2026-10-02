@@ -1,10 +1,12 @@
+import { DEMO_ARTICLES } from '@/lib/demo-articles';
 import { Badge } from './ui/Badge';
+
+export { DEMO_ARTICLES };
 
 /**
  * Shown in ROSSKO_MODE=fixtures: search answers from synthetic supplier data, and the cart and
  * checkout work on it, but such an order is never placed with the supplier.
  */
-export const DEMO_ARTICLES = ['OC90', 'W9142', 'GDB1330'] as const;
 
 export function DemoDataBanner() {
   return (

@@ -41,9 +41,12 @@ export function LegalDocumentView({
           Редакция {doc.version}
         </span>
         <span>
+          {/* The demo bundle publishes by env without a date: not a draft, so not «Не опубликована». */}
           {doc.publishedAt
             ? `Опубликована ${DATE_FORMAT.format(doc.publishedAt)}`
-            : 'Не опубликована'}
+            : doc.isDraft
+              ? 'Не опубликована'
+              : 'Действующая редакция'}
         </span>
       </div>
       {doc.isDraft ? (

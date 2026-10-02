@@ -39,7 +39,10 @@ export function PageBand({
   titleTestId,
   children,
   className,
+  compactOnPhone = false,
 }: {
+  /** Below md: no eyebrow and less air, so the content (search results) starts sooner. */
+  compactOnPhone?: boolean;
   eyebrow?: ReactNode;
   title: ReactNode;
   lead?: ReactNode;
@@ -57,11 +60,11 @@ export function PageBand({
         className,
       )}
     >
-      <Container className="pt-7 pb-7 md:pt-12 md:pb-10">
+      <Container className={cn(compactOnPhone ? 'pt-5 pb-5' : 'pt-7 pb-7', 'md:pt-12 md:pb-10')}>
         <div className="flex min-w-0 flex-col gap-x-10 gap-y-5 md:flex-row md:items-end md:justify-between">
           <div className="min-w-0 md:max-w-3xl">
             {eyebrow ? (
-              <Eyebrow onDark className="mb-3 md:mb-4">
+              <Eyebrow onDark className={cn('mb-3 md:mb-4', compactOnPhone && 'max-md:hidden')}>
                 {eyebrow}
               </Eyebrow>
             ) : null}
@@ -77,7 +80,9 @@ export function PageBand({
           </div>
           {meta ? <div className="min-w-0 shrink-0">{meta}</div> : null}
         </div>
-        {children ? <div className="mt-6 min-w-0 md:mt-8">{children}</div> : null}
+        {children ? (
+          <div className={cn('min-w-0 md:mt-8', compactOnPhone ? 'mt-4' : 'mt-6')}>{children}</div>
+        ) : null}
       </Container>
       <Ruler onDark className="print:hidden" />
     </section>

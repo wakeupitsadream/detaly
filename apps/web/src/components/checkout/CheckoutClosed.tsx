@@ -16,9 +16,7 @@ export function CheckoutClosed({ message, phone }: { message: string; phone: str
       <div className="flex items-start gap-3">
         <IconInfo size={24} className="mt-0.5 shrink-0 text-info" />
         <div className="min-w-0">
-          <h2 className="font-display text-xl leading-tight font-semibold">
-            Оформление на сайте пока закрыто
-          </h2>
+          <h2 className="text-h3">Оформление на сайте пока закрыто</h2>
           <p className="mt-3 text-muted">{message}</p>
         </div>
       </div>

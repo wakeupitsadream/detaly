@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { IconClock, IconPhone, IconPin } from '@/components/icons';
+import { PickupRouteLinks } from '@/components/PickupRouteLinks';
 import { Eyebrow } from '@/components/ui/Eyebrow';
 import { Section } from '@/components/ui/Section';
 import type { Brand } from '@/server/brand';
@@ -20,8 +21,9 @@ function Row({ icon, term, children }: { icon: ReactNode; term: string; children
 }
 
 /**
- * The pickup point on graphite: name, address, hours and phone from env, a drawn schematic
- * instead of a map, and one line about the seller with a link to the requisites.
+ * The pickup point on graphite: name, address, hours and phone from env, route links to the
+ * maps apps, a drawn schematic of the place, and one line about the seller with a link to the
+ * requisites.
  */
 export function PickupPointSection({ brand }: { brand: Brand }) {
   const { pickup, seller } = brand;
@@ -57,6 +59,7 @@ export function PickupPointSection({ brand }: { brand: Brand }) {
               )}
             </Row>
           </dl>
+          <PickupRouteLinks brand={brand} onDark className="mt-6" />
           <p className="mt-6 text-sm text-steel-400">
             Продавец — {seller.name ? `ИП ${seller.name}` : 'индивидуальный предприниматель'}.
             Возврат 7{' '}дней без удержаний при самовывозе.{' '}

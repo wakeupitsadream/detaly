@@ -22,6 +22,12 @@ export interface Brand {
     hours: string | null;
     phone: string | null;
   };
+  /** Routes to the pickup point and its chat (PICKUP_MAP_URL_*, PICKUP_TELEGRAM_URL). */
+  pickupLinks?: {
+    yandexMap: string | null;
+    twoGisMap: string | null;
+    telegram: string | null;
+  };
   /** Phone for questions and VIN requests: pickup point first, then the seller. */
   contactPhone: string | null;
   /** ROSSKO_MODE=fixtures: prices and stock are synthetic. */
@@ -46,6 +52,11 @@ export function brandFromEnv(env: Env): Brand {
       address: env.PICKUP_ADDRESS ?? null,
       hours: env.PICKUP_HOURS ?? null,
       phone: env.PICKUP_PHONE ?? null,
+    },
+    pickupLinks: {
+      yandexMap: env.PICKUP_MAP_URL_YANDEX ?? null,
+      twoGisMap: env.PICKUP_MAP_URL_2GIS ?? null,
+      telegram: env.PICKUP_TELEGRAM_URL ?? null,
     },
     contactPhone: env.PICKUP_PHONE ?? env.SELLER_REQUISITES_PHONE ?? null,
     demoData: env.ROSSKO_MODE === 'fixtures',

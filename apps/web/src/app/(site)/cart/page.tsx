@@ -1,8 +1,9 @@
+import { promisedDate, type IsoDate } from '@detaly/domain';
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { CartLineRow } from '@/components/CartLineRow';
-import { CartSummary } from '@/components/CartSummary';
+import { CartCheckoutBar, CartSummary } from '@/components/CartSummary';
 import { CheckoutSteps } from '@/components/checkout/CheckoutSteps';
 import { DiffBanner } from '@/components/DiffBanner';
 import { IconArrowRight, IconCart, IconSearch } from '@/components/icons';
@@ -19,6 +20,7 @@ import { getBrand } from '@/server/brand';
 import type { CartView } from '@/server/cart/cart-service';
 import { currentCheckoutGate } from '@/server/checkout-gate';
 import { errorInfo, PageDataError } from '@/server/errors';
+import { planInstallForDate, type InstallPlanView } from '@/server/install';
 import { getLogger } from '@/server/logger';
 
 export const metadata: Metadata = {
@@ -44,7 +46,7 @@ function EmptyCart() {
       >
         <IconCart size={34} />
       </div>
-      <h2 className="mt-6 font-display text-xl font-semibold md:text-2xl">Корзина пуста</h2>
+      <h2 className="mt-6 text-h2">Корзина пуста</h2>
       <p className="mt-3 max-w-sm text-muted">
         Найдите деталь по артикулу и нажмите «В корзину». Цену и дату получения покажем сразу.
       </p>
@@ -74,6 +76,21 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
   const gate = lines.length > 0 ? await currentCheckoutGate() : null;
   const summary = view && lines.length > 0 ? summarizeCart(lines, view.settings) : null;
   const phone = getBrand().contactPhone;
+  // The lift slot after the whole order's date, as the order page will show it.
+  let install: InstallPlanView | null | undefined;
+  if (view && summary) {
+    const dates = view.lines
+      .map((line) => line.etaDate)
+      .filter((date): date is IsoDate => date !== null);
+    if (dates.length > 0) {
+      try {
+        install = await planInstallForDate(promisedDate(dates, view.settings.eta), new Date());
+      } catch (error) {
+        getLogger().warn({ err: error }, 'cart page: install plan unavailable');
+      }
+    }
+  }
+  const checkoutReady = Boolean(summary && gate?.open && summary.minimums.ok);
 
   return (
     <InnerPage>
@@ -121,12 +138,14 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
                 itemsCount={summary.itemsCount}
                 promiseText={summary.promiseText}
                 minimums={summary.minimums}
+                install={install}
                 gate={gate.open ? { open: true } : { open: false, message: gate.message, phone }}
               />
               {/* Below the minimum no part of the cart can be checked out either. */}
               <PaymentModeNotice
                 payment={summary.payment}
                 checkoutOpen={gate.open && summary.minimums.ok}
+                hasToOrder={summary.lines.some((line) => !line.isLocal)}
               />
             </div>
           </div>
@@ -134,6 +153,9 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
           <EmptyCart />
         )}
       </PageBody>
+      {summary && checkoutReady ? (
+        <CartCheckoutBar totalText={summary.subtotalText} itemsCount={summary.itemsCount} />
+      ) : null}
     </InnerPage>
   );
 }

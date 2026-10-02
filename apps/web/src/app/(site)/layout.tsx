@@ -1,10 +1,12 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import { DemoStrip } from '@/components/DemoStrip';
 import { Footer } from '@/components/Footer';
 import { MobileCartBar } from '@/components/MobileCartBar';
 import { SiteHeader } from '@/components/SiteHeader';
 import { getBrand } from '@/server/brand';
 import { requestCartCount } from '@/server/cart/count';
+import { isDemoMode } from '@/server/mode';
 
 // Every page reads env (brand, requisites) and the database at request time, so
 // `next build` needs neither.
@@ -39,6 +41,7 @@ export default async function SiteLayout({ children }: { children: ReactNode }) 
       >
         К содержимому
       </a>
+      {brand.demoData ? <DemoStrip demoMode={isDemoMode()} /> : null}
       <SiteHeader brandName={brand.name} cartCount={cartCount} />
       {/* A centred column by default; a page rooted in <FullBleed> lays out full-width
           Sections itself (.site-main in globals.css). */}

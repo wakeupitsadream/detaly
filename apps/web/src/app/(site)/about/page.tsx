@@ -3,6 +3,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { IconClock, IconLift, IconPhone, IconPin } from '@/components/icons';
 import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
+import { PickupRouteLinks } from '@/components/PickupRouteLinks';
 import { SheetTitle } from '@/components/page/SheetTitle';
 import { Requisites } from '@/components/Requisites';
 import { getBrand, telHref } from '@/server/brand';
@@ -89,10 +90,7 @@ export default function AboutPage() {
               className="grain-dark min-w-0 rounded border border-graphite-700 bg-graphite-900 bg-blueprint p-5 text-steel-200 md:p-6"
             >
               <p className="text-label text-steel-400">Пункт выдачи</p>
-              <h2
-                id="about-pickup"
-                className="mt-2 font-display text-lg leading-snug font-semibold text-paper wrap-anywhere"
-              >
+              <h2 id="about-pickup" className="mt-2 text-h3 text-paper wrap-anywhere">
                 {pickup.name ?? 'Автосервис-партнёр'}
               </h2>
               <ul className="mt-4 space-y-2.5 text-sm">
@@ -120,6 +118,7 @@ export default function AboutPage() {
                   </li>
                 ) : null}
               </ul>
+              <PickupRouteLinks brand={brand} onDark className="mt-5" />
               <p className="mt-5 flex items-start gap-2.5 border-t border-graphite-700 pt-4 text-sm text-steel-400">
                 <IconLift size={17} className="mt-0.5 shrink-0" />
                 Установка — отдельная услуга автосервиса по его прайсу и чеку, на сайте она не

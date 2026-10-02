@@ -194,7 +194,7 @@ describe('base components', () => {
         },
       }),
     );
-    expect(text(html)).toBe('Установка: чт 8 окт с 14:00');
+    expect(text(html)).toBe('Установка: чт 8 окт с 14:00 · машина готова к 16:00');
     expect(html).toContain('dateTime="2026-10-08T14:00:00+05:00"');
   });
 

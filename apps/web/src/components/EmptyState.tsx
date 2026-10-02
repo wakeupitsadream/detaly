@@ -1,3 +1,4 @@
+import { DemoDataBanner } from './DemoDataBanner';
 import { IconArrowRight, IconSearch } from './icons';
 import { ButtonLink } from './ui/Button';
 
@@ -8,7 +9,7 @@ const TIPS = [
 ] as const;
 
 /** Nothing found: what to check, where articles are written, and the VIN selection. */
-export function EmptyState({ query }: { query: string }) {
+export function EmptyState({ query, demoData = false }: { query: string; demoData?: boolean }) {
   return (
     <div
       className="grid min-w-0 gap-6 rounded border border-line bg-card p-5 md:grid-cols-[auto_minmax(0,1fr)] md:gap-8 md:p-8"
@@ -21,14 +22,12 @@ export function EmptyState({ query }: { query: string }) {
         <IconSearch size={32} />
       </div>
       <div className="min-w-0">
-        <h2 className="font-display text-xl leading-tight font-semibold text-balance wrap-anywhere md:text-2xl">
-          По запросу «{query}» ничего не нашли
-        </h2>
+        <h2 className="text-h2 text-balance wrap-anywhere">По запросу «{query}» ничего не нашли</h2>
         <p className="mt-3 max-w-xl text-muted">
           Проверьте артикул: буквы и цифры с упаковки или из каталога. Если артикула нет, мастер
           подберёт деталь по VIN бесплатно.
         </p>
-        <dl className="mt-5 grid gap-px overflow-hidden rounded-sm border border-line bg-line sm:grid-cols-3">
+        <dl className="mt-5 mb-5 grid gap-px overflow-hidden rounded-sm border border-line bg-line sm:grid-cols-3">
           {TIPS.map(([title, text]) => (
             <div key={title} className="min-w-0 bg-paper px-4 py-3">
               <dt className="text-sm font-semibold">{title}</dt>
@@ -36,6 +35,7 @@ export function EmptyState({ query }: { query: string }) {
             </div>
           ))}
         </dl>
+        {demoData ? <DemoDataBanner /> : null}
         <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3">
           <ButtonLink href="/vin">
             Подобрать по VIN

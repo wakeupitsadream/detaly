@@ -18,7 +18,9 @@ const CURRENT_STEP: Readonly<Record<OrderStatus, number | null>> = {
   awaiting_supplier_invoice: 2,
   needs_attention: 2,
   awaiting_client_approval: 2,
-  ordered_at_supplier: 3,
+  // The parts are on their way: the stage «Заказан у поставщика» stays current until they
+  // arrive, so the stepper says what the status badge says (and «едет в Оренбург» under it).
+  ordered_at_supplier: 2,
   ready: 4,
   out_for_delivery: 4,
   awaiting_handover_payment: 4,
@@ -32,7 +34,7 @@ const CURRENT_STEP: Readonly<Record<OrderStatus, number | null>> = {
 export function orderSteps(
   status: OrderStatus,
   scheme: PaymentScheme,
-): { label: string; state: StepState }[] {
+): { label: string; state: StepState; hint?: string }[] {
   // Past tense once a step is behind, the name of the stage while it is current or ahead:
   // «Оплачен» under «Ждёт оплаты» would read as if the money had come.
   const labels: readonly (readonly [done: string, pending: string])[] = [
@@ -43,8 +45,13 @@ export function orderSteps(
     ['Выдан', 'Выдача'],
   ];
   const current = CURRENT_STEP[status];
+  // At the supplier stage the order is placed already: the badge reads «Заказан у поставщика»,
+  // so does the current step, with where the parts are as the hint.
+  const atSupplier = status === 'ordered_at_supplier';
   return labels.map(([done, pending], index) => ({
-    label: current !== null && index < current ? done : pending,
+    label:
+      current !== null && (index < current || (atSupplier && index === current)) ? done : pending,
+    hint: atSupplier && index === current ? 'едет в Оренбург' : undefined,
     state:
       current === null
         ? 'stopped'
@@ -139,7 +146,7 @@ export function OrderStepper({ status, scheme }: { status: OrderStatus; scheme: 
               </p>
               {step.state === 'current' ? (
                 <p aria-hidden className="mt-1 text-label text-accent">
-                  сейчас
+                  сейчас{step.hint ? ` · ${step.hint}` : ''}
                 </p>
               ) : null}
             </div>

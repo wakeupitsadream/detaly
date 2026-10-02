@@ -1,7 +1,14 @@
 import { formatRub, type NotificationChannel } from '@detaly/domain';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { IconArrowRight, IconClock, IconLift, IconPhone, IconPin } from '@/components/icons';
+import {
+  IconArrowRight,
+  IconClock,
+  IconLift,
+  IconMessage,
+  IconPhone,
+  IconPin,
+} from '@/components/icons';
 import { SheetTitle } from '@/components/page/SheetTitle';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { cn } from '@/components/ui/cn';
@@ -89,10 +96,7 @@ export const PICKUP_ADDRESS_UNKNOWN = 'Адрес пункта выдачи ут
  */
 function InstallSlot({ plan }: { plan: InstallPlanView | null }) {
   return (
-    <div
-      className="mt-5 rounded-sm border border-dashed border-line-strong bg-paper p-4"
-      data-testid="order-install"
-    >
+    <div className="mt-5 rounded-sm border border-line bg-paper p-4" data-testid="order-install">
       <p className="flex min-w-0 items-start gap-2 text-sm">
         <IconLift size={18} className="mt-px shrink-0" />
         <span className="min-w-0">
@@ -180,6 +184,7 @@ function ItemRow({ item }: { item: OrderItemView }) {
         <p className="text-label text-muted wrap-anywhere">{item.brand}</p>
         <p className="mt-0.5 font-mono font-semibold tracking-wide wrap-anywhere">{item.article}</p>
         <p className="text-sm wrap-anywhere">{item.name}</p>
+        {item.isLocal ? <p className="mt-1.5 text-label text-muted">Склад в Оренбурге</p> : null}
         {item.stateLabel ? (
           <p className="mt-1.5 text-sm font-medium text-info" data-testid="order-item-state">
             {item.stateLabel}
@@ -292,13 +297,18 @@ export function MessengerStubs({ preferred }: { preferred: NotificationChannel |
               disabled
               aria-disabled="true"
               className={cn(
-                'flex min-h-12 cursor-not-allowed flex-wrap items-center justify-between gap-2 rounded border-[1.5px] px-4 py-2 text-left font-medium',
-                selected ? 'border-ink bg-paper text-ink' : 'border-line bg-paper/60 text-muted',
+                'flex min-h-12 cursor-not-allowed flex-wrap items-center justify-between gap-2 rounded border border-line bg-paper px-4 py-2 text-left font-medium',
+                selected ? 'text-ink' : 'text-muted',
               )}
               data-testid={`messenger-${channel}`}
               data-selected={selected ? 'true' : 'false'}
             >
-              <span>{label}</span>
+              <span>
+                {label}
+                {selected ? (
+                  <span className="ml-2 text-sm font-normal text-muted">— вы выбрали</span>
+                ) : null}
+              </span>
               <span className="rounded-sm bg-paper-2 px-1.5 py-0.5 font-mono text-[0.6875rem] tracking-wider text-muted uppercase">
                 скоро
               </span>
@@ -312,6 +322,50 @@ export function MessengerStubs({ preferred }: { preferred: NotificationChannel |
           : 'Уведомления подключаются — пока следите за заказом на этой странице.'}{' '}
         Сохраните ссылку: по ней видно статус заказа.
       </p>
+    </Card>
+  );
+}
+
+/**
+ * The sample order (DEMO_MODE): what a status message looks like in the messenger, instead of
+ * binding buttons that do nothing in a demo. Built from the order's own number, date and lift
+ * slot, so it never disagrees with the page.
+ */
+export function MessengerPreview({
+  number,
+  install,
+  hours,
+}: {
+  number: string;
+  install: InstallPlanView | null;
+  hours: string | null;
+}) {
+  // 'пн 5 окт с 11:00' -> 'пн 5 окт, окно на подъёмнике с 11:00'
+  const when = install
+    ? `Ждём вас ${install.slotText.replace(' с ', ', окно на подъёмнике с ')}.`
+    : hours
+      ? `Ждём вас: ${hours}.`
+      : 'Ждём вас в пункте выдачи.';
+  return (
+    <Card title="Уведомления о статусе" testId="order-messengers">
+      <p className="text-sm text-muted">
+        Статусы приходят в MAX или Telegram. Так выглядит сообщение, когда детали приедут:
+      </p>
+      <div
+        className="mt-4 rounded border border-line bg-paper-2 p-4"
+        data-testid="messenger-preview"
+      >
+        <p className="flex items-center gap-2 text-label text-muted">
+          <IconMessage size={15} className="shrink-0 text-ink" />
+          Бот магазина
+        </p>
+        <div className="mt-3 max-w-md rounded-sm rounded-tl-none border border-line bg-card px-4 py-3">
+          <p className="leading-relaxed">
+            Заказ {number}: детали приехали. {when}
+          </p>
+          <p className="mt-1.5 text-right font-mono text-xs text-muted">09:05</p>
+        </div>
+      </div>
     </Card>
   );
 }

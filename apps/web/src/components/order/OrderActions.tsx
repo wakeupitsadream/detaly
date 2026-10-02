@@ -82,12 +82,12 @@ export function PaymentBlock({
     const waiting = status === 'awaiting_payment';
     return (
       <Card title="Оплата" testId="order-payment">
-        <p className="font-display text-lg font-semibold">Предоплата 100% онлайн</p>
+        <p className="text-[1.0625rem] font-medium">Предоплата 100% онлайн</p>
         {check?.kind === 'checking' ? (
           <>
             <meta httpEquiv="refresh" content={`${check.refreshSec};url=${check.refreshUrl}`} />
             <p
-              className="mt-3 font-display text-lg font-semibold"
+              className="mt-3 text-[1.0625rem] font-semibold"
               role="status"
               data-testid="pay-checking"
             >
@@ -136,9 +136,11 @@ export function PaymentBlock({
       </Card>
     );
   }
+  // Nothing to decide here: the head of the order says how it is paid already.
+  if (!(status === 'awaiting_confirmation' || actions.prepayNow)) return null;
   return (
     <Card title="Оплата" testId="order-payment">
-      <p className="font-display text-lg font-semibold">Оплата при получении картой или по QR</p>
+      <p className="text-[1.0625rem] font-medium">Оплата при получении картой или по QR</p>
       {status === 'awaiting_confirmation' && actions.confirm ? (
         <div className="mt-3 space-y-2">
           <p className="text-sm text-muted">

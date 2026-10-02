@@ -287,3 +287,25 @@ export const IconInfo = icon(
   </>,
   'IconInfo',
 );
+
+/** Bank card: how the order is paid. */
+export const IconCard = icon(
+  <>
+    <rect x="2.5" y="5.5" width="19" height="13" rx="1.5" />
+    <path d="M2.5 9.5h19M6 15h4" />
+  </>,
+  'IconCard',
+);
+
+/** Speech bubble: messenger notifications. */
+export const IconMessage = icon(<path d="M4 4.5h16v11H9.5L5 19.5v-4H4z" />, 'IconMessage');
+
+/** Route arrow on a map: directions to the pickup point. */
+export const IconRoute = icon(
+  <>
+    <circle cx="6" cy="18" r="2.5" />
+    <circle cx="18" cy="6" r="2.5" />
+    <path d="M8.5 18H16a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h7.5" />
+  </>,
+  'IconRoute',
+);

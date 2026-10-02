@@ -86,7 +86,7 @@ export default async function ReturnsPage() {
               <span className="font-mono text-xs font-semibold text-accent-ink">
                 {String(index + 1).padStart(2, '0')}
               </span>
-              <h2 className="mt-3 font-display text-lg leading-snug font-semibold">{rule.title}</h2>
+              <h2 className="mt-3 text-h3">{rule.title}</h2>
               <p className="mt-2 text-muted">{rule.text}</p>
             </li>
           ))}
@@ -95,9 +95,7 @@ export default async function ReturnsPage() {
               <IconShield size={16} className="text-accent" />
               Как вернуть
             </span>
-            <h2 className="mt-3 font-display text-lg leading-snug font-semibold text-paper">
-              Принесите деталь в пункт выдачи
-            </h2>
+            <h2 className="mt-3 text-h3 text-paper">Принесите деталь в пункт выдачи</h2>
             <p className="mt-2 flex items-start gap-2">
               <IconPin size={18} className="mt-0.5 shrink-0 text-steel-400" />
               <span className="min-w-0 wrap-anywhere">
@@ -113,7 +111,7 @@ export default async function ReturnsPage() {
                 href={telHref(brand.contactPhone)}
               >
                 <IconPhone size={17} />
-                Или позвоните {brand.contactPhone}
+                Позвонить в пункт выдачи {brand.contactPhone}
               </a>
             ) : null}
           </li>

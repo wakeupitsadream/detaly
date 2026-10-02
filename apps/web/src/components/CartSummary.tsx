@@ -1,7 +1,10 @@
 import type { OrderMinimumsResult } from '@detaly/domain';
 import { telHref } from '@/server/brand';
+import type { InstallPlanView } from '@/server/install/types';
 import { IconArrowRight, IconClock, IconPhone } from './icons';
+import { InstallLine } from './install/InstallLine';
 import { Notice } from './page/Notice';
+import { Badge } from './ui/Badge';
 import { buttonClass } from './ui/Button';
 import { cn } from './ui/cn';
 import { Price } from './ui/Price';
@@ -17,7 +20,10 @@ export function CartSummary({
   promiseText,
   minimums,
   gate,
+  install,
 }: {
+  /** The lift slot after the order's date; undefined: not planned (no date or no hours). */
+  install?: InstallPlanView | null;
   subtotalText: string;
   itemsCount: number;
   promiseText: string | null;
@@ -41,6 +47,12 @@ export function CartSummary({
             Получение заказа <span className="font-semibold text-ink">{promiseText}</span>
           </span>
         </p>
+      ) : null}
+      {promiseText && install !== undefined ? (
+        <div className="mt-2.5 space-y-2">
+          <InstallLine plan={install} />
+          {install?.demo ? <Badge tone="demo">загрузка демонстрационная</Badge> : null}
+        </div>
       ) : null}
       {!minimums.ok ? (
         <Notice tone="wait" className="mt-4" data-testid="cart-minimum">
@@ -86,5 +98,43 @@ export function CartSummary({
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Phones only (below md) on /cart: the sum and «Оформить» fixed at the bottom, so checkout is
+ * one tap away however long the cart is. The spacer keeps the footer reachable above it.
+ */
+export function CartCheckoutBar({
+  totalText,
+  itemsCount,
+}: {
+  totalText: string;
+  itemsCount: number;
+}) {
+  return (
+    <>
+      <div aria-hidden className="h-[calc(4.5rem+env(safe-area-inset-bottom))] md:hidden" />
+      <div
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-graphite-700 bg-graphite-950 pb-[env(safe-area-inset-bottom)] text-paper md:hidden"
+        data-testid="cart-checkout-bar"
+      >
+        <div className="flex h-[4.5rem] items-center justify-between gap-3 px-4">
+          <p className="min-w-0">
+            <span className="block font-display text-lg leading-none font-semibold whitespace-nowrap tabular-nums">
+              {totalText}
+            </span>
+            <span className="mt-1 block font-mono text-xs text-steel-400">{itemsCount} шт.</span>
+          </p>
+          <a
+            href="/checkout"
+            className={cn(buttonClass({ variant: 'primary', onDark: true }), 'shrink-0 px-5')}
+          >
+            Оформить
+            <IconArrowRight size={18} />
+          </a>
+        </div>
+      </div>
+    </>
   );
 }

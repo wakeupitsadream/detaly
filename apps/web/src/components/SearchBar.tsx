@@ -78,8 +78,16 @@ export function SearchBar({
           id="search-q-hint"
           className={cn('mt-2 text-sm', onDark ? 'text-steel-400' : 'text-muted')}
         >
-          Ищем по артикулу и бренду: поиска по названию нет, зато цена и дата получения сразу
-          точные.
+          Номер есть на старой детали и в заказ-наряде. Нет номера —{' '}
+          <a
+            href="/vin"
+            className={cn(
+              'font-medium whitespace-nowrap underline underline-offset-4',
+              onDark ? 'text-paper decoration-accent' : 'text-accent-ink',
+            )}
+          >
+            подберём по VIN бесплатно&nbsp;→
+          </a>
         </p>
       ) : null}
     </form>

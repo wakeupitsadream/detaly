@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { DemoDataBanner } from '@/components/DemoDataBanner';
 import { EmptyState } from '@/components/EmptyState';
 import { IconArrowRight, IconCart, IconPhone } from '@/components/icons';
 import { Notice } from '@/components/page/Notice';
@@ -79,7 +78,7 @@ function SearchIdle() {
   ] as const;
   return (
     <section aria-labelledby="where-article" className="min-w-0">
-      <h2 id="where-article" className="font-display text-lg font-semibold md:text-xl">
+      <h2 id="where-article" className="text-h3 md:text-xl">
         Где найти артикул
       </h2>
       <ol className="mt-5 grid min-w-0 gap-px overflow-hidden rounded border border-line bg-line md:grid-cols-3">
@@ -106,13 +105,15 @@ function Results({
   result,
   orderingOpen,
   plans,
+  demoData,
 }: {
   result: SearchResponse;
+  demoData: boolean;
   orderingOpen: boolean;
   plans: ReadonlyMap<string, InstallPlanView | null>;
 }) {
   const { query, brand, localOnly, offers } = result;
-  if (result.totalBeforeFilters === 0) return <EmptyState query={query} />;
+  if (result.totalBeforeFilters === 0) return <EmptyState query={query} demoData={demoData} />;
   const exact = offers.filter((offer) => !offer.isCross);
   const crosses = offers.filter((offer) => offer.isCross);
   return (
@@ -142,7 +143,8 @@ function Results({
           <OfferGroup
             id="offers-exact"
             title="Запрошенный артикул"
-            note="Ровно та деталь, что вы искали, у разных поставщиков"
+            note="Ровно та деталь, что вы искали"
+            explainStocks
             offers={exact}
             searchArticleNorm={result.articleNorm}
             orderingOpen={orderingOpen}
@@ -209,6 +211,7 @@ export default async function SearchPage({
     <InnerPage>
       <PageBand
         eyebrow="Каталог · цена и дата сразу"
+        compactOnPhone={q !== ''}
         title="Поиск по артикулу"
         lead={
           q === ''
@@ -222,14 +225,18 @@ export default async function SearchPage({
       </PageBand>
 
       <PageBody className="space-y-8 md:space-y-10">
-        {brand.demoData ? <DemoDataBanner /> : null}
         {problem ? (
           <Notice tone="wait" role="alert">
             {problem}
           </Notice>
         ) : null}
         {result ? (
-          <Results result={result} orderingOpen={orderingOpen} plans={plans} />
+          <Results
+            result={result}
+            orderingOpen={orderingOpen}
+            plans={plans}
+            demoData={brand.demoData}
+          />
         ) : problem ? null : (
           <SearchIdle />
         )}

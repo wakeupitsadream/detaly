@@ -173,11 +173,14 @@
   hyphens: manual;
 }
 
+/* Card and sheet titles: the calm text face, never the display one (that is for H1/H2,
+   prices, big figures and the logo only). */
 @utility text-h3 {
   font-family: var(--font-sans);
   font-weight: 650;
   font-size: 1.125rem;
   line-height: 1.3;
+  letter-spacing: -0.01em;
 }
 
 /* Mono uppercase label: eyebrows, column captions, the brand above an article. */
@@ -396,12 +399,21 @@
   }
 }
 
-@keyframes draw {
+@keyframes draw-x {
   from {
-    stroke-dashoffset: 1;
+    transform: scaleX(0);
   }
   to {
-    stroke-dashoffset: 0;
+    transform: none;
+  }
+}
+
+@keyframes draw-y {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: none;
   }
 }
 
@@ -411,17 +423,24 @@
     animation: rise 520ms var(--ease-out-quint) both;
     animation-delay: calc(var(--i, 0) * 70ms);
   }
-  /* A path with pathLength="1" drawn in 700 ms (the install chain line). */
+  /* A rail (a plain 2px box) drawn from its start in 700 ms: the install chain line. The end
+     state is the box itself, so a finished, skipped or reduced animation is always whole. */
   .draw-line {
-    stroke-dasharray: 1;
-    animation: draw 700ms var(--ease-out-quint) both;
+    transform-origin: left center;
+    animation: draw-x 700ms var(--ease-out-quint) both;
+    animation-delay: calc(var(--i, 0) * 70ms);
+  }
+  .draw-line-y {
+    transform-origin: center top;
+    animation: draw-y 700ms var(--ease-out-quint) both;
     animation-delay: calc(var(--i, 0) * 70ms);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .rise,
-  .draw-line {
+  .draw-line,
+  .draw-line-y {
     animation: none;
   }
   *,

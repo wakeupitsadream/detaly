@@ -1,3 +1,10 @@
+import {
+  cartTotals,
+  choosePaymentScheme,
+  explainPaymentScheme,
+  promisedDate,
+  type IsoDate,
+} from '@detaly/domain';
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -6,13 +13,13 @@ import { CheckoutForm } from '@/components/checkout/CheckoutForm';
 import { CheckoutSteps } from '@/components/checkout/CheckoutSteps';
 import { CheckoutSummary, PickupPoint } from '@/components/checkout/CheckoutSummary';
 import { PaymentSchemeNote } from '@/components/checkout/PaymentSchemeNote';
-import { DemoCheckoutNotice } from '@/components/demo/DemoCheckoutNotice';
 import { DiffBanner } from '@/components/DiffBanner';
 import { IconArrowRight } from '@/components/icons';
 import { Notice } from '@/components/page/Notice';
 import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
 import { getBrand } from '@/server/brand';
-import { STALE_PRICES_TEXT } from '@/server/cart/summary';
+import { getCartService } from '@/server/cart';
+import { promiseFor, STALE_PRICES_TEXT } from '@/server/cart/summary';
 import { readCartToken } from '@/server/cart-store';
 import { getCheckoutGate } from '@/server/checkout-gate';
 import {
@@ -46,22 +53,88 @@ function Band({ lead }: { lead?: string }) {
   );
 }
 
+const DEMO_DOCUMENTS = {
+  offerVersionId: 'demo',
+  consentPdVersionId: 'demo',
+  consentMarketingVersionId: null,
+} as const;
+
+async function DemoCheckout() {
+  const brand = getBrand();
+  const view = await getCartService().viewCart(readCartToken(await cookies()));
+  const lines = view?.lines ?? [];
+  if (!view || lines.length === 0) redirect('/cart');
+  const { settings } = view;
+  const totals = cartTotals(lines);
+  const dates = lines.map((line) => line.etaDate).filter((d): d is IsoDate => d !== null);
+  const promised = dates.length > 0 ? promisedDate(dates, settings.eta) : null;
+  const decision = choosePaymentScheme({
+    allItemsLocal: lines.every((line) => line.isLocal),
+    totalKop: totals.subtotalKop,
+    noShowCount: 0,
+    noShowLimit: settings.order.noShowLimit,
+    onPickupMaxTotalKop: settings.order.onPickupMaxTotalKop,
+    fulfillment: 'pickup',
+  });
+  const linePromises = Object.fromEntries(
+    lines.map((line) => [line.id, promiseFor([line.etaDate], settings)]),
+  );
+  return (
+    <InnerPage>
+      <Band lead="Один экран: телефон, имя и два согласия. В демо поля уже заполнены примером." />
+      <PageBody>
+        <div
+          className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_25rem] lg:items-start lg:gap-x-10"
+          data-testid="demo-checkout"
+        >
+          <div className="min-w-0 lg:col-start-2 lg:row-start-1">
+            <CheckoutSummary
+              lines={lines}
+              totalKop={totals.subtotalKop}
+              promisedDate={promised}
+              linePromises={linePromises}
+            />
+          </div>
+          <div className="min-w-0 lg:col-start-2 lg:row-start-2">
+            <PaymentSchemeNote
+              scheme={decision.scheme}
+              sentences={explainPaymentScheme(decision, {
+                onPickupMaxTotalKop: settings.order.onPickupMaxTotalKop,
+              })}
+            />
+          </div>
+          <div className="min-w-0 lg:col-start-1 lg:row-span-3 lg:row-start-1">
+            <CheckoutForm
+              part="all"
+              expectedTotalKop={totals.subtotalKop}
+              itemsHash=""
+              checkoutKey="demo"
+              documents={DEMO_DOCUMENTS}
+              expectedScheme={decision.scheme}
+              expectedPromisedDate={promised}
+              marketingAvailable={false}
+              blockedMessage={null}
+              contactPhone={brand.contactPhone}
+              demo={{ href: '/o/demo' }}
+            />
+          </div>
+          <div className="min-w-0 lg:col-start-2 lg:row-start-3">
+            <PickupPoint pickup={brand.pickup} />
+          </div>
+        </div>
+      </PageBody>
+    </InnerPage>
+  );
+}
+
 export default async function CheckoutPage({
   searchParams,
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  // Demo (no database): no form and no personal data, the sample order instead.
-  if (isDemoMode()) {
-    return (
-      <InnerPage>
-        <Band />
-        <PageBody>
-          <DemoCheckoutNotice />
-        </PageBody>
-      </InnerPage>
-    );
-  }
+  // Demo (no database): the real form over the demo cart, filled with an example; its button
+  // opens the sample order and nothing is sent (POST /api/checkout answers 403 in the demo).
+  if (isDemoMode()) return <DemoCheckout />;
 
   const params = await searchParams;
   const env = serverEnv();

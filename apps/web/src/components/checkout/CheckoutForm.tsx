@@ -41,7 +41,15 @@ export interface CheckoutFormProps {
   /** Order minimum not reached: the message, and the submit button stays disabled. */
   blockedMessage: string | null;
   contactPhone: string | null;
+  /**
+   * DEMO_MODE: the same form filled with an example, no request at all. The button opens the
+   * sample order (`href`); POST /api/checkout stays closed (403) in the demo anyway.
+   */
+  demo?: { href: string };
 }
+
+/** Example values of the demo form: obviously not a person. */
+export const DEMO_FORM_EXAMPLE = { phone: '+7 999 123-45-67', name: 'Алексей' } as const;
 
 const CHANNELS = [
   { value: 'max', label: 'MAX' },
@@ -141,8 +149,9 @@ function Consent({
  */
 export function CheckoutForm(props: CheckoutFormProps) {
   const router = useRouter();
-  const [acceptOffer, setAcceptOffer] = useState(false);
-  const [consentPd, setConsentPd] = useState(false);
+  const demo = props.demo ?? null;
+  const [acceptOffer, setAcceptOffer] = useState(demo !== null);
+  const [consentPd, setConsentPd] = useState(demo !== null);
   const [pending, setPending] = useState(false);
   const [done, setDone] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<Field, string>>>({});
@@ -183,6 +192,10 @@ export function CheckoutForm(props: CheckoutFormProps) {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (demo !== null) {
+      window.location.assign(demo.href);
+      return;
+    }
     if (!canSubmit) return;
     const data = new FormData(event.currentTarget);
     setPending(true);
@@ -313,6 +326,7 @@ export function CheckoutForm(props: CheckoutFormProps) {
               required
               maxLength={32}
               placeholder="+7 912 345-67-89"
+              defaultValue={demo ? DEMO_FORM_EXAMPLE.phone : undefined}
               aria-invalid={fieldErrors.phone ? true : undefined}
               aria-describedby="checkout-phone-hint checkout-phone-error"
               className={inputClass({ className: 'tabular-nums' })}
@@ -334,6 +348,7 @@ export function CheckoutForm(props: CheckoutFormProps) {
               required
               maxLength={60}
               placeholder="Как к вам обращаться"
+              defaultValue={demo ? DEMO_FORM_EXAMPLE.name : undefined}
               aria-invalid={fieldErrors.name ? true : undefined}
               aria-describedby="checkout-name-error"
               className={inputClass()}
@@ -361,6 +376,7 @@ export function CheckoutForm(props: CheckoutFormProps) {
                   type="radio"
                   name="channel"
                   value={channel.value}
+                  defaultChecked={demo !== null && channel.value === 'telegram'}
                   required
                   className="size-4.5 shrink-0 cursor-pointer appearance-none rounded-full border-[1.5px] border-line-strong bg-card transition-[border-width,border-color] checked:border-[5px] checked:border-ink focus-visible:outline-none"
                 />
@@ -438,24 +454,43 @@ export function CheckoutForm(props: CheckoutFormProps) {
         </Notice>
       ) : null}
 
-      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
-        <button
-          type="submit"
-          disabled={!canSubmit}
-          className={cn(
-            buttonClass({ variant: 'primary', size: 'lg' }),
-            'w-full shrink-0 sm:w-auto',
-          )}
-        >
-          {done ? 'Открываем заказ…' : pending ? 'Проверяем цены…' : 'Оформить заказ'}
-          {!done && !pending ? <IconArrowRight size={18} /> : null}
-        </button>
-        <p className="min-w-0 text-sm text-muted">
-          {!acceptOffer || !consentPd
-            ? 'Кнопка станет активной, когда вы примете оферту и дадите согласие на обработку данных.'
-            : 'Перед созданием заказа ещё раз сверим цену и наличие у поставщика.'}
-        </p>
-      </div>
+      {demo !== null ? (
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+          <a
+            href={demo.href}
+            className={cn(
+              buttonClass({ variant: 'primary', size: 'lg' }),
+              'w-full shrink-0 sm:w-auto',
+            )}
+            data-testid="demo-checkout-submit"
+          >
+            Оформить — покажем пример заказа
+            <IconArrowRight size={18} />
+          </a>
+          <p className="min-w-0 text-sm text-muted">
+            Демо: заказ не создаётся и никуда не уходит, данные в полях — пример.
+          </p>
+        </div>
+      ) : (
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className={cn(
+              buttonClass({ variant: 'primary', size: 'lg' }),
+              'w-full shrink-0 sm:w-auto',
+            )}
+          >
+            {done ? 'Открываем заказ…' : pending ? 'Проверяем цены…' : 'Оформить заказ'}
+            {!done && !pending ? <IconArrowRight size={18} /> : null}
+          </button>
+          <p className="min-w-0 text-sm text-muted">
+            {!acceptOffer || !consentPd
+              ? 'Кнопка станет активной, когда вы примете оферту и дадите согласие на обработку данных.'
+              : 'Перед созданием заказа ещё раз сверим цену и наличие у поставщика.'}
+          </p>
+        </div>
+      )}
 
       <noscript>
         <Notice tone="wait">

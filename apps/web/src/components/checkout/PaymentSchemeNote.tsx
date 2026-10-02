@@ -29,9 +29,7 @@ export function PaymentSchemeNote({
       <p className="text-label text-steel-400">Способ оплаты</p>
       <div className="mt-2 flex items-start gap-2.5">
         <IconShield size={22} className="mt-0.5 shrink-0 text-accent" />
-        <h2 className="font-display text-lg leading-tight font-semibold text-paper">
-          {PAYMENT_SCHEME_TITLE[scheme]}
-        </h2>
+        <h2 className="text-h3 text-paper">{PAYMENT_SCHEME_TITLE[scheme]}</h2>
       </div>
       <div className="mt-3 space-y-2">
         {sentences.map((sentence) => (

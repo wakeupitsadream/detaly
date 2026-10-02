@@ -165,6 +165,11 @@ const envShape = {
   PICKUP_ADDRESS: optionalString,
   PICKUP_HOURS: optionalString,
   PICKUP_PHONE: optionalString,
+  // Route links of the pickup point (plain <a>, opened in the maps app) [дизайн]
+  PICKUP_MAP_URL_YANDEX: z.url({ protocol: /^https$/ }).optional(),
+  PICKUP_MAP_URL_2GIS: z.url({ protocol: /^https$/ }).optional(),
+  // Chat of the pickup point for a VIN request with a photo of the СТС, e.g. https://t.me/name
+  PICKUP_TELEGRAM_URL: z.url({ protocol: /^https$/ }).optional(),
   STAFF_SEED_JSON: staffSeedJson.default([]),
 
   // --- Rossko [ф0] ---

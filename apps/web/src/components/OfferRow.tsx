@@ -9,6 +9,19 @@ import { cn } from './ui/cn';
 import { PartTile } from './ui/PartTile';
 import { Price } from './ui/Price';
 
+/** A hint on a row that wins the group on time or on money. */
+export type OfferMark = 'fastest' | 'cheapest';
+
+const MARK_TEXT: Record<OfferMark, string> = {
+  fastest: 'Быстрее всего',
+  cheapest: 'Дешевле всего',
+};
+
+/** «в Оренбурге: 6 шт.» / «у поставщика: 24 шт.»: where the count is, matching the badge. */
+export function stockCountText(offer: Pick<OfferView, 'isLocal' | 'available'>): string {
+  return `${offer.isLocal ? 'в Оренбурге' : 'у поставщика'}: ${offer.available} шт.`;
+}
+
 /**
  * One offer. Desktop: a row of four columns (tile | brand, article, name | stock, date, lift
  * slot | price and "В корзину"). Phones: tile beside the article, the dates under it and the
@@ -20,6 +33,7 @@ export function OfferRow({
   searchArticleNorm,
   orderingOpen = true,
   install,
+  marks,
 }: {
   offer: OfferView;
   /** Normalized article of the search query the offer was found by. */
@@ -31,6 +45,8 @@ export function OfferRow({
   orderingOpen?: boolean;
   /** Nearest lift slot for this offer; undefined: the page does not plan installs. */
   install?: InstallPlanView | null;
+  /** «Быстрее всего» / «Дешевле всего» (OfferGroup decides). */
+  marks?: readonly OfferMark[];
 }) {
   const canAdd = orderingOpen && !offer.excluded && offer.available >= offer.multiplicity;
   const title = `${offer.brand} ${offer.article}`;
@@ -39,7 +55,9 @@ export function OfferRow({
       className={cn(
         'group/offer grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] gap-x-4 gap-y-4 rounded border bg-card p-4',
         'transition-[border-color,transform] duration-150 hover:-translate-y-px hover:border-ink',
-        'md:grid-cols-[4.5rem_minmax(0,1.25fr)_minmax(0,1.4fr)_auto] md:items-center md:gap-x-6 md:p-5',
+        // The article column is as wide as its text (up to 20rem): the stock and the dates sit
+        // right next to it instead of across a dead gap.
+        'md:grid-cols-[4.5rem_fit-content(20rem)_minmax(0,1fr)_auto] md:items-center md:gap-x-8 md:p-5',
         offer.excluded ? 'border-line border-dashed' : 'border-line',
       )}
       data-testid="offer-row"
@@ -47,6 +65,20 @@ export function OfferRow({
       <PartTile name={offer.name} size="sm" className="md:size-18" />
 
       <div className="min-w-0 self-center">
+        {marks && marks.length > 0 ? (
+          <p className="mb-2 flex flex-wrap gap-1.5">
+            {marks.map((mark) => (
+              <Badge
+                key={mark}
+                tone={mark === 'fastest' ? 'ok' : 'neutral'}
+                className="font-semibold"
+                data-testid={`offer-mark-${mark}`}
+              >
+                {MARK_TEXT[mark]}
+              </Badge>
+            ))}
+          </p>
+        ) : null}
         <p className="text-label text-muted wrap-anywhere">{offer.brand}</p>
         <p className="mt-1 font-mono text-lg leading-tight font-semibold tracking-wide wrap-anywhere md:text-xl">
           {offer.article}
@@ -90,7 +122,7 @@ export function OfferRow({
             >
               {offer.priceText}
             </Price>
-            <p className="mt-1.5 font-mono text-xs text-muted">в наличии: {offer.available} шт.</p>
+            <p className="mt-1.5 font-mono text-xs text-muted">{stockCountText(offer)}</p>
           </div>
         )}
         {canAdd ? (

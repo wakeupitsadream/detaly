@@ -6,7 +6,7 @@ import type { InstallPlanView } from '@/server/install/types';
 export const INSTALL_FALLBACK_TEXT = 'окно подберём при записи';
 
 /**
- * "Установка: чт 8 окт с 14:00" under an offer, a cart line or the order's pickup block. A
+ * "Установка: чт 8 окт с 14:00 · машина готова к 16:00" under an offer, a cart line or the order's pickup block. A
  * calculation, not a booking: the master confirms the slot.
  */
 export function InstallLine({
@@ -31,12 +31,22 @@ export function InstallLine({
       <span className="min-w-0">
         Установка:{' '}
         {plan ? (
-          <time
-            dateTime={plan.slotStartIso}
-            className={cn('font-medium', onDark ? 'text-paper' : 'text-ink')}
-          >
-            {plan.slotText}
-          </time>
+          <>
+            <time
+              dateTime={plan.slotStartIso}
+              className={cn('font-medium', onDark ? 'text-paper' : 'text-ink')}
+            >
+              {plan.slotText}
+            </time>
+            {/* The dot stays with the slot when the line wraps. */}
+            {'\u00a0· '}
+            <span className="whitespace-nowrap">
+              машина готова{' '}
+              <span className={cn('font-semibold', onDark ? 'text-paper' : 'text-ink')}>
+                {plan.carReadyText}
+              </span>
+            </span>
+          </>
         ) : (
           INSTALL_FALLBACK_TEXT
         )}

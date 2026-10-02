@@ -3,7 +3,7 @@ import { cn } from '@/components/ui/cn';
 
 /**
  * Heading of a sheet (card) of the repair card: a mono section number like «01» in rust, the
- * title in the display face and a hairline under it. `as` keeps the outline right (h2 on a page,
+ * title in the text face (text-h3) and a hairline under it. `as` keeps the outline right (h2 on a page,
  * h3 inside a section).
  */
 export function SheetTitle({
@@ -40,10 +40,7 @@ export function SheetTitle({
           {index}
         </span>
       ) : null}
-      <Tag
-        id={id}
-        className="min-w-0 font-display text-[1.0625rem] leading-tight font-semibold tracking-[-0.005em]"
-      >
+      <Tag id={id} className="min-w-0 text-h3">
         {children}
       </Tag>
       {aside ? <div className="ml-auto shrink-0">{aside}</div> : null}

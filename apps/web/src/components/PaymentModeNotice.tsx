@@ -16,8 +16,11 @@ export const SPLIT_EXPLANATION =
 export function PaymentModeNotice({
   payment,
   checkoutOpen,
+  hasToOrder = false,
 }: {
   payment: PaymentNotice;
+  /** Some lines are to order (prepaid): say how the money is paid and protected. */
+  hasToOrder?: boolean;
   /** Checkout gate open and the order minimums met; otherwise no checkout links. */
   checkoutOpen: boolean;
 }) {
@@ -34,7 +37,7 @@ export function PaymentModeNotice({
     >
       <div className="flex items-center gap-2">
         <IconShield size={18} className={payment.mixed ? 'text-wait' : 'text-ink'} />
-        <h2 id="payment-mode-title" className="font-display text-base font-semibold">
+        <h2 id="payment-mode-title" className="text-h3">
           Способ оплаты
         </h2>
       </div>
@@ -45,6 +48,15 @@ export function PaymentModeNotice({
           </p>
         ))}
       </div>
+      {hasToOrder ? (
+        <p className="mt-3 flex items-start gap-2 border-t border-dashed border-line-strong pt-3 text-sm">
+          <IconShield size={16} className="mt-0.5 shrink-0 text-ok" />
+          <span className="min-w-0">
+            Под заказ — предоплата картой или СБП через ЮKassa, чек придёт на телефон. Если
+            поставщик подведёт — вернём деньги полностью, без удержаний.
+          </span>
+        </p>
+      ) : null}
       {payment.mixed && checkoutOpen ? (
         payment.offerSplit ? (
           <div className="mt-4 space-y-2">

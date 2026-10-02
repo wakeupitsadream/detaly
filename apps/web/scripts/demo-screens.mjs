@@ -3,6 +3,8 @@
 // Start the demo first (docs/demo-vercel.md, «Проверить локально»), then:
 //   PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers DEMO_URL=http://127.0.0.1:3101 \
 //     node apps/web/scripts/demo-screens.mjs [outDir]
+// The flow: home -> search OC90 -> cart (OC90, GDB1330) -> checkout (the form filled with an
+// example) -> «Оформить» opens /o/demo -> documents, about, VIN, returns.
 // Default outDir: apps/web/test-results/design-final. Exits 1 on the first failed step.
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -35,8 +37,14 @@ function check(condition, message) {
 }
 
 async function shot(page, vp, name) {
-  // Let the hero animation and the chain line finish (reduced motion is not forced here).
-  await page.waitForTimeout(1200);
+  // Reduced motion is on (see the context), but wait for any CSS animation left anyway, then
+  // a beat for the fonts.
+  await page.evaluate(() =>
+    Promise.all(
+      globalThis.document.getAnimations().map((animation) => animation.finished.catch(() => null)),
+    ),
+  );
+  await page.waitForTimeout(300);
   await page.screenshot({ path: path.join(outDir, `${name}-${vp.name}.png`), fullPage: true });
 }
 
@@ -59,6 +67,11 @@ async function walk(browser, vp) {
     deviceScaleFactor: vp.deviceScaleFactor,
     locale: 'ru-RU',
     timezoneId: 'Asia/Yekaterinburg',
+    // A full-page capture re-lays the page out at its full height, and Chromium restarts the CSS
+    // animations of elements shown from a breakpoint up (`hidden md:block`): the shot then
+    // catches the hero half faded and the chain line half drawn. Reduced motion renders the
+    // same end state without animating, so the screenshots show the finished page.
+    reducedMotion: 'reduce',
     extraHTTPHeaders: { 'X-Real-IP': `198.18.200.${vp.name === '375' ? 1 : 2}` },
   });
   const page = await context.newPage();
@@ -98,10 +111,21 @@ async function walk(browser, vp) {
 
   await page.getByTestId('checkout-link').click();
   await page.waitForURL(/\/checkout$/);
-  check(await page.getByTestId('demo-checkout').isVisible(), 'checkout: demo screen');
+  check(await page.getByTestId('demo-checkout').isVisible(), 'checkout: demo form');
+  check(
+    (await page.getByLabel('Телефон', { exact: true }).inputValue()) !== '',
+    'checkout: demo form is filled with an example',
+  );
   await shot(page, vp, '05-checkout');
 
-  await page.goto('/o/demo');
+  // The demo button opens the sample order without any request to /api/checkout.
+  let posted = false;
+  page.on('request', (request) => {
+    if (request.url().includes('/api/checkout')) posted = true;
+  });
+  await page.getByTestId('demo-checkout-submit').click();
+  await page.waitForURL(/\/o\/demo$/);
+  check(!posted, 'checkout: the demo never posts the form');
   check(await page.getByTestId('order-page').isVisible(), '/o/demo: order page');
   await shot(page, vp, '06-order-demo');
 

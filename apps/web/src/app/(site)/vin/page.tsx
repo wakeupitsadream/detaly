@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { IconClock, IconPhone, IconPin, IconShield } from '@/components/icons';
+import { IconClock, IconMessage, IconPhone, IconPin, IconShield } from '@/components/icons';
 import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
 import { buttonClass } from '@/components/ui/Button';
 import { cn } from '@/components/ui/cn';
@@ -23,7 +23,7 @@ const STEPS = [
   },
   {
     title: 'Позвоните или приезжайте',
-    text: 'Назовите VIN и какая деталь нужна — можно показать старую.',
+    text: 'Назовите VIN и какая деталь нужна. Можно показать СТС или старую деталь.',
   },
   {
     title: 'Получите варианты',
@@ -64,11 +64,19 @@ function VinPlate() {
   );
 }
 
+/** The chat link with a ready first line, so the client only adds the photo. */
+function telegramWithText(url: string | null): string | null {
+  if (!url) return null;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}text=${encodeURIComponent('Нужна деталь по VIN: ')}`;
+}
+
 // Phase 0: no online form. Forms that collect personal data appear only after the
 // notification to Roskomnadzor is registered (PLAN, decision 14).
 export default function VinPage() {
   const brand = getBrand();
   const { pickup } = brand;
+  const telegram = telegramWithText(brand.pickupLinks?.telegram ?? null);
   return (
     <InnerPage>
       <PageBand
@@ -103,10 +111,10 @@ export default function VinPage() {
               </ol>
             </section>
             <VinPlate />
-            <p className="text-sm text-muted">Онлайн-заявка на сайте появится позже.</p>
           </div>
 
-          <aside className="min-w-0 space-y-5" aria-label="Контакты для запроса">
+          {/* Phones: the call comes right under the title, before the steps. */}
+          <aside className="min-w-0 space-y-5 max-lg:order-first" aria-label="Контакты для запроса">
             <section className="grain-dark min-w-0 rounded border border-graphite-700 bg-graphite-900 bg-blueprint p-5 text-steel-200 md:p-6">
               <h2 className="text-label text-steel-400">Телефон</h2>
               {brand.contactPhone ? (
@@ -130,6 +138,21 @@ export default function VinPage() {
                 >
                   <IconPhone size={18} />
                   Позвонить мастеру
+                </a>
+              ) : null}
+              {telegram ? (
+                <a
+                  className={cn(
+                    buttonClass({ variant: 'secondary', onDark: true, block: true }),
+                    'mt-3',
+                  )}
+                  href={telegram}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="vin-telegram"
+                >
+                  <IconMessage size={18} />
+                  Отправить фото СТС в Telegram
                 </a>
               ) : null}
               <div className="mt-6 border-t border-graphite-700 pt-5">
@@ -156,9 +179,7 @@ export default function VinPage() {
               <div className="flex items-start gap-3">
                 <IconShield size={24} className="shrink-0 text-ok" />
                 <div className="min-w-0">
-                  <h2 className="font-display text-base leading-snug font-semibold">
-                    Подобрали мы&nbsp;— отвечаем мы
-                  </h2>
+                  <h2 className="text-h3">Подобрали мы&nbsp;— отвечаем мы</h2>
                   <p className="mt-2 text-sm text-muted">
                     Если деталь, подобранная мастером по VIN, не подошла к автомобилю из заявки,
                     вернём деньги полностью.

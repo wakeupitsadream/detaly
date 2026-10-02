@@ -917,6 +917,15 @@ describe('/checkout page data', () => {
     expect(p.offerSplit).toBe(true);
     expect(p.explanation[0]).toContain('детали под заказ');
     expect(p.promisedDate).not.toBeNull();
+    // Per line: the eta buffer is added as on /cart, never the raw supplier date.
+    const { eta } = await supplier.settings.get();
+    for (const line of p.lines) {
+      expect(line.etaDate).not.toBeNull();
+      expect(p.linePromises[line.id]).toBe(
+        formatPromise(addDays(line.etaDate as IsoDate, eta.bufferDays)),
+      );
+    }
+    expect(eta.bufferDays).toBeGreaterThan(0);
     expect(p.checkoutKey).toMatch(/^[0-9a-f-]{36}$/);
     // A homogeneous cart ignores part.
     const single = await makeCart(KNECHT_LOCAL);

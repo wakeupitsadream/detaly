@@ -23,7 +23,7 @@ export function CartLineRow({ line }: { line: CartLineView }) {
       <div className="flex min-w-0 flex-col items-start gap-1.5">
         <StockBadge isLocal={line.isLocal} />
         {line.promiseText ? (
-          <span className="text-sm text-muted">
+          <span className="text-sm text-muted" data-testid="cart-line-promise">
             Получение <span className="font-medium text-ink">{line.promiseText}</span>
           </span>
         ) : null}

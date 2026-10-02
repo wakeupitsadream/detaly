@@ -1,15 +1,11 @@
 /**
- * Search rate limit through the real proxy: 20 searches per minute pass, the 21st gets 429
- * (JSON with Retry-After on /api/search, HTML on /search). Needs the server started with
- * TRUSTED_IP_HEADER=x-real-ip; each test uses a fresh random client ip.
+ * Rate limits through the real proxy: 20 searches per minute pass, the 21st gets 429
+ * (JSON with Retry-After on /api/search, HTML on /search); the 11th POST /api/checkout in an
+ * hour gets 429. Needs the server started with TRUSTED_IP_HEADER=x-real-ip; each test uses a
+ * fresh random client ip.
  */
-import { randomInt } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-
-function randomIp(): string {
-  // 198.18.0.0/15 is reserved for benchmarking: never a real client.
-  return `198.19.${randomInt(0, 256)}.${randomInt(1, 255)}`;
-}
+import { randomIp } from './helpers';
 
 test.describe('search rate limit', () => {
   // Once per run is enough; the limit does not depend on the viewport.
@@ -75,5 +71,36 @@ test.describe('search rate limit', () => {
       headers: { ...headers, Purpose: 'prefetch' },
     });
     expect(blocked.status()).toBe(429);
+  });
+});
+
+test.describe('checkout rate limit', () => {
+  test.skip(({ isMobile }) => isMobile, 'desktop project only');
+
+  test('11th POST /api/checkout in an hour gets 429 before the handler', async ({ request }) => {
+    const headers = { 'X-Real-IP': randomIp(), 'Content-Type': 'application/json' };
+    // The proxy counts before the handler, so an invalid body is enough: no order, no cart.
+    for (let i = 1; i <= 10; i += 1) {
+      const response = await request.post('/api/checkout', { headers, data: '{}' });
+      expect(response.status(), `request ${i}`).not.toBe(429);
+    }
+    const blocked = await request.post('/api/checkout', { headers, data: '{}' });
+    expect(blocked.status()).toBe(429);
+    const retryAfter = Number(blocked.headers()['retry-after']);
+    expect(retryAfter).toBeGreaterThan(0);
+    expect(retryAfter).toBeLessThanOrEqual(3600);
+    expect(await blocked.json()).toMatchObject({ error: 'rate_limited' });
+
+    // Reading is not limited: the search of the same client still works.
+    const search = await request.get('/api/search?q=OC90', {
+      headers: { 'X-Real-IP': headers['X-Real-IP'] },
+    });
+    expect(search.status()).toBe(200);
+    // Another client is not affected.
+    const other = await request.post('/api/checkout', {
+      headers: { ...headers, 'X-Real-IP': randomIp() },
+      data: '{}',
+    });
+    expect(other.status()).not.toBe(429);
   });
 });

@@ -11,10 +11,13 @@ export function CheckoutSummary({
   lines,
   totalKop,
   promisedDate,
+  linePromises,
 }: {
   lines: readonly RepricedLine[];
   totalKop: number;
   promisedDate: IsoDate | null;
+  /** «к …» per line id with the eta buffer (page data), never the raw supplier date. */
+  linePromises: Readonly<Record<string, string | null>>;
 }) {
   return (
     <section className="space-y-3" aria-labelledby="checkout-items">
@@ -45,8 +48,10 @@ export function CheckoutSummary({
             </div>
             <div className="col-span-2 flex min-w-0 flex-wrap items-center gap-2">
               <StockBadge isLocal={line.isLocal} />
-              {line.etaDate ? (
-                <span className="text-sm text-muted">{formatPromise(line.etaDate)}</span>
+              {linePromises[line.id] ? (
+                <span className="text-sm text-muted" data-testid="checkout-line-promise">
+                  {linePromises[line.id]}
+                </span>
               ) : null}
             </div>
           </li>

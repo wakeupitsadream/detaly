@@ -1,9 +1,11 @@
 /**
- * Visits every phase 0 page on mobile (375x812) and desktop (1280x800):
- * no horizontal scroll, the seller INN in the footer, noindex on /search,
- * and a full-page screenshot in test-results/screens/<project>-<slug>.png for a human look.
+ * Visits every phase 0 page and the empty phase 1A cart on mobile (375x812) and desktop
+ * (1280x800): no horizontal scroll, the seller INN in the footer, noindex on /search and
+ * /cart, and a full-page screenshot in test-results/screens/<project>-<slug>.png for a human
+ * look. Filled cart, checkout and order pages are covered by checkout.spec.ts.
  */
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { horizontalOverflow } from './helpers';
 
 const PAGES = [
   { slug: 'home', path: '/' },
@@ -15,18 +17,12 @@ const PAGES = [
   { slug: 'docs-consent', path: '/docs/consent' },
   { slug: 'returns', path: '/returns' },
   { slug: 'vin', path: '/vin' },
+  { slug: 'cart-empty', path: '/cart' },
 ] as const;
 
 /** Exact INN when the runner knows it (E2E_EXPECT_INN), otherwise any 10/12-digit INN. */
 const expectedInn = process.env.E2E_EXPECT_INN;
 const INN_RE = expectedInn ? new RegExp(`ИНН\\s*${expectedInn}`) : /ИНН\s*(\d{12}|\d{10})\b/;
-
-async function horizontalOverflow(page: Page): Promise<number> {
-  return page.evaluate(() => {
-    const root = document.documentElement;
-    return Math.max(root.scrollWidth, document.body.scrollWidth) - root.clientWidth;
-  });
-}
 
 for (const { slug, path } of PAGES) {
   test(`${slug}: layout, requisites, robots`, async ({ page }, testInfo) => {
@@ -40,7 +36,7 @@ for (const { slug, path } of PAGES) {
     await expect(footer.getByTestId('footer-inn')).toHaveText(INN_RE);
 
     const robots = page.locator('meta[name="robots"]');
-    if (path.startsWith('/search')) {
+    if (path.startsWith('/search') || path === '/cart') {
       await expect(robots).toHaveAttribute('content', /noindex/);
       expect(response?.headers()['x-robots-tag'] ?? '').toContain('noindex');
     }
@@ -61,6 +57,16 @@ for (const { slug, path } of PAGES) {
       await expect(page.getByTestId('legal-document')).toBeVisible();
       await expect(page.locator('.legal h1, .legal h2').first()).toBeVisible();
     }
+    if (slug === 'cart-empty') {
+      const empty = page.getByTestId('cart-empty');
+      await expect(empty).toBeVisible();
+      await expect(empty).toContainText('Корзина пуста');
+      await expect(empty.getByRole('link', { name: 'Искать по артикулу' })).toHaveAttribute(
+        'href',
+        '/',
+      );
+      await expect(page.getByTestId('checkout-link')).toHaveCount(0);
+    }
     if (slug === 'home') {
       const form = page.locator('form[role="search"]');
       await expect(form).toHaveAttribute('action', '/search');
@@ -73,6 +79,14 @@ for (const { slug, path } of PAGES) {
     });
   });
 }
+
+test('/checkout without a cart redirects to the empty cart', async ({ page }) => {
+  await page.goto('/checkout');
+  await expect(page).toHaveURL(/\/cart$/);
+  await expect(page.getByTestId('cart-empty')).toBeVisible();
+  // No personal data field is ever rendered without a cart.
+  await expect(page.getByLabel('Телефон', { exact: true })).toHaveCount(0);
+});
 
 test('the search form submits to /search with the query', async ({ page }) => {
   await page.goto('/');

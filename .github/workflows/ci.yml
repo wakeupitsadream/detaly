@@ -128,7 +128,6 @@ jobs:
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      E2E_BASE_URL: http://127.0.0.1:3100
       # Test seller requisites and pickup point: seeded into the legal drafts and rendered
       # in the footer; screens.spec checks the exact INN via E2E_EXPECT_INN.
       SELLER_REQUISITES_NAME: Тестов Тест Тестович
@@ -142,18 +141,20 @@ jobs:
       PICKUP_HOURS: Пн–Пт 10:00–19:00
       PICKUP_PHONE: '+7 900 000-00-01'
       E2E_EXPECT_INN: '561234567890'
-      # Phase 1A: the Origin check compares with APP_BASE_URL; checkout opens only with an
-      # RKN number and, in the production standalone server, published legal versions (the
-      # seed publishes the pinned versions in the CI database).
-      APP_BASE_URL: http://127.0.0.1:3100
+      # Phase 1A: checkout opens only with an RKN number and published legal versions (the seed
+      # publishes the pinned versions in the CI database).
       RKN_NOTICE_NUMBER: E2E-TEST
       LEGAL_OFFER_VERSION: 2026-10-d1
       LEGAL_PRIVACY_VERSION: 2026-10-d1
       LEGAL_CONSENT_PD_VERSION: 2026-10-d1
       LEGAL_CONSENT_MARKETING_VERSION: 2026-10-d1
       LEGAL_RETURN_MEMO_VERSION: 2026-10-d1
-      # checkout.spec.ts greps the server log for the phones and names it typed.
-      E2E_WEB_LOG: ${{ github.workspace }}/web.log
+      # Phase 1B (docs/phase-1b-implementation.md section 23): scripts/e2e-1b.sh sets the rest
+      # (YooKassa mock on :3199 as YOOKASSA_API_URL, webhook allowlist 127.0.0.1/32 with
+      # TRUSTED_IP_HEADER=x-real-ip, ROSSKO_ALLOW_CHECKOUT=true on fixtures, SMS_PROVIDER=none,
+      # no Telegram token); only the admin password comes from here.
+      ADMIN_BASIC_AUTH: admin:e2e-admin-password
+      E2E_OUT_DIR: ${{ github.workspace }}/e2e-out
     steps:
       - uses: actions/checkout@v5
 
@@ -172,38 +173,13 @@ jobs:
       - name: Playwright Chromium (version pinned by @playwright/test 1.56.1)
         run: pnpm --filter @detaly/web exec playwright install --with-deps chromium
 
-      - name: Migrate and seed
-        run: |
-          pnpm db:migrate
-          pnpm db:seed
+      # Migrations and seed, web standalone build, the YooKassa mock, the worker and web,
+      # Playwright 1A + 1B on 375 and 1280, then the web and worker logs are checked for phone
+      # numbers and the order tokens of the run (counts only, never the matching lines).
+      - name: E2E with the YooKassa mock and the worker (mobile 375 and desktop 1280)
+        run: bash scripts/e2e-1b.sh
 
-      - name: Build web (standalone)
-        run: |
-          pnpm --filter @detaly/web build
-          node apps/web/scripts/prepare-standalone.mjs
-
-      - name: Start web and worker
-        run: |
-          PORT=3100 HOSTNAME=127.0.0.1 TRUSTED_IP_HEADER=x-real-ip \
-            nohup node apps/web/.next/standalone/apps/web/server.js >web.log 2>&1 &
-          (cd apps/worker && TG_SELLER_BOT_TOKEN='' nohup node --import tsx src/main.ts >../../worker.log 2>&1 &)
-          for _ in $(seq 60); do
-            curl -fsS -o /dev/null "$E2E_BASE_URL/api/health/live" && break
-            sleep 1
-          done
-          curl -fsS "$E2E_BASE_URL/api/health/live"
-
-      - name: E2E (mobile 375 and desktop 1280)
-        run: pnpm --filter @detaly/web e2e
-
-      - name: No phone numbers in the web log
-        # Counts only: printing the matching lines would copy the data into the CI log.
-        run: |
-          count=$(grep -cE '\+79[0-9]{9}' web.log || true)
-          echo "phone-like strings in web.log: $count"
-          test "$count" = 0
-
-      - name: Screenshots and reports
+      - name: Screenshots, reports and logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -211,8 +187,7 @@ jobs:
           path: |
             apps/web/test-results/
             apps/web/playwright-report/
-            web.log
-            worker.log
+            e2e-out/*.log
           if-no-files-found: ignore
           retention-days: 14
 

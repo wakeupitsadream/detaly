@@ -12,7 +12,12 @@
  *   after payment, and back to `ready` (pay_on_handover) when that payment is canceled;
  * - self-transitions (to === from) record events that do not change the order status:
  *   partial arrival, damage on receipt, ETA change, "Клиент пришёл", offset receipt retries,
- *   handover payment success before "Выдал", claim opening, refund failure.
+ *   handover payment success before "Выдал", claim opening, refund failure;
+ * - "refund or cancel" splits follow the money, not only the scheme: a pay_on_handover order
+ *   whose handover payment already succeeded is refunded like a prepay one (`moneyHeld`);
+ * - going back to work from needs_attention / awaiting_client_approval ("Заказать всё равно",
+ *   "Согласен", cancelling one item) lands in `ordering` with GetCheckout when the problem was
+ *   found by the recheck before any supplier order existed, else in `ordered_at_supplier`.
  */
 import type { ActorType, OrderStatus, PaymentScheme, ReceiptKind } from '../statuses';
 import {
@@ -31,12 +36,15 @@ import {
   liveItemsRemain,
   marginAboveFloor,
   minTotalReached,
+  moneyHeld,
+  noMoneyHeld,
   noItemErrors,
   noOpenClaims,
   not,
   onPickupEligible,
   payOnHandover,
   paymentConfirmedUnpaid,
+  paymentHeldFlag,
   paymentSucceeded,
   prepay,
   prepayInvoice,
@@ -46,6 +54,8 @@ import {
   schemeKnown,
   scopeOrder,
   settlementReceiptSucceeded,
+  supplierOrderCreated,
+  supplierOrderMissing,
   type TransitionContext,
 } from './guards';
 
@@ -213,14 +223,39 @@ const refundReceipt = (ctx: TransitionContext): ReceiptKind | null => {
   if (scheme === 'prepay') {
     return ctx.settlementReceiptSucceeded === true ? 'refund_full' : 'refund_prepayment';
   }
+  // pay_on_handover money is taken with a full_payment receipt (handover QR payment).
+  if (scheme === 'pay_on_handover' && ctx.paymentHeld === true) return 'refund_full';
   return null;
 };
 
-/** Money is refunded only when it was taken: prepay orders. */
+/** Money is refunded only when it was taken (prepay, or a succeeded handover payment). */
 const refundEffects =
   (extra: readonly TransitionEffect[]) =>
   (ctx: TransitionContext): readonly TransitionEffect[] =>
-    ctx.scheme === 'prepay' ? ['create_refund', ...extra] : extra;
+    moneyHeld.test(ctx) ? ['create_refund', ...extra] : extra;
+
+const resolveEffects = (effects: EffectsSpec | undefined, ctx: TransitionContext) =>
+  effects === undefined ? [] : typeof effects === 'function' ? effects(ctx) : effects;
+
+/**
+ * A rule that resumes supplier work. When the supplier order already exists the order goes
+ * back to `ordered_at_supplier`; when the problem came from the recheck before GetCheckout
+ * (supplierOrderCreated = false) it goes to `ordering` and GetCheckout is sent.
+ */
+function resumeWork(rule: Omit<TransitionRule, 'to'>): TransitionRule[] {
+  const withGuard = (extra: Guard): Guard =>
+    rule.guard === undefined ? extra : all(rule.guard, extra);
+  return [
+    { ...rule, to: 'ordered_at_supplier', guard: withGuard(supplierOrderCreated) },
+    {
+      ...rule,
+      label: `${rule.label} (заказа у Rossko ещё нет)`,
+      to: 'ordering',
+      guard: withGuard(supplierOrderMissing),
+      effects: (ctx) => [...resolveEffects(rule.effects, ctx), 'supplier_checkout'],
+    },
+  ];
+}
 
 /** A late payment can be a prepayment link or a handover QR payment. */
 const lateRefundReceipt = (ctx: TransitionContext): ReceiptKind | null =>
@@ -470,15 +505,14 @@ export const TRANSITIONS: readonly TransitionRule[] = [
   },
 
   // --- needs_attention ---------------------------------------------------------------------
-  {
+  ...resumeWork({
     label: 'Заказать всё равно',
     from: ['needs_attention'],
     event: 'order_anyway',
-    to: 'ordered_at_supplier',
     actors: ['staff'],
     guard: marginAboveFloor,
     notify: [],
-  },
+  }),
   {
     label: 'Аналог по цене клиента',
     from: ['needs_attention'],
@@ -499,24 +533,23 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     notify: [client('decision_needed')],
     effects: ['start_approval_timer'],
   },
-  {
+  ...resumeWork({
     label: 'Отменить позицию',
     from: ['needs_attention'],
     event: 'item_cancelled',
-    to: 'ordered_at_supplier',
     actors: ['staff'],
     guard: liveItemsRemain,
     receipt: refundReceipt,
     notify: [client('item_cancelled')],
     effects: refundEffects([]),
-  },
+  }),
   {
     label: 'Отменить заказ и вернуть деньги',
     from: ['needs_attention'],
     event: 'order_cancelled',
     to: 'refund_pending',
     actors: ['staff'],
-    guard: prepay,
+    guard: moneyHeld,
     receipt: refundReceipt,
     notify: [client('refund_started')],
     effects: ['create_refund', 'cancel_at_supplier_task'],
@@ -527,20 +560,19 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'order_cancelled',
     to: 'cancelled',
     actors: ['staff'],
-    guard: payOnHandover,
+    guard: noMoneyHeld,
     notify: [client('order_cancelled')],
     effects: ['cancel_at_supplier_task'],
   },
 
   // --- awaiting_client_approval ------------------------------------------------------------
-  {
+  ...resumeWork({
     label: 'Клиент согласен',
     from: ['awaiting_client_approval'],
     event: 'client_approved',
-    to: 'ordered_at_supplier',
     actors: ['client'],
     notify: [sellers('staff_client_approved')],
-  },
+  }),
   ...(['client_refund_requested', 'approval_timeout'] as const).flatMap(
     (event): TransitionRule[] => {
       const actors: readonly ActorType[] = event === 'approval_timeout' ? ['system'] : ['client'];
@@ -552,7 +584,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
           event,
           to: 'refund_pending',
           actors,
-          guard: all(scopeOrder, prepay),
+          guard: all(scopeOrder, moneyHeld),
           receipt: refundReceipt,
           notify: [client('refund_started')],
           effects: ['create_refund', 'cancel_at_supplier_task'],
@@ -563,21 +595,20 @@ export const TRANSITIONS: readonly TransitionRule[] = [
           event,
           to: 'cancelled',
           actors,
-          guard: all(scopeOrder, payOnHandover),
+          guard: all(scopeOrder, noMoneyHeld),
           notify: [client('order_cancelled')],
           effects: ['cancel_at_supplier_task'],
         },
-        {
+        ...resumeWork({
           label: `Решение клиента (${how}): одна позиция`,
           from: ['awaiting_client_approval'],
           event,
-          to: 'ordered_at_supplier',
           actors,
           guard: all(scopeItem, liveItemsRemain),
           receipt: refundReceipt,
           notify: [client('item_cancelled')],
           effects: refundEffects([]),
-        },
+        }),
       ];
     },
   ),
@@ -650,7 +681,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'storage_expired',
     to: 'refund_pending',
     actors: ['system'],
-    guard: prepay,
+    guard: moneyHeld,
     receipt: refundReceipt,
     notify: [client('storage_expired'), sellers('staff_supplier_return_task')],
     effects: ['create_refund', 'no_show_increment', 'supplier_return_task'],
@@ -661,7 +692,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'storage_expired',
     to: 'cancelled',
     actors: ['system'],
-    guard: payOnHandover,
+    guard: noMoneyHeld,
     notify: [client('storage_expired'), sellers('staff_supplier_return_task')],
     effects: ['no_show_increment', 'supplier_return_task'],
   },
@@ -701,6 +732,8 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'payment_canceled',
     to: 'ready',
     actors: PAYMENT_ACTORS,
+    // A stale cancel of an earlier QR must not undo a payment that already succeeded.
+    guard: not(paymentHeldFlag),
     notify: [],
   },
   {
@@ -709,7 +742,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'payment_ttl_expired',
     to: 'ready',
     actors: ['system'],
-    guard: paymentConfirmedUnpaid,
+    guard: all(paymentConfirmedUnpaid, not(paymentHeldFlag)),
     notify: [],
   },
 
@@ -794,7 +827,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'client_refused',
     to: 'refund_pending',
     actors: ['client', 'staff'],
-    guard: prepay,
+    guard: moneyHeld,
     receipt: refundReceipt,
     notify: [client('refund_started'), sellers('staff_cancel_at_supplier_task')],
     effects: ['create_refund', 'cancel_at_supplier_task'],
@@ -805,7 +838,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
     event: 'client_refused',
     to: 'cancelled',
     actors: ['client', 'staff'],
-    guard: payOnHandover,
+    guard: noMoneyHeld,
     notify: [client('order_cancelled'), sellers('staff_cancel_at_supplier_task')],
     effects: ['cancel_at_supplier_task'],
   },

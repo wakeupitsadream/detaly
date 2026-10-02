@@ -65,13 +65,21 @@ export function resolveTransition(
   if (rules === undefined || rules.length === 0) {
     return { ok: false, reason: 'no_rule', failed: [] };
   }
-  const failed = new Set<string>();
+  // Report the failures of the closest rules (fewest failing guards): for split rules such as
+  // "supplier order exists / not yet" the complementary guard of the other branch is noise.
+  let best: string[][] = [];
+  let bestCount = Number.POSITIVE_INFINITY;
   for (const rule of rules) {
     const failures = ruleFailures(rule, ctx);
     if (failures.length === 0) return { ok: true, rule };
-    for (const f of failures) failed.add(f);
+    if (failures.length < bestCount) {
+      best = [failures];
+      bestCount = failures.length;
+    } else if (failures.length === bestCount) {
+      best.push(failures);
+    }
   }
-  return { ok: false, reason: 'guard_failed', failed: [...failed] };
+  return { ok: false, reason: 'guard_failed', failed: [...new Set(best.flat())] };
 }
 
 /** Events that would succeed now; used to decide which buttons to show. */

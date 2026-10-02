@@ -33,6 +33,8 @@ export class PaymentProviderError extends Error {
       code: string | null;
       retryable: boolean;
       requestId?: string | null;
+      /** HTTP 202 `processing`: repeat after this delay with the same Idempotence-Key. */
+      retryAfterMs?: number | null;
     },
   ) {
     super(message);

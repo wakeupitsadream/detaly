@@ -122,7 +122,8 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
   eta_changed: (d) =>
     msg(
       lines(head(d), `Срок сдвинулся: ждём ${promise(d.promisedDate)}.`, d.note),
-      [act(d, 'refund', 'Вернуть деньги')],
+      // The order stays ordered_at_supplier: giving up here is a refusal (ст. 26.1).
+      [act(d, 'refused', d.scheme === 'prepay' ? 'Вернуть деньги' : 'Отказаться от заказа')],
       [orderLink(d)],
     ),
   handed: (d) =>
@@ -161,7 +162,14 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
         `Сумма: ${rub(d.totalKop)} · клиент ${maskPhone(d.clientPhone)}`,
       ),
       [act(d, 'recheck', 'Проверить и заказать')],
-      [act(d, 'cancel', d.scheme === 'prepay' ? 'Отменить и вернуть деньги' : 'Отменить')],
+      // A confirmed order is cancelled through the refusal rule (staff may press it).
+      [
+        act(
+          d,
+          'refused',
+          d.scheme === 'prepay' ? 'Отказ клиента: вернуть деньги' : 'Отказ клиента',
+        ),
+      ],
       adminLink(d),
     ),
   staff_amount_mismatch: (d) =>

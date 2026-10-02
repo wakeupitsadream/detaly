@@ -27,7 +27,13 @@ import {
 // ---------------------------------------------------------------------------------------------
 
 const PREPAY = { scheme: 'prepay', fulfillment: 'pickup' } as const;
-const COD = { scheme: 'pay_on_handover', fulfillment: 'pickup' } as const;
+/** pay_on_handover before the handover QR payment: no money held. */
+const COD = { scheme: 'pay_on_handover', fulfillment: 'pickup', paymentHeld: false } as const;
+/** pay_on_handover after the handover QR payment succeeded (money held). */
+const COD_PAID = { ...COD, paymentHeld: true } as const;
+/** Back to work after a problem: the supplier order exists or not yet (recheck failed). */
+const ORDERED = { supplierOrderCreated: true } as const;
+const NOT_ORDERED = { supplierOrderCreated: false } as const;
 const COURIER = { scheme: 'prepay', fulfillment: 'courier' } as const;
 
 const client = (extra: Partial<TransitionContext> = {}): TransitionContext => ({
@@ -161,8 +167,14 @@ const EXPECTED: readonly Row[] = [
   [
     'needs_attention',
     'order_anyway',
-    staff({ marginBp: 1000, marginFloorBp: 1000 }),
+    staff({ marginBp: 1000, marginFloorBp: 1000, ...ORDERED }),
     'ordered_at_supplier',
+  ],
+  [
+    'needs_attention',
+    'order_anyway',
+    staff({ marginBp: 1000, marginFloorBp: 1000, ...NOT_ORDERED }),
+    'ordering',
   ],
   [
     'needs_attention',
@@ -176,12 +188,20 @@ const EXPECTED: readonly Row[] = [
     staff({ clientReachable: true }),
     'awaiting_client_approval',
   ],
-  ['needs_attention', 'item_cancelled', staff({ liveItemsAfter: 1 }), 'ordered_at_supplier'],
+  [
+    'needs_attention',
+    'item_cancelled',
+    staff({ liveItemsAfter: 1, ...ORDERED }),
+    'ordered_at_supplier',
+  ],
+  ['needs_attention', 'item_cancelled', staff({ liveItemsAfter: 1, ...NOT_ORDERED }), 'ordering'],
   ['needs_attention', 'order_cancelled', staff(), 'refund_pending'],
   ['needs_attention', 'order_cancelled', staff({ ...COD }), 'cancelled'],
+  ['needs_attention', 'order_cancelled', staff({ ...COD_PAID }), 'refund_pending'],
 
   // awaiting_client_approval
-  ['awaiting_client_approval', 'client_approved', client(), 'ordered_at_supplier'],
+  ['awaiting_client_approval', 'client_approved', client({ ...ORDERED }), 'ordered_at_supplier'],
+  ['awaiting_client_approval', 'client_approved', client({ ...NOT_ORDERED }), 'ordering'],
   [
     'awaiting_client_approval',
     'client_refund_requested',
@@ -191,8 +211,14 @@ const EXPECTED: readonly Row[] = [
   [
     'awaiting_client_approval',
     'client_refund_requested',
-    client({ scope: 'item', liveItemsAfter: 1 }),
+    client({ scope: 'item', liveItemsAfter: 1, ...ORDERED }),
     'ordered_at_supplier',
+  ],
+  [
+    'awaiting_client_approval',
+    'client_refund_requested',
+    client({ scope: 'item', liveItemsAfter: 1, ...NOT_ORDERED }),
+    'ordering',
   ],
   [
     'awaiting_client_approval',
@@ -204,8 +230,14 @@ const EXPECTED: readonly Row[] = [
   [
     'awaiting_client_approval',
     'approval_timeout',
-    system({ scope: 'item', liveItemsAfter: 2 }),
+    system({ scope: 'item', liveItemsAfter: 2, ...ORDERED }),
     'ordered_at_supplier',
+  ],
+  [
+    'awaiting_client_approval',
+    'approval_timeout',
+    system({ scope: 'item', liveItemsAfter: 2, ...NOT_ORDERED }),
+    'ordering',
   ],
   ['awaiting_client_approval', 'approval_timeout', system({ ...COD, scope: 'order' }), 'cancelled'],
 
@@ -294,6 +326,8 @@ const EXPECTED: readonly Row[] = [
   ['ready', 'client_refused', client({ ...COD }), 'cancelled'],
   ['out_for_delivery', 'client_refused', client({ ...COURIER }), 'refund_pending'],
   ['awaiting_handover_payment', 'client_refused', client({ ...COD }), 'cancelled'],
+  // the handover QR payment already succeeded: money is held, so it is refunded
+  ['awaiting_handover_payment', 'client_refused', client({ ...COD_PAID }), 'refund_pending'],
 
   // refunds
   ['refund_pending', 'refund_succeeded', webhook({ refundConfirmed: true }), 'refunded'],
@@ -438,9 +472,62 @@ describe('guards', () => {
       resolveTransition(
         'needs_attention',
         'order_anyway',
-        staff({ marginBp: 990, marginFloorBp: 1000 }),
+        staff({ marginBp: 990, marginFloorBp: 1000, ...ORDERED }),
       ),
     ).toEqual({ ok: false, reason: 'guard_failed', failed: ['margin_floor'] });
+  });
+
+  it('back to work after a recheck problem sends GetCheckout (no supplier order yet)', () => {
+    const ctx = staff({ marginBp: 1500, marginFloorBp: 1000, ...NOT_ORDERED });
+    const result = resolveTransition('needs_attention', 'order_anyway', ctx);
+    expect(result.ok && result.rule.to).toBe('ordering');
+    expect(result.ok && effectsFor(result.rule, ctx)).toEqual(['supplier_checkout']);
+    const ordered = staff({ marginBp: 1500, marginFloorBp: 1000, ...ORDERED });
+    const done = resolveTransition('needs_attention', 'order_anyway', ordered);
+    expect(done.ok && effectsFor(done.rule, ordered)).toEqual([]);
+    // the caller must say whether a supplier order exists
+    expect(
+      resolveTransition(
+        'needs_attention',
+        'order_anyway',
+        staff({ marginBp: 1500, marginFloorBp: 1000 }),
+      ),
+    ).toMatchObject({ ok: false, reason: 'guard_failed' });
+    const item = staff({ liveItemsAfter: 1, ...NOT_ORDERED });
+    const cancelled = resolveTransition('needs_attention', 'item_cancelled', item);
+    expect(cancelled.ok && effectsFor(cancelled.rule, item)).toEqual([
+      'create_refund',
+      'supplier_checkout',
+    ]);
+  });
+
+  it('a pay_on_handover order whose QR payment succeeded is refunded, not just cancelled', () => {
+    const ctx = client({ ...COD_PAID });
+    const result = resolveTransition('awaiting_handover_payment', 'client_refused', ctx);
+    expect(result.ok && result.rule.to).toBe('refund_pending');
+    expect(result.ok && receiptFor(result.rule, ctx)).toBe('refund_full');
+    expect(result.ok && effectsFor(result.rule, ctx)).toContain('create_refund');
+    // without the paymentHeld flag a pay_on_handover order is never silently cancelled
+    expect(
+      resolveTransition(
+        'awaiting_handover_payment',
+        'client_refused',
+        client({ scheme: 'pay_on_handover' }),
+      ),
+    ).toMatchObject({ ok: false, reason: 'guard_failed' });
+  });
+
+  it('a stale cancel or expiry does not undo a succeeded handover payment', () => {
+    expect(
+      resolveTransition('awaiting_handover_payment', 'payment_canceled', webhook({ ...COD_PAID })),
+    ).toMatchObject({ ok: false, reason: 'guard_failed', failed: ['!payment_held'] });
+    expect(
+      resolveTransition(
+        'awaiting_handover_payment',
+        'payment_ttl_expired',
+        system({ ...COD_PAID, providerPaymentStatus: 'canceled' }),
+      ),
+    ).toMatchObject({ ok: false, reason: 'guard_failed' });
   });
 
   it('ready + prepay: payment at the point is forbidden', () => {
@@ -513,7 +600,11 @@ describe('guards', () => {
 
   it('cancelling the last live item is not a partial cancellation', () => {
     expect(
-      resolveTransition('needs_attention', 'item_cancelled', staff({ liveItemsAfter: 0 })),
+      resolveTransition(
+        'needs_attention',
+        'item_cancelled',
+        staff({ liveItemsAfter: 0, ...ORDERED }),
+      ),
     ).toMatchObject({ ok: false, failed: ['live_items_remain'] });
   });
 
@@ -649,9 +740,15 @@ describe('guards', () => {
     expect(qr.ok && receiptFor(qr.rule, qrCtx)).toBe('full');
   });
 
-  it('partial cancellation refunds money only for prepay', () => {
-    const pre = staff({ liveItemsAfter: 1 });
-    const cod = staff({ ...COD, liveItemsAfter: 1 });
+  it('partial cancellation refunds money only when it was taken', () => {
+    const pre = staff({ liveItemsAfter: 1, ...ORDERED });
+    const cod = staff({ ...COD, liveItemsAfter: 1, ...ORDERED });
+    const codPaid = staff({ ...COD_PAID, liveItemsAfter: 1, ...ORDERED });
+    const c = resolveTransition('needs_attention', 'item_cancelled', codPaid);
+    expect(c.ok && [receiptFor(c.rule, codPaid), effectsFor(c.rule, codPaid)]).toEqual([
+      'refund_full',
+      ['create_refund'],
+    ]);
     const a = resolveTransition('needs_attention', 'item_cancelled', pre);
     const b = resolveTransition('needs_attention', 'item_cancelled', cod);
     expect(a.ok && [receiptFor(a.rule, pre), effectsFor(a.rule, pre)]).toEqual([
@@ -765,6 +862,13 @@ describe('graph properties', () => {
                       noShowLimit: 2,
                       claimKind: 'delay',
                     });
+    // money held and supplier order flags double the variants for the splits that use them
+    for (const variant of [...variants]) {
+      variants.push({ ...variant, paymentHeld: true, supplierOrderCreated: true });
+      variants.push({ ...variant, paymentHeld: false, supplierOrderCreated: false });
+      variant.paymentHeld = true;
+      variant.supplierOrderCreated = false;
+    }
     for (const status of ORDER_STATUSES) {
       for (const event of ORDER_EVENTS) {
         const rules = rulesFor(status, event);

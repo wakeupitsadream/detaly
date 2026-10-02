@@ -121,6 +121,20 @@ describe('buildOfferViews', () => {
     expect(views[0]?.priceClientKop).toBe(64_000);
   });
 
+  it('drops an offer with an unusable delivery term instead of failing the whole search', () => {
+    const views = buildOfferViews(
+      [
+        offer({ stock: { stockId: 'BAD1', deliveryDays: -1 } }),
+        offer({ stock: { stockId: 'BAD2', deliveryDays: Number.NaN, deliveryEnd: 'скоро' } }),
+        offer({ stock: { stockId: 'OK1', deliveryDays: 2 } }),
+        // a parseable deliveryEnd wins over a broken day count
+        offer({ stock: { stockId: 'OK2', deliveryDays: -1, deliveryEnd: '2026-10-05' } }),
+      ],
+      ctx,
+    );
+    expect(views.map((v) => v.stockId).sort()).toEqual(['OK1', 'OK2']);
+  });
+
   it('respects the time zone option', () => {
     const late = { ...ctx, now: new Date('2026-10-01T20:30:00Z') };
     expect(buildOfferViews([offer()], late)[0]?.etaDate).toBe('2026-10-02');

@@ -44,6 +44,13 @@ export interface TransitionContext {
   providerPaymentStatus?: PaymentStatus | null;
   /** Every live (not failed/replaced/refunded) item is `arrived`. */
   allLiveItemsArrived?: boolean;
+  /**
+   * A succeeded payment of this order exists and is not fully refunded. Prepay orders past
+   * awaiting_payment always hold money; a pay_on_handover order holds money only after the
+   * handover QR payment succeeded (or a mismatched payment sent it to needs_attention). For
+   * pay_on_handover the caller must pass it explicitly: refusal/cancel branches fail closed.
+   */
+  paymentHeld?: boolean;
 
   // --- supplier ---
   /** Supplier price growth found by the recheck (driftBp of the order). */
@@ -56,6 +63,11 @@ export interface TransitionContext {
   supplierItemErrors?: number;
   /** settings rossko.prepay_invoice. */
   prepayInvoice?: boolean;
+  /**
+   * A supplier order (GetCheckout succeeded) already covers the live items. False when the
+   * problem was found by the recheck before ordering: going back to work then means GetCheckout.
+   */
+  supplierOrderCreated?: boolean;
   /** Order margin after the change (marginBp of totals). */
   marginBp?: BasisPoints;
   /** settings pricing.margin_floor_pct in bp. */
@@ -152,6 +164,24 @@ export const onPickupEligible = guard(
     c.fulfillment !== 'courier',
 );
 
+/**
+ * Money was taken from the client: prepay orders, or pay_on_handover with a succeeded payment.
+ * Decides between refund_pending (refund) and cancelled (nothing to return).
+ */
+export const moneyHeld = guard(
+  'money_held',
+  (c) => c.scheme === 'prepay' || (c.scheme === 'pay_on_handover' && c.paymentHeld === true),
+);
+
+/** pay_on_handover with an explicit "no payment taken"; a missing flag never cancels. */
+export const noMoneyHeld = guard(
+  'no_money_held',
+  (c) => c.scheme === 'pay_on_handover' && c.paymentHeld === false,
+);
+
+/** The order holds a succeeded payment (stale cancel/expiry of another payment is ignored). */
+export const paymentHeldFlag = guard('payment_held', (c) => c.paymentHeld === true);
+
 export const amountMatches = guard(
   'amount_matches_total',
   (c) => isCount(c.paidAmountKop) && isCount(c.totalKop) && c.paidAmountKop === c.totalKop,
@@ -193,6 +223,15 @@ export const hasItemErrors = guard(
   (c) => isCount(c.supplierItemErrors) && c.supplierItemErrors > 0,
 );
 export const prepayInvoice = guard('prepay_invoice', (c) => c.prepayInvoice === true);
+
+export const supplierOrderCreated = guard(
+  'supplier_order_created',
+  (c) => c.supplierOrderCreated === true,
+);
+export const supplierOrderMissing = guard(
+  'supplier_order_missing',
+  (c) => c.supplierOrderCreated === false,
+);
 
 export const marginAboveFloor = guard(
   'margin_floor',

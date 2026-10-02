@@ -217,6 +217,18 @@ export function createYooKassaProvider(
     } catch {
       json = null;
     }
+    if (response.status === 202) {
+      // YooKassa has not finished the request yet ({type: 'processing', retry_after}): the
+      // operation must be repeated later with the same Idempotence-Key.
+      const body = isRecord(json) ? json : {};
+      const retryAfterMs = typeof body.retry_after === 'number' ? body.retry_after : null;
+      throw new PaymentProviderError(`YooKassa ${method} ${path}: still processing`, {
+        status: 202,
+        code: 'processing',
+        retryable: true,
+        retryAfterMs,
+      });
+    }
     if (!response.ok) {
       const err = isRecord(json) ? json : {};
       throw new PaymentProviderError(

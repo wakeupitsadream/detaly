@@ -77,6 +77,14 @@ describe('etaDate', () => {
     expect(etaDate(stock(30, '08.10.2026'), now)).toBe('2026-10-08');
   });
 
+  it('a deliveryEnd in the past is clamped to today (no promise for a passed date)', () => {
+    // 00:10 in Yekaterinburg on 10-02, cached deliveryEnd was 10-01 23:00 MSK (= 10-02 01:00+05)
+    const now = new Date('2026-10-01T19:10:00Z');
+    expect(etaDate(stock(0, '2026-10-01'), now)).toBe('2026-10-02');
+    expect(etaDate(stock(0, '2026-09-30T12:00:00+03:00'), now)).toBe('2026-10-02');
+    expect(etaDate(stock(0, '2026-10-01T23:00:00+03:00'), now)).toBe('2026-10-02');
+  });
+
   it('falls back to deliveryDays when deliveryEnd is empty or unparseable', () => {
     const now = new Date('2026-10-01T10:00:00Z');
     expect(etaDate(stock(2, ''), now)).toBe('2026-10-03');

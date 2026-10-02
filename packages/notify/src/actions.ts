@@ -9,6 +9,7 @@ export const CALLBACK_ACTIONS = {
   confirm: 'client_confirmed',
   approve: 'client_approved',
   refund: 'client_refund_requested',
+  // client or staff: refusal before handover (ст. 26.1)
   // staff
   recheck: 'supplier_order_requested',
   cancel: 'order_cancelled',

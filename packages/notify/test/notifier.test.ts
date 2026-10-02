@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { ORDER_NOTIFY_TEMPLATES, TRANSITIONS } from '@detaly/domain';
+import { ORDER_NOTIFY_TEMPLATES, rulesFor, TRANSITIONS } from '@detaly/domain';
 import { describe, expect, it } from 'vitest';
 import {
   CALLBACK_ACTIONS,
@@ -153,6 +153,25 @@ describe('templates', () => {
     expect(eventForAction('recheck')).toBe('supplier_order_requested');
     expect(eventForAction('toString')).toBeNull();
     expect(Object.keys(CALLBACK_ACTIONS).every((a) => a.length <= 16)).toBe(true);
+  });
+
+  it('action buttons map to events that have a rule in the status the message is sent for', () => {
+    for (const rule of TRANSITIONS) {
+      for (const spec of rule.notify) {
+        for (const scheme of ['prepay', 'pay_on_handover'] as const) {
+          const message = ORDER_TEMPLATES[spec.template](data({ scheme }));
+          for (const button of message.buttons.flat()) {
+            if (button.kind !== 'action') continue;
+            const event = eventForAction(button.action);
+            expect(event, `${spec.template}: ${button.action}`).not.toBeNull();
+            expect(
+              rulesFor(rule.to, event as NonNullable<typeof event>).length,
+              `${spec.template} (sent in ${rule.to}): ${button.action} -> ${String(event)}`,
+            ).toBeGreaterThan(0);
+          }
+        }
+      }
+    }
   });
 
   it('no hardcoded brand name in sources', () => {

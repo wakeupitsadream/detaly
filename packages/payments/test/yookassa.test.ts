@@ -220,6 +220,17 @@ describe('YooKassa provider: payments', () => {
     expect((error as PaymentProviderError).details).toMatchObject({ status: 500, retryable: true });
   });
 
+  it('HTTP 202 "processing" is a retryable error, not a malformed payment', async () => {
+    server.use(
+      http.post(`${API}/payments`, () =>
+        HttpResponse.json({ type: 'processing', retry_after: 1800 }, { status: 202 }),
+      ),
+    );
+    await expect(provider.createPayment(paymentRequest)).rejects.toMatchObject({
+      details: { status: 202, code: 'processing', retryable: true, retryAfterMs: 1800 },
+    });
+  });
+
   it('network failures are retryable', async () => {
     server.use(http.get(`${API}/payments/:id`, () => HttpResponse.error()));
     await expect(provider.getPayment('x')).rejects.toMatchObject({

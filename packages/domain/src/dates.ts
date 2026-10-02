@@ -126,7 +126,9 @@ function toInstant(
 
 /**
  * Expected arrival date of one stock offer in the client time zone: `deliveryEnd` when present
- * and parseable, otherwise the client's local date of `now` plus `deliveryDays`.
+ * and parseable, otherwise the client's local date of `now` plus `deliveryDays`. A
+ * `deliveryEnd` already in the past (a cached answer read after midnight) is clamped to today,
+ * so a promise is never made for a date that has passed.
  */
 export function etaDate(
   stock: Pick<StockInfo, 'deliveryDays' | 'deliveryEnd'>,
@@ -135,8 +137,16 @@ export function etaDate(
 ): IsoDate {
   if (stock.deliveryEnd !== null && stock.deliveryEnd.trim() !== '') {
     const parsed = parseSupplierTimestamp(stock.deliveryEnd);
-    if (parsed?.kind === 'date') return parsed.date;
-    if (parsed?.kind === 'instant') return localDate(parsed.instant, timeZone);
+    const date =
+      parsed?.kind === 'date'
+        ? parsed.date
+        : parsed?.kind === 'instant'
+          ? localDate(parsed.instant, timeZone)
+          : null;
+    if (date !== null) {
+      const today = localDate(now, timeZone);
+      return date < today ? today : date;
+    }
   }
   const days = stock.deliveryDays;
   if (!Number.isSafeInteger(days) || days < 0) {

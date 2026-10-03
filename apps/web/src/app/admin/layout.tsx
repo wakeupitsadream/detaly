@@ -23,14 +23,30 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen min-w-0 flex-col">
       <header className="border-b border-line bg-card">
-        <div className="mx-auto flex w-full max-w-6xl items-center gap-4 px-4 py-3">
+        <nav
+          className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3"
+          aria-label="Разделы админки"
+          data-testid="admin-nav"
+        >
           <Link href="/admin" className="font-bold">
             Админка
+          </Link>
+          <Link href="/admin" className="text-sm text-accent underline">
+            Заказы
+          </Link>
+          <Link href="/admin/vin" className="text-sm text-accent underline">
+            Заявки VIN
           </Link>
           <Link href="/admin?status=attention" className="text-sm text-accent underline">
             Требуют внимания
           </Link>
-        </div>
+          <Link href="/admin?status=claims_open" className="text-sm text-accent underline">
+            Претензии
+          </Link>
+          <Link href="/admin?status=install_requested" className="text-sm text-accent underline">
+            Записи
+          </Link>
+        </nav>
       </header>
       <main className="mx-auto w-full max-w-6xl min-w-0 flex-1 px-4 py-6">{children}</main>
     </div>

@@ -6,6 +6,7 @@
  */
 import type { IsoDate } from '@detaly/domain';
 import { REFUND_TASK_ERROR, type StaffActionView } from '@detaly/orders';
+import { vinRequestNumber } from '@detaly/vin';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import type { AdminQr } from '@/server/admin/handover-qr';
@@ -76,12 +77,15 @@ export function AdminOrderCard({
   done,
   qr,
   today,
+  children,
 }: {
   card: AdminOrderCardData;
   actions: StaffActionView[];
   done: string | null;
   qr: AdminQr | null;
   today: IsoDate;
+  /** Phase 1C blocks (claims, bookings, photos), shown right after «Действия». */
+  children?: ReactNode;
 }) {
   const { order, client } = card;
   const itemTitle = new Map(card.items.map((item) => [item.id, `${item.brand} ${item.article}`]));
@@ -147,6 +151,23 @@ export function AdminOrderCard({
             <dd>{dateTime(order.clientArrivedAt)}</dd>
             <dt className="text-muted">Вернуть Rossko до</dt>
             <dd>{dateTime(order.supplierReturnDeadlineAt)}</dd>
+            {order.vinRequestId ? (
+              <>
+                <dt className="text-muted">Подбор по VIN</dt>
+                <dd>
+                  <Link
+                    href={`/admin/vin/${order.vinRequestId}`}
+                    className="text-accent underline"
+                    data-testid="admin-order-vin"
+                  >
+                    заявка № {vinRequestNumber(order.vinRequestId)}
+                  </Link>
+                  <span className="block text-xs text-muted">
+                    подобрали мы: не подошло — возврат денег
+                  </span>
+                </dd>
+              </>
+            ) : null}
           </dl>
         </Section>
 
@@ -200,6 +221,8 @@ export function AdminOrderCard({
           </div>
         ) : null}
       </Section>
+
+      {children}
 
       {qr ? (
         <Section title="QR на оплату" testId="admin-qr">

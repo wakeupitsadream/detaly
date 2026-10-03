@@ -3,9 +3,14 @@
  * (1280x800): no horizontal scroll, the seller INN in the footer, noindex on /search and
  * /cart, and a full-page screenshot in test-results/screens/<project>-<slug>.png for a human
  * look. Filled cart, checkout and order pages are covered by checkout.spec.ts.
+ *
+ * Phase 1C: /vin (the form when the checkout gate is open), /vin/sent, the sample /p/demo and a
+ * real /p/<token> (a VIN request answered through the admin API; only on the 1C stand,
+ * scripts/e2e-1c.sh) with noindex and no-referrer.
  */
-import { expect, test } from '@playwright/test';
-import { horizontalOverflow } from './helpers';
+import { expect, test, type APIRequestContext } from '@playwright/test';
+import { horizontalOverflow, randomIp, testPhone } from './helpers';
+import { PAYMENTS_ON, rememberSecrets } from './shop';
 
 const PAGES = [
   { slug: 'home', path: '/' },
@@ -17,6 +22,8 @@ const PAGES = [
   { slug: 'docs-consent', path: '/docs/consent' },
   { slug: 'returns', path: '/returns' },
   { slug: 'vin', path: '/vin' },
+  { slug: 'vin-sent', path: '/vin/sent' },
+  { slug: 'proposal-demo', path: '/p/demo' },
   { slug: 'cart-empty', path: '/cart' },
 ] as const;
 
@@ -36,7 +43,7 @@ for (const { slug, path } of PAGES) {
     await expect(footer.getByTestId('footer-inn')).toHaveText(INN_RE);
 
     const robots = page.locator('meta[name="robots"]');
-    if (path.startsWith('/search') || path === '/cart') {
+    if (path.startsWith('/search') || path === '/cart' || path.startsWith('/p/')) {
       await expect(robots).toHaveAttribute('content', /noindex/);
       expect(response?.headers()['x-robots-tag'] ?? '').toContain('noindex');
     }
@@ -66,6 +73,22 @@ for (const { slug, path } of PAGES) {
         '/',
       );
       await expect(page.getByTestId('checkout-link')).toHaveCount(0);
+    }
+    if (slug === 'vin') {
+      // The 1A/1B stands set RKN_NOTICE_NUMBER: the request form is on.
+      await expect(page.getByTestId('vin-form')).toBeVisible();
+      await expect(page.getByRole('link', { name: /согласие на обработку/ })).toHaveAttribute(
+        'href',
+        '/docs/consent',
+      );
+    }
+    if (slug === 'vin-sent') {
+      await expect(page.getByTestId('vin-sent-title')).toHaveText('Заявка принята');
+    }
+    if (slug === 'proposal-demo') {
+      expect(response?.headers()['referrer-policy']).toBe('no-referrer');
+      await expect(page.getByTestId('proposal-line').first()).toBeVisible();
+      await expect(page.getByTestId('proposal-total')).toHaveText(/\d\s?₽/);
     }
     if (slug === 'home') {
       const form = page.locator('form[role="search"]');
@@ -132,4 +155,92 @@ test('robots.txt closes service paths, search is closed by noindex instead', asy
   expect(search.headers()['x-robots-tag'] ?? '').toContain('noindex');
   const api = await request.get('/api/health/live');
   expect(api.headers()['x-robots-tag'] ?? '').toContain('noindex');
+});
+
+const ADMIN_USER = process.env.E2E_ADMIN_USER ?? 'admin';
+const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'e2e-admin-password';
+
+/**
+ * A live proposal without the browser: POST /api/vin (JSON mode), the admin answer and «Отправить
+ * клиенту» through /api/admin/vin/<id>/actions. Returns the /p/<token> path.
+ */
+async function liveProposal(request: APIRequestContext, baseURL: string): Promise<string> {
+  const origin = new URL(baseURL).origin;
+  const ip = randomIp();
+  const page = await request.get('/vin', { headers: { 'X-Real-IP': ip } });
+  const html = await page.text();
+  const consent = /name="consentPdVersionId" value="([0-9a-f-]{36})"/.exec(html)?.[1] ?? '';
+  const requestKey = /name="requestKey" value="([0-9a-f-]{36})"/.exec(html)?.[1] ?? '';
+  const phone = testPhone();
+  rememberSecrets(phone.e164, phone.national, 'XTA210990Y7654321');
+  const sent = await request.post('/api/vin', {
+    headers: { Origin: origin, Accept: 'application/json', 'X-Real-IP': ip },
+    multipart: {
+      vin: 'XTA210990Y7654321',
+      need: 'Тормозные колодки передние',
+      phone: phone.typed,
+      channel: 'sms',
+      consentPd: 'on',
+      consentPdVersionId: consent,
+      requestKey,
+      website: '',
+    },
+  });
+  expect(sent.status(), 'POST /api/vin').toBe(200);
+
+  const auth = `Basic ${Buffer.from(`${ADMIN_USER}:${ADMIN_PASSWORD}`).toString('base64')}`;
+  const list = await (
+    await request.get('/admin/vin?status=open', { headers: { Authorization: auth } })
+  ).text();
+  // React separates adjacent text nodes with <!-- --> in server HTML.
+  const row =
+    list
+      .replace(/<!-- -->/g, '')
+      .split('<tr')
+      .find((part) => part.includes(`•••${phone.last4}`)) ?? '';
+  const id = /href="\/admin\/vin\/([0-9a-f-]{36})"/.exec(row)?.[1] ?? '';
+  expect(id, 'the request in the admin list').not.toBe('');
+  const steps: Record<string, string>[] = [
+    { action: 'preview', answer: 'TRW GDB1330 1' },
+    { action: 'send' },
+  ];
+  for (const fields of steps) {
+    const answer = await request.post(`/api/admin/vin/${id}/actions`, {
+      headers: { Origin: origin, Authorization: auth },
+      form: fields,
+      maxRedirects: 0,
+    });
+    expect(answer.status(), fields.action).toBe(303);
+  }
+  const card = await (
+    await request.get(`/admin/vin/${id}`, { headers: { Authorization: auth } })
+  ).text();
+  const href = /href="(\/p\/[A-Za-z0-9_-]{32})"/.exec(card)?.[1] ?? '';
+  expect(href, 'the proposal link').not.toBe('');
+  rememberSecrets(href.slice('/p/'.length));
+  return href;
+}
+
+test('/p/<token>: a live proposal, noindex and no-referrer, no horizontal scroll', async ({
+  page,
+  request,
+  baseURL,
+}, testInfo) => {
+  test.skip(!PAYMENTS_ON, 'needs the 1C stand with the admin: bash scripts/e2e-1c.sh');
+  const href = await liveProposal(request, baseURL ?? 'http://127.0.0.1:3100');
+  const response = await page.goto(href, { waitUntil: 'networkidle' });
+  expect(response?.status()).toBe(200);
+  expect(response?.headers()['x-robots-tag'] ?? '').toContain('noindex');
+  expect(response?.headers()['referrer-policy']).toBe('no-referrer');
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
+  await expect(page.getByTestId('proposal-line')).toHaveCount(1);
+  await expect(page.getByTestId('proposal-take')).toBeVisible();
+  if (testInfo.project.name === 'mobile') {
+    await expect(page.getByTestId('proposal-bar')).toBeVisible();
+  }
+  expect(await horizontalOverflow(page), `${href} horizontal scroll`).toBeLessThanOrEqual(0);
+  await page.screenshot({
+    path: `test-results/screens/${testInfo.project.name}-proposal-live.png`,
+    fullPage: true,
+  });
 });

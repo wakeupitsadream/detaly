@@ -153,6 +153,9 @@ jobs:
       # (YooKassa mock on :3199 as YOOKASSA_API_URL, webhook allowlist 127.0.0.1/32 with
       # TRUSTED_IP_HEADER=x-real-ip, ROSSKO_ALLOW_CHECKOUT=true on fixtures, SMS_PROVIDER=none,
       # no Telegram token); only the admin password comes from here.
+      # Phase 1C (docs/phase-1c-implementation.md section 18): scripts/e2e-1c.sh adds
+      # FILES_STORAGE=local in a temporary directory, INSTALL_PARTNER_*, TG_CLIENT_BOT_USERNAME
+      # without a bot token, and greps the logs for VINs and proposal/link tokens too.
       ADMIN_BASIC_AUTH: admin:e2e-admin-password
       E2E_OUT_DIR: ${{ github.workspace }}/e2e-out
     steps:
@@ -174,10 +177,11 @@ jobs:
         run: pnpm --filter @detaly/web exec playwright install --with-deps chromium
 
       # Migrations and seed, web standalone build, the YooKassa mock, the worker and web,
-      # Playwright 1A + 1B on 375 and 1280, then the web and worker logs are checked for phone
-      # numbers and the order tokens of the run (counts only, never the matching lines).
+      # Playwright 1A + 1B + 1C on 375 and 1280, then the web and worker logs are checked for
+      # phone numbers, VINs and the order, proposal and link tokens of the run (counts only,
+      # never the matching lines).
       - name: E2E with the YooKassa mock and the worker (mobile 375 and desktop 1280)
-        run: bash scripts/e2e-1b.sh
+        run: bash scripts/e2e-1c.sh
 
       - name: Screenshots, reports and logs
         if: always()

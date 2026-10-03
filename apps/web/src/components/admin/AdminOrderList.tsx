@@ -1,7 +1,8 @@
 import { ORDER_STATUSES } from '@detaly/domain';
 import Link from 'next/link';
 import {
-  ATTENTION_FILTER,
+  ADMIN_EXTRA_FILTER_LABELS,
+  ADMIN_EXTRA_FILTERS,
   type AdminListQuery,
   type AdminOrderList as AdminOrderListData,
 } from '@/server/admin/queries';
@@ -39,7 +40,11 @@ export function AdminOrderList({
             className="rounded-md border border-line bg-card px-2 py-2"
           >
             <option value="">Все заказы</option>
-            <option value={ATTENTION_FILTER}>Требуют внимания</option>
+            {ADMIN_EXTRA_FILTERS.map((filter) => (
+              <option key={filter} value={filter}>
+                {ADMIN_EXTRA_FILTER_LABELS[filter]}
+              </option>
+            ))}
             {ORDER_STATUSES.map((status) => (
               <option key={status} value={status}>
                 {adminStatusLabel(status)}

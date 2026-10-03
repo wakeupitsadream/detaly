@@ -3,27 +3,16 @@
  * one of the 17 statuses has a label: 1A reaches only awaiting_payment, awaiting_confirmation
  * and cancelled, the rest are ready for 1B/1C.
  */
-import { isOneOf, ORDER_STATUSES, type OrderStatus } from '@detaly/domain';
+import {
+  CLIENT_ORDER_STATUS_LABELS,
+  isOneOf,
+  ORDER_STATUSES,
+  type OrderStatus,
+} from '@detaly/domain';
 
-export const ORDER_STATUS_LABELS: Readonly<Record<OrderStatus, string>> = {
-  draft: 'Оформляется',
-  awaiting_payment: 'Ждёт оплаты',
-  awaiting_confirmation: 'Ждёт подтверждения',
-  confirmed: 'Подтверждён',
-  ordering: 'Заказываем у поставщика',
-  awaiting_supplier_invoice: 'Заказываем у поставщика',
-  ordered_at_supplier: 'Заказан у поставщика',
-  needs_attention: 'Уточняем детали заказа',
-  awaiting_client_approval: 'Нужно ваше решение',
-  ready: 'Готов к выдаче',
-  out_for_delivery: 'Передан курьеру',
-  awaiting_handover_payment: 'Ждёт оплаты при получении',
-  handed: 'Выдан',
-  completed: 'Завершён',
-  cancelled: 'Отменён',
-  refund_pending: 'Возвращаем деньги',
-  refunded: 'Деньги возвращены',
-};
+/** The client wording lives in @detaly/domain, shared with the client bot. */
+export const ORDER_STATUS_LABELS: Readonly<Record<OrderStatus, string>> =
+  CLIENT_ORDER_STATUS_LABELS;
 
 /** Colour of the status badge. */
 export type StatusTone = 'wait' | 'progress' | 'success' | 'stopped';

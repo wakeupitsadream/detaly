@@ -305,12 +305,19 @@ export function demoFormRedirect(method: string, path: string): string | null {
   return null;
 }
 
-/** 303 to a same-site path (relative Location: valid whatever host the demo answers on). */
-function demoSeeOther(location: string): NextResponse {
+/**
+ * 303 to a same-site path. The Location must be absolute: Next parses the Location of a proxy
+ * response without a base, so a relative one throws ERR_INVALID_URL (500 on the standalone
+ * server); a Location on the request's own host is relativized again by Next. The base is
+ * APP_BASE_URL (on Vercel the demo's own host, packages/config), which the same-origin checks
+ * use too: the standalone server's request URL is its internal address (localhost:<port>), not
+ * the public host. Only when the env does not parse does the request URL stand in.
+ */
+function demoSeeOther(base: string | URL, location: string): NextResponse {
   return new NextResponse(null, {
     status: 303,
     headers: {
-      Location: location,
+      Location: new URL(location, base).toString(),
       'Cache-Control': 'no-store',
       'X-Robots-Tag': NOINDEX,
       'Referrer-Policy': 'no-referrer',
@@ -385,7 +392,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     if (rawDemoFlag()) {
       const path = canonicalPath(request.nextUrl.pathname);
       const redirect = demoFormRedirect(request.method, path);
-      if (redirect !== null) return demoSeeOther(redirect);
+      if (redirect !== null) return demoSeeOther(request.nextUrl, redirect);
       const blocked = demoBlockedPath(path);
       if (blocked !== null) {
         return demoNotFoundResponse(request, path.startsWith('/api/') ? 'api' : blocked);
@@ -398,7 +405,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const path = canonicalPath(pathname);
   if (env.DEMO_MODE) {
     const redirect = demoFormRedirect(request.method, path);
-    if (redirect !== null) return demoSeeOther(redirect);
+    if (redirect !== null) return demoSeeOther(env.APP_BASE_URL, redirect);
     const blocked = isAdminPath(pathname) ? 'page' : demoBlockedPath(path);
     if (blocked !== null) {
       return demoNotFoundResponse(request, path.startsWith('/api/') ? 'api' : blocked);

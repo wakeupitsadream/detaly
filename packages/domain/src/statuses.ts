@@ -55,6 +55,31 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 /** Statuses with no outgoing transitions. */
 export const TERMINAL_ORDER_STATUSES = ['refunded'] as const satisfies readonly OrderStatus[];
 
+/**
+ * Order statuses in the client's words: the order page /o/<token> and the client bot use the
+ * same wording (docs/phase-1a-implementation.md 7.1). The staff labels of @detaly/orders name
+ * the supplier's steps and are not for clients.
+ */
+export const CLIENT_ORDER_STATUS_LABELS: Readonly<Record<OrderStatus, string>> = {
+  draft: 'Оформляется',
+  awaiting_payment: 'Ждёт оплаты',
+  awaiting_confirmation: 'Ждёт подтверждения',
+  confirmed: 'Подтверждён',
+  ordering: 'Заказываем у поставщика',
+  awaiting_supplier_invoice: 'Заказываем у поставщика',
+  ordered_at_supplier: 'Заказан у поставщика',
+  needs_attention: 'Уточняем детали заказа',
+  awaiting_client_approval: 'Нужно ваше решение',
+  ready: 'Готов к выдаче',
+  out_for_delivery: 'Передан курьеру',
+  awaiting_handover_payment: 'Ждёт оплаты при получении',
+  handed: 'Выдан',
+  completed: 'Завершён',
+  cancelled: 'Отменён',
+  refund_pending: 'Возвращаем деньги',
+  refunded: 'Деньги возвращены',
+};
+
 /** Per-item state (10 values). An order is `ready` when every live item is `arrived`. */
 export const ORDER_ITEM_STATES = [
   'pending',

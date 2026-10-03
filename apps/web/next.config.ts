@@ -22,6 +22,13 @@ const isDev = process.env.NODE_ENV === 'development';
  */
 export const PAYMENT_FORM_ACTION_ORIGINS = ['https://yoomoney.ru', 'https://*.yoomoney.ru'];
 
+/**
+ * «Статусы в Telegram» on /o/<token> posts to /api/orders/<token>/link, which answers 303 to the
+ * client bot's deep link https://t.me/<bot>?start=<payload>; without t.me here the no-script form
+ * path is refused by form-action (the button navigates by script otherwise).
+ */
+export const MESSENGER_FORM_ACTION_ORIGINS = ['https://t.me'];
+
 export const contentSecurityPolicy = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
@@ -31,7 +38,7 @@ export const contentSecurityPolicy = [
   `connect-src 'self'${isDev ? ' ws:' : ''}`,
   "object-src 'none'",
   "base-uri 'self'",
-  `form-action 'self' ${PAYMENT_FORM_ACTION_ORIGINS.join(' ')}`,
+  `form-action 'self' ${[...PAYMENT_FORM_ACTION_ORIGINS, ...MESSENGER_FORM_ACTION_ORIGINS].join(' ')}`,
   "frame-ancestors 'none'",
 ].join('; ');
 

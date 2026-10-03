@@ -504,7 +504,8 @@ describe('POST /api/orders/<token>/pay', () => {
       .map((d) => d.trim())
       .find((d) => d.startsWith('form-action '));
     expect(formAction?.split(/\s+/)).toEqual(
-      expect.arrayContaining(["'self'", 'https://yoomoney.ru']),
+      // t.me: the «Статусы в Telegram» form follows its 303 to the client bot's deep link.
+      expect.arrayContaining(["'self'", 'https://yoomoney.ru', 'https://t.me']),
     );
     const order = await seedOrder();
     const { location } = await pay(order.token);

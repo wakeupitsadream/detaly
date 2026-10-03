@@ -77,7 +77,10 @@ async function readBoundedBytes(
   return bytes;
 }
 
-function isFileEntry(value: FormDataEntryValue): value is File {
+/** FormData entry type without the DOM lib (the worker typechecks this file through its flow harness). */
+type FormEntry = ReturnType<FormData['get']> & {};
+
+function isFileEntry(value: FormEntry): value is Exclude<FormEntry, string> {
   return typeof value !== 'string';
 }
 
@@ -97,7 +100,7 @@ export async function readPhotoForm(request: Request, limits: PhotoFormLimits): 
   }
   const bytes = await readBoundedBytes(request, maxTotalBytes);
 
-  let entries: [string, FormDataEntryValue][];
+  let entries: [string, FormEntry][];
   try {
     const parsed = await new Response(bytes, {
       headers: { 'content-type': contentType },

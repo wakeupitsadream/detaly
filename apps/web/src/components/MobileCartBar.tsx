@@ -14,7 +14,9 @@ function hiddenOn(pathname: string | null): boolean {
     pathname === '/cart' ||
     pathname === '/checkout' ||
     pathname === '/o' ||
-    pathname.startsWith('/o/')
+    pathname.startsWith('/o/') ||
+    // A proposal page /p/<token> has its own bottom bar in the same place.
+    pathname.startsWith('/p/')
   );
 }
 

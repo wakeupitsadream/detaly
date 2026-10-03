@@ -1,32 +1,11 @@
 // Texts of the client bot (docs/phase-1c-implementation.md section 8, decisions С2–С6, С24).
 // PD minimisation (PLAN section 4): no client phone, name or address in any text; the brand and
 // the pickup point's phone come from env; links lead to /o/<token>.
-import type { OrderStatus } from '@detaly/domain';
+import { CLIENT_ORDER_STATUS_LABELS, type OrderStatus } from '@detaly/domain';
 
-/**
- * Statuses in the client's words. The same wording as the order page
- * (apps/web/src/server/orders/status-labels.ts), which the worker cannot import; the staff
- * labels of @detaly/orders name the supplier and are not for clients.
- */
-export const CLIENT_STATUS_LABELS: Readonly<Record<OrderStatus, string>> = {
-  draft: 'Оформляется',
-  awaiting_payment: 'Ждёт оплаты',
-  awaiting_confirmation: 'Ждёт подтверждения',
-  confirmed: 'Подтверждён',
-  ordering: 'Заказываем у поставщика',
-  awaiting_supplier_invoice: 'Заказываем у поставщика',
-  ordered_at_supplier: 'Заказан у поставщика',
-  needs_attention: 'Уточняем детали заказа',
-  awaiting_client_approval: 'Нужно ваше решение',
-  ready: 'Готов к выдаче',
-  out_for_delivery: 'Передан курьеру',
-  awaiting_handover_payment: 'Ждёт оплаты при получении',
-  handed: 'Выдан',
-  completed: 'Завершён',
-  cancelled: 'Отменён',
-  refund_pending: 'Возвращаем деньги',
-  refunded: 'Деньги возвращены',
-};
+/** Statuses in the client's words: the same labels as the order page (@detaly/domain). */
+export const CLIENT_STATUS_LABELS: Readonly<Record<OrderStatus, string>> =
+  CLIENT_ORDER_STATUS_LABELS;
 
 export const TEXTS = {
   staleLink: 'Ссылка устарела. Нажмите «Статусы в Telegram» на странице заказа ещё раз.',

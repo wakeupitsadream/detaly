@@ -168,7 +168,7 @@ describe('demo proxy: phase 1C forms and pages (decision С21)', () => {
       } as ConstructorParameters<typeof NextRequest>[1]);
       const response = await proxy(form);
       expect(response.status, path).toBe(303);
-      expect(response.headers.get('location'), path).toBe(location);
+      expect(response.headers.get('location'), path).toBe(`http://localhost:3000${location}`);
       expect(response.headers.get('cache-control')).toBe('no-store');
       expect(response.headers.get('referrer-policy')).toBe('no-referrer');
       expect(bodyRead, path).toBe(false);
@@ -177,6 +177,14 @@ describe('demo proxy: phase 1C forms and pages (decision С21)', () => {
       expect(bodyRead, path).toBe(true);
     }
     expect(state.redisCalls).toBe(0);
+  });
+
+  it('builds the form redirect on APP_BASE_URL, not on the server address', async () => {
+    // The standalone server sees its internal address (localhost:<port>) as the request URL.
+    state.env = demoEnv({ APP_BASE_URL: 'https://demo.example' });
+    const response = await proxy(request('POST', '/api/orders/demo/install'));
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('https://demo.example/o/demo?demo=install');
   });
 
   it('answers 404 to real proposals and VIN confirmations, serves the samples', async () => {
@@ -203,7 +211,7 @@ describe('demo proxy: phase 1C forms and pages (decision С21)', () => {
     try {
       const response = await proxy(request('POST', '/api/vin'));
       expect(response.status).toBe(303);
-      expect(response.headers.get('location')).toBe('/vin/sent?demo=1');
+      expect(response.headers.get('location')).toBe('http://localhost:3000/vin/sent?demo=1');
     } finally {
       consoleError.mockRestore();
       if (saved === undefined) delete process.env.DEMO_MODE;

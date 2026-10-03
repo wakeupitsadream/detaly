@@ -116,13 +116,13 @@ describe('phase 1B processors', () => {
     ).rejects.toBeInstanceOf(UnrecoverableError);
   });
 
-  it('seller cards port: VIN cards are stubs until the seller-bot-1c package', async () => {
+  it('seller cards port: without a bot token a VIN card is skipped, not failed', async () => {
     const warn = vi.fn();
     const logger = { warn } as unknown as WorkerDeps['logger'];
     const cards = createSellerCards({ ...deps, telegram: null, logger });
     await expect(
       cards.postVin({ vinRequestId: '00000000-0000-7000-8000-000000000000' }),
-    ).resolves.toEqual({ status: 'skipped', fallbackReason: 'not_implemented' });
+    ).resolves.toEqual({ status: 'skipped', fallbackReason: 'driver_unavailable' });
     await expect(cards.refreshVin('00000000-0000-7000-8000-000000000000')).resolves.toBeUndefined();
   });
 

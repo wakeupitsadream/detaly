@@ -64,7 +64,7 @@ export function Card({
   /** The content (a list with its own padding) starts right under the title's hairline. */
   tight?: boolean;
   className?: string;
-  /** Anchor of the block (#install, #claim, #notify): forms redirect back to it. */
+  /** Anchor of the block (#install, #claim, #notify, #decision): forms redirect back to it. */
   id?: string;
 }) {
   return (

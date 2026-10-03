@@ -294,12 +294,12 @@ msw-моках SMS-шлюзов: `api.yookassa.ru`, `api.rossko.ru`, SMS Aero и
 | `packages/payments/src/yookassa.ts`: 92; `packages/domain/src/receipts.ts`: 79 | `customer.phone` в чеке — цифры без `+` (`79991234567`) | Ю11 | Максим (тикет ЮKassa, stage шаг 1) | 1B |
 | `packages/payments/src/yookassa.ts`: 128; `packages/payments/src/types.ts`: 22, 77, 133 | Поле `receipt_registration` у платежа и возврата со значениями `pending`/`succeeded`/`canceled`; нет поля — `null` | Ю1/Ю10 [ф1B] | Максим (тикет ЮKassa, stage шаги 1, 11) | 1B |
 | `packages/orders/src/payments.ts`: 471 | Чек возврата считается пробитым по `receipt_registration` объекта возврата; иначе нужен опрос `GET /receipts?refund_id=` | Ю10 [ф1B] | Максим (тикет ЮKassa, stage шаг 11) | 1B |
-| `packages/payments/src/yookassa.ts`: 156, 435; `apps/worker/src/jobs/payments/index.ts`: 173; `apps/worker/src/bots/seller/cards.ts`: 89, 342 | QR на точке: платёж с `confirmation: {type: 'qr'}` без `return_url`, данные QR — ссылка в `confirmation.confirmation_data`; бот рисует из неё картинку и кнопку-ссылку | Ю9, Ю9 [ф1B] | Максим (тикет ЮKassa, stage шаг 10) | 1B |
+| `packages/payments/src/yookassa.ts`: 156, 435; `apps/worker/src/jobs/payments/index.ts`: 173; `apps/worker/src/bots/seller/cards.ts`: 133, 513 | QR на точке: платёж с `confirmation: {type: 'qr'}` без `return_url`, данные QR — ссылка в `confirmation.confirmation_data`; бот рисует из неё картинку и кнопку-ссылку | Ю9, Ю9 [ф1B] | Максим (тикет ЮKassa, stage шаг 10) | 1B |
 | `packages/payments/src/yookassa.ts`: 167; `packages/payments/src/types.ts`: 83 | Время оплаты — `captured_at` у succeeded-платежа с `capture=true` | Ю20 | Максим (stage шаг 1) | 1B |
 | `packages/payments/src/yookassa.ts`: 213; `packages/payments/src/testing/yookassa-handlers.ts`: 448; `apps/worker/src/jobs/receipts/payment-receipt.ts`: 39 | `settlements[].type` чека в составе онлайн-платежа — `cashless`, чека зачёта — `prepayment`; по ним воркер находит «свой» чек в списке | Ю1, Ю14 | Максим (тикет ЮKassa, stage шаги 1, 9) | 1B |
 | `packages/payments/src/yookassa.ts`: 218; `packages/payments/src/types.ts`: 171 | У succeeded-чека есть `registered_at` | Ю20 | Максим (stage шаг 9) | 1B |
 | `packages/payments/src/yookassa.ts`: 232, 249; `packages/payments/src/types.ts`: 99; `packages/payments/src/testing/yookassa-handlers.ts`: 374 | Списки ЮKassa — `{type: 'list', items, next_cursor}`, на последней странице `next_cursor` нет, `limit` не больше 100 | Ю14, Ю15 | Максим (тикет ЮKassa) | 1B |
-| `packages/payments/src/yookassa.ts`: 266; `packages/payments/src/types.ts`: 27, 31, 55; `packages/orders/src/rows.ts`: 167; `packages/payments/test/yookassa-1b.test.ts`: 145 | `metadata` — до 16 ключей, ключ до 32 и значение до 512 символов (`order_id`, `order_number`, `payment_row_id`); `description` платежа до 128 символов | Ю11 [ф1B], Ю11 [ф1B, лимиты] | Максим (тикет ЮKassa) | 1B |
+| `packages/payments/src/yookassa.ts`: 266; `packages/payments/src/types.ts`: 27, 31, 55; `packages/orders/src/rows.ts`: 179; `packages/payments/test/yookassa-1b.test.ts`: 145 | `metadata` — до 16 ключей, ключ до 32 и значение до 512 символов (`order_id`, `order_number`, `payment_row_id`); `description` платежа до 128 символов | Ю11 [ф1B], Ю11 [ф1B, лимиты] | Максим (тикет ЮKassa) | 1B |
 | `packages/payments/src/yookassa.ts`: 408; `packages/payments/src/receipt-provider.ts`: 21, 25; `packages/payments/src/testing/yookassa-handlers.ts`: 18 | `GET /receipts?payment_id=` и `?refund_id=` с постраничностью курсором; чек, отправленный в платеже, появляется в этом списке | Ю14 | Максим (тикет ЮKassa, stage шаг 1) | 1B |
 | `apps/worker/src/jobs/receipts/payment-receipt.ts`: 54, 81 | Если список чеков недоступен, а у платежа `receipt_registration = succeeded`, чек платежа считается пробитым (вместо id чека пишется id платежа); окончательная ошибка списка — «неизвестно», а не «чек не прошёл» | Ю19 | Максим (тикет ЮKassa) | 1B |
 | `apps/worker/src/jobs/receipts/refund-receipt.ts`: 4, 46, 57 | Чек возврата находится в `GET /receipts?refund_id=` (формат списка как у платежа) или по `receipt_registration` объекта возврата; окончательная ошибка списка — «неизвестно», а не «чек не прошёл» | Ю10 [ф1B], Ю14 | Максим (тикет ЮKassa, stage шаг 11) | 1B |
@@ -322,15 +322,15 @@ msw-моках SMS-шлюзов: `api.yookassa.ru`, `api.rossko.ru`, SMS Aero и
 | `packages/rossko/src/checkout-match.ts`: 7 | `ItemsList`/`ItemsErrorList` GetCheckout повторяют артикул, бренд, склад и количество в том виде, в каком мы их отправили; сопоставление строк по ним | R10 | Максим и Лёша (письмо Rossko) | 1B |
 | `apps/worker/src/jobs/rossko/checkout.ts`: 368 | Ответ с номером заказа без `ItemsList` и `ItemsErrorList` значит «заказаны все строки» | R20 | Максим и Лёша (письмо Rossko) | 1B |
 | `apps/worker/src/jobs/rossko/checkout.ts`: 410 | Номер счёта = номер заказа Rossko, сумма = строки + `DeliveryCost` (строка без цены — по нашей закупочной) | R19, R7 | Максим и Лёша (письмо Rossko) | 1B |
-| `packages/domain/src/state-machine/transitions.ts`: 619 | При `rossko.prepay_invoice` счёт за повторный заказ позиции (взамен брака) оплачивается в ЛК Rossko, заказ не возвращается в «ждёт оплаты счёта» | R7, R19 | Максим и Лёша (письмо Rossko) | 1B |
+| `packages/domain/src/state-machine/transitions.ts`: 651 | При `rossko.prepay_invoice` счёт за повторный заказ позиции (взамен брака) оплачивается в ЛК Rossko, заказ не возвращается в «ждёт оплаты счёта» | R7, R19 | Максим и Лёша (письмо Rossko) | 1B |
 | `packages/domain/src/recheck.ts`: 15 | Перепроверка перед заказом сопоставляет предложения по `offer_key` и ищет по исходному артикулу — те же допущения, что в корзине | R14, R15, R18 | Максим и Лёша (письмо Rossko, `scripts/rossko-smoke.ts`) | 1B |
 | `packages/rossko/src/mapper.ts`: 75 | Нечисловой остаток (`">10"`) отбрасывает предложение | R13 | Максим и Лёша (письмо Rossko) | 1A |
 | `packages/rossko/src/client.ts`: 75 | Текст «ничего не найдено» GetSearch взят из синтетической фикстуры | R15 | Максим (`scripts/rossko-smoke.ts`) | 1A |
 | `packages/domain/src/cart.ts`: 6; `apps/web/src/server/cart-store.ts`: 11; `apps/web/src/server/cart/cart-service.ts`: 15 | Стабильный id склада между вызовами GetSearch, кроссы по исходному артикулу | R13–R15 | Максим и Лёша (письмо Rossko) | 1A |
-| `packages/notify/src/drivers/sms.ts`: 10, 31; `packages/config/src/env.ts`: 227 | Адреса шлюзов (`https://gate.smsaero.ru/v2`, `https://smsc.ru/sys`) и форматы: SMS Aero — `GET /sms/send` с Basic `login:apiKey`, ответ `{success, data: {id, cost}}`; smsc — `GET /send.php` с `fmt=3`, ошибки `{error, error_code}` при HTTP 200 | раздел 5: «SMS Aero [ф1B]», «smsc.ru [ф1B]» | Максим (SMS-провайдер) | 1B |
+| `packages/notify/src/drivers/sms.ts`: 10, 31; `packages/config/src/env.ts`: 256 | Адреса шлюзов (`https://gate.smsaero.ru/v2`, `https://smsc.ru/sys`) и форматы: SMS Aero — `GET /sms/send` с Basic `login:apiKey`, ответ `{success, data: {id, cost}}`; smsc — `GET /send.php` с `fmt=3`, ошибки `{error, error_code}` при HTTP 200 | раздел 5: «SMS Aero [ф1B]», «smsc.ru [ф1B]» | Максим (SMS-провайдер) | 1B |
 | `packages/notify/src/drivers/sms.ts`: 154, 168 | smsc: временные коды ошибок 4 и 9; `cost=2` отправляет и возвращает цену | раздел 5: «smsc.ru [ф1B]» | Максим (SMS-провайдер) | 1B |
 | `packages/notify/src/sms-text.ts`: 7 | Оба шлюза считают кириллицу по 70/67 символов, тариф за часть; шаблоны рассчитаны на 2 части | раздел 5: «SMS-сегменты [ф1B]» | Максим (SMS-провайдер) | 1B |
-| `packages/config/src/env.ts`: 230; `apps/worker/src/jobs/notify/sms.ts`: 10 | Цена одного SMS `SMS_PRICE_KOP` (по умолчанию 500 коп.) для месячного бюджета; неудачная отправка стоит 0 | раздел 5: «SMS [ф1B]» | Максим (SMS-провайдер) | 1B |
+| `packages/config/src/env.ts`: 259; `apps/worker/src/jobs/notify/sms.ts`: 10 | Цена одного SMS `SMS_PRICE_KOP` (по умолчанию 500 коп.) для месячного бюджета; неудачная отправка стоит 0 | раздел 5: «SMS [ф1B]» | Максим (SMS-провайдер) | 1B |
 
 Проверка полноты списка (в CI её нет, запускать вручную перед закрытием фазы):
 
@@ -352,8 +352,8 @@ done
 
 Каркас раздела заведён на слиянии волны 1 фазы 1C (пакет `foundation`). Пакеты волн 2–3
 (`client-bot`, `vin-core`, `notify-1c` и другие) добавляют сюда свои строки в том же формате, что
-в разделе 7.2; итоговый grep всех `VERIFY:` 1C — на интеграции (`docs/phase-1c-implementation.md`,
-раздел 14, п. 11). Внешние API 1C (Telegram Bot API, S3 в РФ) из среды разработки недоступны:
+в разделе 7.2. Итоговый grep всех `VERIFY:` 1C (`docs/phase-1c-implementation.md`, раздел 14,
+п. 11) сделан на слиянии волны 3: строки ниже и номера строк раздела 7.2 сверены с кодом. Внешние API 1C (Telegram Bot API, S3 в РФ) из среды разработки недоступны:
 код проверен на подмене транспорта grammY и msw.
 
 | Файл: строки | Что предполагает код | Вопрос | Кто | Фаза |
@@ -373,6 +373,9 @@ done
 | `apps/worker/src/bots/client/bind.ts`: 148; `apps/worker/test/client-bot.int.test.ts`: 392 | `contact.phone_number` приходит как `79…` или `+79…`; сверка с `users.phone` через `normalizePhone` принимает оба (и `89…`) | Формат номера в контакте Telegram | Максим (живая проверка, runbook 14.10) | 1C |
 | `apps/worker/src/bots/client/bot.ts`: 52 | «Остановить и заблокировать бота» в личке приходит как `my_chat_member` со статусом `kicked` (разблокировка — `member`, затем `/start` сообщением); по `kicked` ставится `blocked_at` | Обновления `my_chat_member` в личном чате | Максим (живая проверка, runbook 14.10) | 1C |
 | `apps/worker/src/bots/client/callbacks.ts`: 90 | Правка клавиатуры старого сообщения может быть отвергнута (и 400 «message is not modified» на ту же клавиатуру); результат нажатия всё равно показан ответом на нажатие | Ограничения `editMessageReplyMarkup` / `editMessageText` по давности сообщения | Максим (живая проверка) | 1C |
+| `apps/worker/src/bots/seller/photos.ts`: 6, 28 | Bot API отдаёт через `getFile` файлы до 20 МБ; больше лимита (и больше лимита фото проекта) файл не скачивается, продавцу — отказ с размером | Лимит `getFile` облачного Bot API | Максим (живая проверка после деплоя) | 1C |
+| `apps/worker/src/bots/seller/photos.ts`: 130 | Файл скачивается по `https://api.telegram.org/file/bot<токен>/<file_path>` (путь из `getFile`) | Адрес скачивания файлов Bot API | Максим (живая проверка после деплоя) | 1C |
+| `apps/web/src/app/(site)/vin/sent/[link]/page.tsx`: 36; `apps/web/next.config.ts`: 30 | Ссылка `https://t.me/<бот>?start=<payload>` открывает клиентского бота; payload — до 64 символов `[A-Za-z0-9_-]`; 303 формы «Статусы в Telegram» на `https://t.me` разрешён в CSP `form-action` | Формат deep link и домен перехода (t.me) | Максим (живая проверка, runbook 14.10) | 1C |
 
 ### 8.1. Итоги ручной проверки фазы 1C
 

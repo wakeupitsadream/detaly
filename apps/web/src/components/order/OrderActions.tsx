@@ -212,7 +212,7 @@ export function ApprovalBlock({
       ? 'Заказ будет отменён. Оплаты не было — возвращать нечего.'
       : 'Позиция будет отменена, остальное привезём.';
   return (
-    <Card title="Нужно ваше решение" testId="order-approval">
+    <Card title="Нужно ваше решение" testId="order-approval" id="decision">
       {approval.kind === 'alternative' && approval.alternative ? (
         <div className="space-y-1">
           <p className="wrap-anywhere">
@@ -345,7 +345,8 @@ export function RefuseBlock({
     : 'Отказаться от заказа можно до получения. Оплаты не было — возвращать нечего.';
   return (
     <section
-      className="min-w-0 rounded border border-line bg-card p-5 md:p-6"
+      id="refuse"
+      className="min-w-0 scroll-mt-24 rounded border border-line bg-card p-5 md:p-6"
       data-testid="order-refuse"
     >
       <p className="mb-4 text-sm text-muted">{text}</p>

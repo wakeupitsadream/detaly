@@ -523,6 +523,8 @@ export function createCardService(
     postVinCard,
 
     async refreshVin(vinRequestId) {
+      // Without a bot there is no message to redraw (and no reason to touch the database).
+      if (api === null) return;
       const [card] = await db
         .select({ id: sellerCards.id })
         .from(sellerCards)

@@ -186,6 +186,11 @@ grep -cE '\+79[0-9]{9}' /tmp/web-1a.log   # 0: телефонов в логах 
 S3 — `docs/external.md`, раздел 8. Живые Telegram, S3, ЮKassa и Rossko в 1C не проверялись: всё
 на подменённом транспорте grammY, msw и фикстурах.
 
+Сквозной прогон 1C — `bash scripts/e2e-1c.sh` после `scripts/dev-db.sh up` и
+`eval "$(scripts/dev-db.sh env)"`: миграции и сид, standalone-сборка web, мок ЮKassa, worker без
+токенов Telegram, все спеки Playwright 1A–1C (375 и 1280) и проверка логов на телефоны, VIN и
+токены. Лучше на отдельной базе Redis: `E2E_REDIS_URL=redis://127.0.0.1:56379/7`.
+
 Уведомления клиенту уходят через клиентский бот, если клиент его подключил (MAX — фаза 2),
 иначе SMS по allowlist, иначе `skipped` с `fallback_reason`. В сообщениях Telegram только номер
 заказа, статус, бренд и артикул, даты, адрес и часы точки выдачи, код выдачи, фото упаковки и

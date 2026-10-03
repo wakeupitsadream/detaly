@@ -133,7 +133,7 @@ describe('none store', () => {
 });
 
 describe('createFileStoreFromEnv', () => {
-  it('builds none by default, local by FILES_LOCAL_DIR, and s3 is a phase 1C wave 2 stub', () => {
+  it('builds none by default, local by FILES_LOCAL_DIR, s3 by the S3_* settings', () => {
     expect(createFileStoreFromEnv(parseEnv(minimalEnvSource())).kind).toBe('none');
     expect(
       createFileStoreFromEnv(
@@ -149,7 +149,8 @@ describe('createFileStoreFromEnv', () => {
         S3_BUCKET: 'bucket',
       }),
     );
-    expect(() => createFileStoreFromEnv(s3)).toThrow(/not implemented/);
+    // The S3 store itself is tested in s3.test.ts (msw).
+    expect(createFileStoreFromEnv(s3).kind).toBe('s3');
   });
 });
 

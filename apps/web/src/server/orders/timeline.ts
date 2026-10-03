@@ -9,9 +9,12 @@
  * the receipt kind), and an item is named by brand and article only.
  */
 import {
+  CLAIM_DECISION_LABELS,
   CLIENT_TIME_ZONE,
   formatDayMonth,
+  installSlotOf,
   localDate,
+  type ClaimDecision,
   type JournalEvent,
   type OrderEvent,
 } from '@detaly/domain';
@@ -95,22 +98,10 @@ export const HIDDEN_TIMELINE_EVENTS: ReadonlySet<OrderEvent | JournalEvent> = ne
   'webhook_stale',
   'deferred_1a_processed',
   'claim_deferred',
-  // Phase 1C journal events: hidden until the web-order package phrases them (section 10.5).
-  'claim_return_accepted',
-  'claim_decided',
-  'claim_closed',
-  'claim_compensation',
-  'install_requested',
-  'install_confirmed',
-  'install_declined',
-  'install_cancelled',
-  'install_done',
-  'install_no_show',
+  // Phase 1C (section 10.5): a reminder is a service record; switching the notifications off
+  // is the person's choice in the bot and says nothing about the order.
   'install_reminder',
-  'messenger_bound',
   'messenger_unbound',
-  'photo_added',
-  'vin_order',
 ]);
 
 type PhraseInput = Pick<TimelineEvent, 'type' | 'toStatus'> &
@@ -132,6 +123,16 @@ function itemTitle(event: PhraseInput, items: TimelineItems | undefined): string
 
 function withItem(text: string, title: string | null): string {
   return title === null ? text : `${text}: ${title}`;
+}
+
+/** 'чт 8 окт, 14:00' of an installation booking (payload.slotAt), or null. */
+function slotText(payload: unknown, timeZone: string = CLIENT_TIME_ZONE): string | null {
+  const raw = payloadField(payload, 'slotAt');
+  if (typeof raw !== 'string') return null;
+  const start = new Date(raw);
+  if (Number.isNaN(start.getTime())) return null;
+  const slot = installSlotOf({ slotStart: start, carReadyAt: start }, timeZone);
+  return `${slot.dayText}, ${slot.timeText}`;
 }
 
 const RECEIPT_PHRASES: Record<string, string> = {
@@ -225,9 +226,11 @@ function transitionPhrase(event: PhraseInput, items: TimelineItems | undefined):
     case 'completion_timeout':
       return 'Заказ завершён';
     case 'claim_opened':
-      return 'Обращение принято';
+      return to === 'handed' || to === 'completed'
+        ? 'Претензия принята'
+        : 'Претензия о просрочке принята';
     case 'claim_refund_approved':
-      return 'Возврат по обращению одобрен';
+      return withItem('Возврат по претензии одобрен', item);
     case 'client_refused':
       if (to === 'refund_pending') {
         return byClient
@@ -285,22 +288,56 @@ function journalPhrase(event: PhraseInput): string | null {
     case 'deferred_1a_processed':
     case 'claim_deferred':
       return null;
-    // Hidden (HIDDEN_TIMELINE_EVENTS) until web-order phrases them (phase 1C section 10.5).
+    // Phase 1C (section 10.5): claims, installation bookings, notifications, photos.
     case 'claim_return_accepted':
-    case 'claim_decided':
+      return 'Мастер принял возвращённую деталь';
+    case 'claim_decided': {
+      const decision = payloadField(event.payload, 'decision');
+      return typeof decision === 'string' && Object.hasOwn(CLAIM_DECISION_LABELS, decision)
+        ? `Ответ по претензии готов: ${CLAIM_DECISION_LABELS[decision as ClaimDecision].toLowerCase()}`
+        : 'Ответ по претензии готов';
+    }
     case 'claim_closed':
+      return payloadField(event.payload, 'decision') === 'replace'
+        ? 'Замена выдана, претензия закрыта'
+        : 'Претензия закрыта';
     case 'claim_compensation':
-    case 'install_requested':
-    case 'install_confirmed':
+      return 'Назначена компенсация за просрочку';
+    case 'install_requested': {
+      const slot = slotText(event.payload);
+      return slot === null
+        ? 'Запись на установку, ждём подтверждения мастера'
+        : `Запись на установку: ${slot}, ждём подтверждения мастера`;
+    }
+    case 'install_confirmed': {
+      const slot = slotText(event.payload);
+      return slot === null
+        ? 'Мастер подтвердил запись на установку'
+        : `Мастер подтвердил запись на установку: ${slot}`;
+    }
     case 'install_declined':
+      return 'Мастер не сможет принять в выбранное время — выберите другое';
     case 'install_cancelled':
+      return event.actorType === 'client'
+        ? 'Вы отменили запись на установку'
+        : 'Запись на установку отменена';
     case 'install_done':
+      return 'Установка выполнена';
     case 'install_no_show':
-    case 'install_reminder':
+      return 'Запись на установку пропущена';
     case 'messenger_bound':
-    case 'messenger_unbound':
+      return payloadField(event.payload, 'channel') === 'max'
+        ? 'Уведомления о статусе подключены в MAX'
+        : 'Уведомления о статусе подключены в Telegram';
     case 'photo_added':
+      return payloadField(event.payload, 'kind') === 'handover'
+        ? 'Добавлено фото выдачи'
+        : 'Добавлено фото упаковки';
     case 'vin_order':
+      return 'Заказ собран по подборке мастера';
+    // Hidden (HIDDEN_TIMELINE_EVENTS).
+    case 'install_reminder':
+    case 'messenger_unbound':
       return null;
     default:
       // Not a JournalEvent: an unknown type.

@@ -4,15 +4,25 @@ import { parseEnv } from '@detaly/config';
 import { buildOfferViews, formatPromise, promisedDate, type IsoDate } from '@detaly/domain';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import type * as Navigation from 'next/navigation';
+import { describe, expect, it, vi } from 'vitest';
 import { OrderDetails } from '@/components/order/OrderDetails';
 import { createDemoSupplier } from '@/server/demo/supplier';
 import {
+  buildDemoOrderServices,
   buildDemoOrderView,
   DEMO_ORDER_NUMBER,
   DEMO_ORDER_TOKEN,
+  type DemoScreen,
 } from '@/server/demo/order-fixture';
+import { demoFormRedirect } from '@/proxy';
 import { isOrderToken } from '@/server/orders/access';
+
+// ClaimForm is a client component: no app router in a static render.
+vi.mock('next/navigation', async (importOriginal) => ({
+  ...(await importOriginal<typeof Navigation>()),
+  useRouter: () => ({ refresh: () => undefined, push: () => undefined }),
+}));
 
 const env = parseEnv({ SESSION_SECRET: 'test-session-secret-0123456789abcdef', DEMO_MODE: 'true' });
 const supplier = createDemoSupplier({ env });
@@ -94,5 +104,93 @@ describe('demo order', () => {
     expect(html).toContain('Заказан у поставщика');
     expect(html).not.toMatch(/<form/);
     expect(html).not.toMatch(/(^|\D)(\d{10}|\d{12}|\d{15})(\D|$)/);
+  });
+});
+
+describe('demo order: phase 1C blocks (decision С21)', () => {
+  const HOURS = 'Пн–Пт 10:00–19:00';
+  const pickup = { name: null, address: 'г. Оренбург', hours: HOURS, phone: null };
+
+  async function demoHtml(screen: DemoScreen) {
+    const view = await build();
+    const services = buildDemoOrderServices({
+      view,
+      screen,
+      hours: HOURS,
+      partner: null,
+      now: NOW,
+    });
+    const html = renderToStaticMarkup(
+      createElement(OrderDetails, {
+        view,
+        services,
+        pickup,
+        contactPhone: null,
+        cartReminder: null,
+        nowMs: NOW.getTime(),
+        demo: true,
+      }),
+    );
+    return { services, html };
+  }
+
+  /** Every form of the page: method and action. */
+  function forms(html: string): string[] {
+    return [...html.matchAll(/<form[^>]*>/g)].map((m) => {
+      const tag = m[0];
+      const method = /method="([^"]+)"/.exec(tag)?.[1] ?? '';
+      const action = /action="([^"]+)"/.exec(tag)?.[1] ?? '';
+      return `${method} ${action}`;
+    });
+  }
+
+  it('its forms are GETs to the demo screens; nothing personal has a name', async () => {
+    const { html, services } = await demoHtml(null);
+    expect(forms(html)).toEqual(['get /o/demo', 'get /o/demo', 'get /o/demo']);
+    for (const screen of ['link', 'install', 'claim']) {
+      expect(html).toContain(`name="demo" value="${screen}"`);
+    }
+    for (const field of ['text', 'last4', 'photos', 'requestKey', 'channel']) {
+      expect(html).not.toContain(`name="${field}"`);
+    }
+    // The proxy's answer to a POST from elsewhere leads to the same screens (decision С21).
+    for (const form of ['link', 'install', 'claims']) {
+      expect(demoFormRedirect('POST', `/api/orders/demo/${form}`)).toMatch(
+        /^\/o\/demo\?demo=(link|install|claim)$/,
+      );
+    }
+    expect(services.install?.slots.length).toBeGreaterThan(0);
+    expect(services.install?.slots.length).toBeLessThanOrEqual(6);
+    expect(services.install?.demo).toBe(true);
+    expect(services.claims?.form?.kinds.map((k) => k.kind)).toEqual([
+      'refusal',
+      'not_fit',
+      'defect',
+    ]);
+    // The packaging photo is a placeholder: no file, no URL.
+    expect(services.photos).toEqual([{ id: 'demo-packaging', kind: 'packaging', url: null }]);
+    expect(html).toContain('data-testid="order-photo-stub"');
+    expect(html).not.toContain('/api/orders/demo/photos');
+    expect(html).toContain('оплачивается в сервисе по его чеку');
+    expect(html).not.toMatch(/(^|\D)(\d{10}|\d{12}|\d{15})(\D|$)/);
+  });
+
+  it('?demo=install shows the booking, ?demo=claim the accepted claim with its steps', async () => {
+    const install = await demoHtml('install');
+    expect(install.services.install?.booking?.status).toBe('requested');
+    expect(install.html).toContain('data-testid="install-booking"');
+    expect(install.html).not.toContain('/api/orders/demo/install/cancel');
+
+    const claim = await demoHtml('claim');
+    expect(claim.services.claims?.form).toBeNull();
+    expect(claim.html).toContain('data-testid="claim-card"');
+    expect(claim.html).toContain('Принесите деталь в упаковке');
+    expect(claim.html).not.toContain('data-testid="claim-form"');
+  });
+
+  it('is pure: the same input gives the same blocks', async () => {
+    const view = await build();
+    const input = { view, screen: null, hours: HOURS, partner: null, now: NOW } as const;
+    expect(buildDemoOrderServices(input)).toEqual(buildDemoOrderServices(input));
   });
 });

@@ -1,4 +1,4 @@
-import { formatRub, type NotificationChannel } from '@detaly/domain';
+import { formatRub } from '@detaly/domain';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import {
@@ -55,6 +55,7 @@ export function Card({
   aside,
   tight = false,
   className,
+  id,
 }: {
   title?: string;
   children: ReactNode;
@@ -63,10 +64,16 @@ export function Card({
   /** The content (a list with its own padding) starts right under the title's hairline. */
   tight?: boolean;
   className?: string;
+  /** Anchor of the block (#install, #claim, #notify): forms redirect back to it. */
+  id?: string;
 }) {
   return (
     <section
-      className={cn('min-w-0 rounded border border-line bg-card p-5 md:p-6', className)}
+      id={id}
+      className={cn(
+        'min-w-0 scroll-mt-24 rounded border border-line bg-card p-5 md:p-6',
+        className,
+      )}
       data-testid={testId}
     >
       {title ? (
@@ -275,57 +282,6 @@ export function TimelineBlock({ entries }: { entries: readonly TimelineEntry[] }
   );
 }
 
-const MESSENGERS = [
-  { channel: 'max', label: 'Статусы в MAX' },
-  { channel: 'telegram', label: 'Статусы в Telegram' },
-] as const satisfies readonly { channel: NotificationChannel; label: string }[];
-
-/**
- * Messenger binding buttons: inactive stubs until phase 1C (no link_tokens are created).
- * The channel chosen at checkout is highlighted.
- */
-export function MessengerStubs({ preferred }: { preferred: NotificationChannel | null }) {
-  return (
-    <Card title="Уведомления о статусе" testId="order-messengers">
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-        {MESSENGERS.map(({ channel, label }) => {
-          const selected = preferred === channel;
-          return (
-            <button
-              key={channel}
-              type="button"
-              disabled
-              aria-disabled="true"
-              className={cn(
-                'flex min-h-12 cursor-not-allowed flex-wrap items-center justify-between gap-2 rounded border border-line bg-paper px-4 py-2 text-left font-medium',
-                selected ? 'text-ink' : 'text-muted',
-              )}
-              data-testid={`messenger-${channel}`}
-              data-selected={selected ? 'true' : 'false'}
-            >
-              <span>
-                {label}
-                {selected ? (
-                  <span className="ml-2 text-sm font-normal text-muted">— вы выбрали</span>
-                ) : null}
-              </span>
-              <span className="rounded-sm bg-paper-2 px-1.5 py-0.5 font-mono text-[0.6875rem] tracking-wider text-muted uppercase">
-                скоро
-              </span>
-            </button>
-          );
-        })}
-      </div>
-      <p className="mt-3 text-sm text-muted">
-        {preferred === 'sms'
-          ? 'Вы выбрали SMS. Уведомления подключаются — пока следите за заказом на этой странице.'
-          : 'Уведомления подключаются — пока следите за заказом на этой странице.'}{' '}
-        Сохраните ссылку: по ней видно статус заказа.
-      </p>
-    </Card>
-  );
-}
-
 /**
  * The sample order (DEMO_MODE): what a status message looks like in the messenger, instead of
  * binding buttons that do nothing in a demo. Built from the order's own number, date and lift
@@ -335,10 +291,13 @@ export function MessengerPreview({
   number,
   install,
   hours,
+  bare = false,
 }: {
   number: string;
   install: InstallPlanView | null;
   hours: string | null;
+  /** Inside the notifications card of the demo (phase 1C): no card and title of its own. */
+  bare?: boolean;
 }) {
   // 'пн 5 окт с 11:00' -> 'пн 5 окт, окно на подъёмнике с 11:00'
   const when = install
@@ -346,10 +305,12 @@ export function MessengerPreview({
     : hours
       ? `Ждём вас: ${hours}.`
       : 'Ждём вас в пункте выдачи.';
-  return (
-    <Card title="Уведомления о статусе" testId="order-messengers">
+  const body = (
+    <>
       <p className="text-sm text-muted">
-        Статусы приходят в MAX или Telegram. Так выглядит сообщение, когда детали приедут:
+        {bare
+          ? 'Так выглядит сообщение бота, когда детали приедут:'
+          : 'Статусы приходят в MAX или Telegram. Так выглядит сообщение, когда детали приедут:'}
       </p>
       <div
         className="mt-4 rounded border border-line bg-paper-2 p-4"
@@ -366,6 +327,12 @@ export function MessengerPreview({
           <p className="mt-1.5 text-right font-mono text-xs text-muted">09:05</p>
         </div>
       </div>
+    </>
+  );
+  if (bare) return <div className="mt-5 border-t border-line pt-5">{body}</div>;
+  return (
+    <Card title="Уведомления о статусе" testId="order-messengers">
+      {body}
     </Card>
   );
 }

@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Акт выдачи товара</title>
+    <!--
+      Static print template (docs/phase-1c-implementation.md decision С23). Rendered once to
+      apps/web/public/print/akt-vydachi.pdf by scripts/make-print-pdfs.ts. Requisites, the order
+      and the parts are blank lines filled in by hand at the pickup point; nothing of the brand or
+      the seller is baked into the file. Signed copies are not scanned or stored (PLAN section 9,
+      item 9: it would widen the personal data kept).
+    -->
+    <style>
+      @page {
+        size: A4;
+        margin: 16mm 16mm 18mm;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: 'DejaVu Sans', 'Liberation Sans', Arial, sans-serif;
+        font-size: 10.5pt;
+        line-height: 1.45;
+        color: #16181b;
+      }
+      h1 {
+        margin: 0 0 1mm;
+        font-size: 17pt;
+      }
+      p {
+        margin: 0 0 2mm;
+      }
+      .band {
+        height: 2.4mm;
+        margin-bottom: 5mm;
+        background: repeating-linear-gradient(-45deg, #16181b 0 2.4mm, #f26b1d 2.4mm 4.8mm);
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+      .head {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2.5mm 8mm;
+        margin: 4mm 0 5mm;
+      }
+      .field span {
+        display: block;
+        color: #4a4f57;
+        font-size: 9pt;
+      }
+      .line {
+        border-bottom: 0.3mm solid #16181b;
+        min-height: 6mm;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 2mm 0 4mm;
+        font-size: 9.5pt;
+      }
+      th,
+      td {
+        border: 0.3mm solid #16181b;
+        padding: 1.6mm 2mm;
+        height: 8.5mm;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #eceae4;
+        font-weight: 600;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+      td.num,
+      th.num {
+        width: 8mm;
+        text-align: center;
+      }
+      td.qty,
+      th.qty {
+        width: 19mm;
+      }
+      td.sum,
+      th.sum {
+        width: 26mm;
+      }
+      .total {
+        display: flex;
+        justify-content: flex-end;
+        gap: 4mm;
+        margin-bottom: 5mm;
+      }
+      .total .line {
+        width: 45mm;
+      }
+      ul {
+        margin: 0 0 4mm;
+        padding-left: 6mm;
+      }
+      li {
+        margin-bottom: 1.2mm;
+      }
+      .signs {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10mm;
+        margin-top: 8mm;
+      }
+      .sign .line {
+        margin-top: 10mm;
+      }
+      .sign span {
+        display: block;
+        color: #4a4f57;
+        font-size: 8.5pt;
+        margin-top: 1mm;
+      }
+      .muted {
+        color: #4a4f57;
+        font-size: 9pt;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="band"></div>
+    <h1>Акт выдачи товара</h1>
+    <p class="muted">к заказу, оформленному на сайте магазина</p>
+
+    <div class="head">
+      <div class="field">
+        <span>Номер заказа</span>
+        <div class="line"></div>
+      </div>
+      <div class="field">
+        <span>Дата выдачи</span>
+        <div class="line"></div>
+      </div>
+      <div class="field">
+        <span>Продавец (ИП, ИНН, ОГРНИП)</span>
+        <div class="line"></div>
+      </div>
+      <div class="field">
+        <span>Пункт выдачи</span>
+        <div class="line"></div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th class="num">№</th>
+          <th>Бренд, артикул</th>
+          <th>Наименование</th>
+          <th class="qty">Кол-во</th>
+          <th class="sum">Сумма, ₽</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="num">1</td>
+          <td></td>
+          <td></td>
+          <td class="qty"></td>
+          <td class="sum"></td>
+        </tr>
+        <tr>
+          <td class="num">2</td>
+          <td></td>
+          <td></td>
+          <td class="qty"></td>
+          <td class="sum"></td>
+        </tr>
+        <tr>
+          <td class="num">3</td>
+          <td></td>
+          <td></td>
+          <td class="qty"></td>
+          <td class="sum"></td>
+        </tr>
+        <tr>
+          <td class="num">4</td>
+          <td></td>
+          <td></td>
+          <td class="qty"></td>
+          <td class="sum"></td>
+        </tr>
+        <tr>
+          <td class="num">5</td>
+          <td></td>
+          <td></td>
+          <td class="qty"></td>
+          <td class="sum"></td>
+        </tr>
+        <tr>
+          <td class="num">6</td>
+          <td></td>
+          <td></td>
+          <td class="qty"></td>
+          <td class="sum"></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="total">
+      <span>Итого, ₽</span>
+      <div class="line"></div>
+    </div>
+
+    <ul>
+      <li>Товар передан в упаковке; внешний вид и комплектность проверены при получении.</li>
+      <li>
+        Кассовый чек (чек о полном расчёте) направлен покупателю в электронном виде на телефон или
+        e-mail, указанные в заказе.
+      </li>
+      <li>Памятка о порядке возврата и обмена товара вручена вместе с товаром.</li>
+      <li>
+        Установка детали в стоимость не входит: это отдельная услуга исполнителя, которая
+        оплачивается у него по его чеку.
+      </li>
+    </ul>
+
+    <div class="signs">
+      <div class="sign">
+        <p>Передал (представитель продавца)</p>
+        <div class="line"></div>
+        <span>подпись / фамилия, инициалы / № и дата доверенности</span>
+      </div>
+      <div class="sign">
+        <p>Получил (покупатель)</p>
+        <div class="line"></div>
+        <span>подпись / фамилия, инициалы</span>
+      </div>
+    </div>
+
+    <p class="muted" style="margin-top: 10mm">
+      Акт составляется в двух экземплярах, по одному для каждой стороны. Подписанные экземпляры не
+      сканируются и в системе не хранятся.
+    </p>
+  </body>
+</html>

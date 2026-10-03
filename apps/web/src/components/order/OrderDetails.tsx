@@ -4,11 +4,17 @@ import { IconCard, IconClock, IconLift } from '@/components/icons';
 import { Notice } from '@/components/page/Notice';
 import { PageBand, PageBody } from '@/components/page/PageBand';
 import { FullBleed } from '@/components/ui/Section';
+import { InstallBookingBlock } from '@/components/install/InstallBookingBlock';
 import type { InstallPlanView } from '@/server/install/types';
 import type { CartReminder } from '@/server/orders/cart-reminder';
+import type { OrderFlash } from '@/server/orders/flash';
+import type { MessengerView, OrderServicesView } from '@/server/orders/order-services';
 import type { OrderView } from '@/server/orders/order-view';
 import { payCheckState, type PayNotice } from '@/server/orders/pay-notice';
 import { CancelOrderForm } from './CancelOrderForm';
+import { ClaimBlock } from './ClaimBlock';
+import { MessengerBlock } from './MessengerBlock';
+import { OrderPhotos } from './OrderPhotos';
 import {
   ApprovalBlock,
   PartialArrivalBlock,
@@ -20,7 +26,6 @@ import {
   CartReminderBanner,
   ItemsBlock,
   MessengerPreview,
-  MessengerStubs,
   PickupBlock,
   PickupCodeBlock,
   StatusBadge,
@@ -30,6 +35,27 @@ import {
 import { OrderStepper } from './OrderStepper';
 
 const NO_NOTICE: PayNotice = { paid: false, payError: null, since: null };
+
+/** Without the 1C read model (tests of the 1A/1B page): the inactive Telegram stub. */
+const NO_MESSENGER: MessengerView = { telegram: 'none', telegramAvailable: false };
+
+/** No messenger block for an order that is over without a handover. */
+const NO_NOTIFY = new Set(['cancelled', 'refunded']);
+
+/** A flash message of the last form post, shown inside the block it belongs to. */
+function FlashNotice({ flash }: { flash: OrderFlash }) {
+  return (
+    <Notice
+      tone={flash.tone}
+      className="mb-4"
+      role={flash.tone === 'danger' ? 'alert' : 'status'}
+      data-testid="order-flash"
+      data-code={flash.code}
+    >
+      {flash.text}
+    </Notice>
+  );
+}
 
 /** Statuses at which the order has stopped: the stepper greys out and a danger plate says so. */
 const STOPPED = new Set(['cancelled', 'refund_pending', 'refunded']);
@@ -81,6 +107,8 @@ export function OrderDetails({
   notice = NO_NOTICE,
   nowMs,
   install,
+  services,
+  flash = null,
   demo = false,
 }: {
   view: OrderView;
@@ -92,12 +120,28 @@ export function OrderDetails({
   nowMs?: number;
   /** Nearest lift slot by the order's date; undefined: not shown. */
   install?: InstallPlanView | null;
-  /** The sample order of DEMO_MODE: a preview of a status message instead of the stubs. */
+  /** Phase 1C blocks (notifications, installation booking, claims, photos). */
+  services?: OrderServicesView;
+  /** Flash message after a form post (?flash=<code>). */
+  flash?: OrderFlash | null;
+  /** The sample order of DEMO_MODE: a preview of a status message under the buttons. */
   demo?: boolean;
 }) {
   const check = payCheckState(view, notice, nowMs);
   const stopped = STOPPED.has(view.status);
   const showInstall = view.fulfillment === 'pickup' && !view.closed && install !== undefined;
+  const flashFor = (section: OrderFlash['section']) =>
+    flash !== null && flash.section === section ? <FlashNotice flash={flash} /> : undefined;
+  const messenger = NO_NOTIFY.has(view.status) ? null : (services?.messenger ?? NO_MESSENGER);
+  // A flash whose block is not on the page (e.g. the booking closed meanwhile) goes on top.
+  const flashHome =
+    flash === null
+      ? true
+      : flash.section === 'claim'
+        ? Boolean(services?.claims)
+        : flash.section === 'install'
+          ? Boolean(services?.install)
+          : messenger !== null;
   return (
     <FullBleed data-testid="order-page">
       <PageBand
@@ -139,6 +183,7 @@ export function OrderDetails({
             Заказ остановлен. Что произошло и когда — в истории заказа ниже.
           </Notice>
         ) : null}
+        {flash !== null && !flashHome ? <FlashNotice flash={flash} /> : null}
         {cartReminder ? <CartReminderBanner reminder={cartReminder} /> : null}
 
         <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:items-start lg:gap-8">
@@ -151,9 +196,27 @@ export function OrderDetails({
 
             <PaymentBlock view={view} notice={notice} check={check} contactPhone={contactPhone} />
 
+            {services?.claims ? (
+              <ClaimBlock
+                token={view.token}
+                block={services.claims}
+                pickup={pickup}
+                contactPhone={contactPhone}
+                notice={flashFor('claim')}
+              />
+            ) : null}
+
             <RefundBlock view={view} />
 
             <PartialArrivalBlock view={view} contactPhone={contactPhone} />
+
+            {services?.install ? (
+              <InstallBookingBlock
+                token={view.token}
+                install={services.install}
+                notice={flashFor('install')}
+              />
+            ) : null}
 
             <ItemsBlock
               items={view.items}
@@ -162,21 +225,33 @@ export function OrderDetails({
               totalKop={view.totalKop}
             />
 
-            {view.closed ? null : demo ? (
-              <MessengerPreview
-                number={view.number}
-                install={install ?? null}
-                hours={pickup.hours}
+            {messenger ? (
+              <MessengerBlock
+                token={view.token}
+                messenger={messenger}
+                preferred={view.preferredChannel}
+                demo={demo}
+                notice={flashFor('notify')}
+                preview={
+                  demo ? (
+                    <MessengerPreview
+                      number={view.number}
+                      install={install ?? null}
+                      hours={pickup.hours}
+                      bare
+                    />
+                  ) : undefined
+                }
               />
-            ) : (
-              <MessengerStubs preferred={view.preferredChannel} />
-            )}
+            ) : null}
           </div>
 
           <div className="min-w-0 space-y-5 lg:sticky lg:top-24">
             {view.fulfillment === 'pickup' ? (
               <PickupBlock pickup={pickup} install={view.closed ? undefined : install} />
             ) : null}
+
+            {services ? <OrderPhotos photos={services.photos} demo={services.demo} /> : null}
 
             <TimelineBlock entries={view.timeline} />
 

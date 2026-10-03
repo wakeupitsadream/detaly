@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Памятка о возврате товара</title>
+    <!--
+      Static print template (docs/phase-1c-implementation.md decision С23). Rendered once to
+      apps/web/public/print/pamyatka-vozvrat.pdf by scripts/make-print-pdfs.ts. The brand and the
+      seller requisites are never baked in: they are blank lines filled in by hand (or with the
+      point's stamp). Legal wording follows content/legal (offer, return memo) and needs the
+      lawyer's review together with them.
+    -->
+    <style>
+      @page {
+        size: A4;
+        margin: 12mm 15mm 12mm;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: 'DejaVu Sans', 'Liberation Sans', Arial, sans-serif;
+        font-size: 9.6pt;
+        line-height: 1.4;
+        color: #16181b;
+      }
+      h1 {
+        margin: 0 0 2mm;
+        font-size: 17pt;
+        letter-spacing: 0.01em;
+      }
+      h2 {
+        margin: 4.5mm 0 1.6mm;
+        padding-bottom: 1mm;
+        font-size: 11.5pt;
+        border-bottom: 0.4mm solid #16181b;
+      }
+      p {
+        margin: 0 0 2mm;
+      }
+      ol,
+      ul {
+        margin: 0 0 2mm;
+        padding-left: 6mm;
+      }
+      li {
+        margin-bottom: 0.8mm;
+      }
+      .lead {
+        color: #4a4f57;
+      }
+      .band {
+        height: 2.4mm;
+        margin-bottom: 5mm;
+        background: repeating-linear-gradient(-45deg, #16181b 0 2.4mm, #f26b1d 2.4mm 4.8mm);
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+      .fields {
+        display: grid;
+        grid-template-columns: 46mm 1fr;
+        gap: 1.6mm 4mm;
+        margin: 2mm 0 1mm;
+      }
+      .fields span {
+        color: #4a4f57;
+      }
+      .line {
+        border-bottom: 0.3mm solid #16181b;
+        min-height: 5mm;
+      }
+      .box {
+        margin-top: 4mm;
+        padding: 2.5mm 4mm;
+        border: 0.4mm solid #16181b;
+        border-left-width: 1.6mm;
+      }
+      .muted {
+        color: #4a4f57;
+        font-size: 9pt;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="band"></div>
+    <h1>Памятка о возврате и обмене товара</h1>
+    <p class="lead">
+      Выдаётся вместе с заказом. Товар куплен дистанционно (через сайт), поэтому действуют правила
+      статьи 26.1 Закона «О защите прав потребителей».
+    </p>
+
+    <div class="fields">
+      <span>Продавец</span>
+      <div class="line"></div>
+      <span>ИНН / ОГРНИП</span>
+      <div class="line"></div>
+      <span>Адрес для претензий</span>
+      <div class="line"></div>
+      <span>Пункт выдачи, часы</span>
+      <div class="line"></div>
+      <span>Телефон</span>
+      <div class="line"></div>
+      <span>Номер заказа</span>
+      <div class="line"></div>
+      <span>Дата получения</span>
+      <div class="line"></div>
+    </div>
+
+    <h2>1. Деталь исправна, но не нужна или не подошла — 7 дней</h2>
+    <ul>
+      <li>
+        Вернуть её можно в течение <strong>7 дней</strong> со дня получения. До получения от заказа
+        можно отказаться в любой момент.
+      </li>
+      <li>
+        Сохраните товарный вид: упаковку, отсутствие следов установки и повреждений, все
+        комплектующие. Деталь, которая была установлена на автомобиль, вернуть как исправную нельзя.
+      </li>
+      <li>
+        Сохраните чек: он приходит на телефон или e-mail. Если чека нет, покупку можно подтвердить
+        номером заказа или другими доказательствами.
+      </li>
+      <li>
+        <strong>При самовывозе деньги возвращаются полностью, без удержаний.</strong> При доставке
+        курьером удерживается только фактическая стоимость доставки.
+      </li>
+      <li>
+        Если деталь подобрал мастер по вашему VIN и она не подошла к автомобилю из заявки, деньги
+        возвращаются полностью.
+      </li>
+    </ul>
+
+    <h2>2. Деталь с браком</h2>
+    <ul>
+      <li>
+        Требования по недостаткам можно предъявить в течение гарантийного срока производителя, а
+        если он не установлен — в течение двух лет.
+      </li>
+      <li>
+        Можно выбрать замену, уменьшение цены или возврат денег (статья 18 Закона «О защите прав
+        потребителей»). Если нужна проверка качества, её проведут и сообщат результат.
+      </li>
+      <li>Сохраните деталь и упаковку. Фото дефекта ускорят рассмотрение.</li>
+    </ul>
+
+    <h2>3. Как вернуть</h2>
+    <ol>
+      <li>
+        Нажмите «Претензия или возврат» на странице заказа (ссылка — в сообщении о заказе) или
+        обратитесь по телефону продавца.
+      </li>
+      <li>
+        Принесите деталь в пункт выдачи, по возможности в упаковке. Сотрудник проверит комплектность
+        и сфотографирует товар при приёмке.
+      </li>
+      <li>Ответ на претензию — в течение 10 дней со дня обращения (статья 22).</li>
+      <li>
+        Деньги вернутся тем же способом, которым вы платили, <strong>в течение 10 дней</strong> со
+        дня требования. Чек возврата придёт на телефон или e-mail.
+      </li>
+    </ol>
+
+    <div class="box">
+      <p>
+        <strong>Важно.</strong> Наличными деньги не возвращаются: оплата и возврат идут только через
+        платёжный сервис. Установка детали — отдельная услуга исполнителя по адресу пункта выдачи,
+        оплачивается у него по его чеку.
+      </p>
+      <p class="muted">
+        Памятка вручается в письменной форме вместе с товаром (п. 4 ст. 26.1 Закона «О защите прав
+        потребителей»). Полные условия — в оферте на сайте магазина. Редакция текста 2026-10-d1:
+        перед печатью сверьте с действующей версией памятки на сайте.
+      </p>
+    </div>
+  </body>
+</html>

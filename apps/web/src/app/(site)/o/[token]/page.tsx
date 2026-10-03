@@ -9,11 +9,18 @@ import { readCartToken } from '@/server/cart-store';
 import { getDb } from '@/server/db';
 import { serverEnv } from '@/server/env';
 import { errorInfo, PageDataError } from '@/server/errors';
+import { photosEnabled } from '@/server/files';
 import { planInstallForDate, type InstallPlanView } from '@/server/install';
 import { getLogger } from '@/server/logger';
 import { isOrderToken } from '@/server/orders/access';
 import { findCartReminder } from '@/server/orders/cart-reminder';
-import { loadOrderView } from '@/server/orders/order-view';
+import { parseOrderFlash } from '@/server/orders/flash';
+import {
+  EMPTY_SERVICES,
+  loadOrderServices,
+  type OrderServicesView,
+} from '@/server/orders/order-services';
+import { loadOrderView, type OrderView } from '@/server/orders/order-view';
 import { parsePayNotice } from '@/server/orders/pay-notice';
 
 type Params = Promise<{ token: string }>;
@@ -33,6 +40,25 @@ const getOrderView = cache(async (token: string) => {
     throw new PageDataError('order page: database unavailable');
   }
 });
+
+/**
+ * The phase 1C blocks. A failure (the photo store, a booking query) hides them with a warning
+ * instead of failing the page: the order itself is already loaded.
+ */
+async function getOrderServices(view: OrderView, now: Date): Promise<OrderServicesView> {
+  try {
+    const env = serverEnv();
+    return await loadOrderServices(getDb(), view, {
+      env,
+      now,
+      photosEnabled: photosEnabled(),
+      maxFileMb: env.FILES_MAX_UPLOAD_MB,
+    });
+  } catch (error) {
+    getLogger().warn(errorInfo(error), 'order page: phase 1C blocks unavailable');
+    return EMPTY_SERVICES;
+  }
+}
 
 const PRIVATE: Pick<Metadata, 'robots' | 'referrer'> = {
   robots: { index: false, follow: false },
@@ -60,7 +86,9 @@ export default async function OrderPage({
   if (!view) notFound();
 
   const nowMs = Date.now();
-  const notice = parsePayNotice((await searchParams) ?? {}, nowMs);
+  const query = (await searchParams) ?? {};
+  const notice = parsePayNotice(query, nowMs);
+  const flash = parseOrderFlash(query);
   const brand = getBrand();
   const cartReminder = await findCartReminder(getDb(), readCartToken(await cookies()), (error) =>
     getLogger().warn(errorInfo(error), 'order page: cart lookup failed'),
@@ -78,10 +106,14 @@ export default async function OrderPage({
     }
   }
 
+  const services = await getOrderServices(view, new Date(nowMs));
+
   return (
     <OrderDetails
       view={view}
       install={install}
+      services={services}
+      flash={flash}
       pickup={brand.pickup}
       contactPhone={brand.contactPhone}
       cartReminder={cartReminder}

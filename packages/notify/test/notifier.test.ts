@@ -8,6 +8,7 @@ import {
   type ChannelDriver,
   createNotifier,
   eventForAction,
+  isWorkflowAction,
   FALLBACK_REASONS,
   maskPhone,
   type MessengerBindingInfo,
@@ -82,7 +83,11 @@ describe('templates', () => {
         expect(message.text).toContain('DT-000123');
         for (const button of message.buttons.flat()) {
           if (button.kind === 'action') {
-            expect(eventForAction(button.action), button.action).not.toBeNull();
+            // An order event, or a phase 1C workflow of the client bot (installation slots).
+            expect(
+              eventForAction(button.action) !== null || isWorkflowAction(button.action),
+              button.action,
+            ).toBe(true);
             expect(button.orderId).toBe(ORDER_ID);
           } else {
             expect(button.url).toMatch(/^https:\/\//);
@@ -136,11 +141,13 @@ describe('templates', () => {
   it('vin proposal', () => {
     const message = renderTemplate('vin_proposal', {
       brandName: 'Тестовый бренд',
+      requestNumber: '6789AB',
       proposalUrl: 'https://example.test/p/x',
     });
     expect(renderSmsText(message)).toBe(
-      'Тестовый бренд · подбор по VIN готов\nЦены и сроки — по ссылке.\nhttps://example.test/p/x',
+      'Подбор по VIN № 6789AB готов: цены и сроки по ссылке.\nhttps://example.test/p/x',
     );
+    expect(message.text).toContain('Тестовый бренд · заявка VIN № 6789AB');
   });
 
   it('maskPhone keeps only the last 4 digits', () => {
@@ -161,7 +168,7 @@ describe('templates', () => {
         for (const scheme of ['prepay', 'pay_on_handover'] as const) {
           const message = ORDER_TEMPLATES[spec.template](data({ scheme }));
           for (const button of message.buttons.flat()) {
-            if (button.kind !== 'action') continue;
+            if (button.kind !== 'action' || isWorkflowAction(button.action)) continue;
             const event = eventForAction(button.action);
             expect(event, `${spec.template}: ${button.action}`).not.toBeNull();
             expect(

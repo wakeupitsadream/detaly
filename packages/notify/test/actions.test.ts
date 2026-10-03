@@ -17,6 +17,9 @@ import {
   menuAction,
   newNonce,
   parseCallbackData,
+  isWorkflowAction,
+  WORKFLOW_ACTIONS,
+  workflowAction,
 } from '../src';
 
 const UUID = '0192f0c4-7b1a-7cde-8f00-0123456789ab';
@@ -116,8 +119,14 @@ describe('callback actions', () => {
       expect(isEventAction(code), code).toBe(false);
       expect(CALLBACK_ACTIONS[code as keyof typeof CALLBACK_ACTIONS]).toBe('menu');
     }
+    for (const code of Object.keys(WORKFLOW_ACTIONS)) {
+      expect(isEventAction(code) || isMenuAction(code), code).toBe(false);
+      expect(CALLBACK_ACTIONS[code as keyof typeof CALLBACK_ACTIONS]).toBe('workflow');
+    }
     expect(Object.keys(CALLBACK_ACTIONS)).toHaveLength(
-      Object.keys(EVENT_ACTIONS).length + Object.keys(MENU_ACTIONS).length,
+      Object.keys(EVENT_ACTIONS).length +
+        Object.keys(MENU_ACTIONS).length +
+        Object.keys(WORKFLOW_ACTIONS).length,
     );
     expect(Object.isFrozen(CALLBACK_ACTIONS)).toBe(true);
   });
@@ -196,5 +205,47 @@ describe('callback actions', () => {
     expect(longest).toBe(55);
     const dlq = buildCallbackData('dlq', 'a'.repeat(36), newNonce());
     expect(Buffer.byteLength(dlq)).toBeLessThanOrEqual(64);
+  });
+
+  it('phase 1C workflow codes: client bot, claims, bookings, photo, VIN; targets', () => {
+    const expected: Record<string, string> = {
+      install: 'order',
+      islot: 'order',
+      orders: 'order',
+      unsub: 'order',
+      cret: 'claim',
+      cref: 'claim',
+      crepl: 'claim',
+      crej: 'claim',
+      cclose: 'claim',
+      bconf: 'booking',
+      bdecl: 'booking',
+      bdone: 'booking',
+      bnoshow: 'booking',
+      pphoto: 'order',
+      vtake: 'vin',
+      vans: 'vin',
+      vfix: 'vin',
+      vsend: 'vin',
+      vclose: 'vin',
+    };
+    expect(Object.keys(WORKFLOW_ACTIONS).sort()).toEqual(Object.keys(expected).sort());
+    for (const [code, target] of Object.entries(expected)) {
+      expect(isCallbackAction(code), code).toBe(true);
+      expect(isWorkflowAction(code), code).toBe(true);
+      expect(actionTarget(code), code).toBe(target);
+      // Workflows decide their event themselves; a card menu never sees them.
+      expect(eventForAction(code), code).toBeNull();
+      expect(menuAction(code), code).toBeNull();
+      expect(workflowAction(code)?.label.length, code).toBeGreaterThan(0);
+      expect(code.length, code).toBeLessThanOrEqual(7);
+      expect(isOwnerOnlyAction(code), code).toBe(false);
+    }
+    expect(workflowAction('cref')).toEqual({
+      kind: 'claim',
+      action: 'refund',
+      label: 'Вернуть деньги',
+    });
+    expect(workflowAction('recheck')).toBeNull();
   });
 });

@@ -108,20 +108,39 @@ export interface OrderTemplateData {
   /** Phase 1C: the installation partner (INSTALL_PARTNER_NAME) for install_* templates. */
   installPartner?: string | null;
   /**
+   * Phase 1C: INSTALL_PARTNER_REQUISITES («ИП …, ИНН …») — the partner's public business
+   * requisites, not the client's data (decision С6 text).
+   */
+  installPartnerRequisites?: string | null;
+  /**
    * Phase 1C: the claim of claim_* templates. The decision text is never here: it may contain
    * PD and is shown only on /o/<token> (decision С2).
    */
   claim?: { kind: ClaimKind; decision: ClaimDecision | null; deadlineDate: IsoDate } | null;
-  /** Phase 1C: FileStore keys of packaging photos (arrived), at most one is sent. */
+  /**
+   * Phase 1C: FileStore keys of packaging photos (arrived), at most one is sent. Never VIN or
+   * claim photos (decision С2).
+   */
   photos?: readonly string[];
 }
 
-export interface VinProposalData {
+/**
+ * Data of the VIN request templates (decision С20, docs/phase-1c-implementation.md section 7.1
+ * item 4): no order, no PD — the request number, the proposal link and the master's comment.
+ */
+export interface VinTemplateData {
+  /** BRAND_NAME from env; never hardcoded. */
   brandName: string;
-  proposalUrl: string;
-  /** Free text from the master; must not contain PD. */
+  /** Short number of the request (vinRequestNumber), the client quotes it on the phone. */
+  requestNumber: string;
+  /** /p/<token> of the proposal (vin_proposal); absent for vin_received. */
+  proposalUrl?: string | null;
+  /** Free text from the master (`>` line of the answer); digit runs are masked on render. */
   comment?: string | null;
 }
+
+/** @deprecated phase 1B name of VinTemplateData. */
+export type VinProposalData = VinTemplateData;
 
 export interface PingData {
   heartbeatAgeSec: number | null;

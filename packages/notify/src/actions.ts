@@ -3,15 +3,19 @@
  * `a:<action>:<id>:<nonce>` (decision Б18), so codes stay short: the longest code is 7 characters
  * and `a:` + 7 + `:` + 36 (uuid) + `:` + 8 (nonce) = 55 bytes.
  *
- * Two kinds of codes (phase 1B, docs/phase-1b-implementation.md table 13.2):
+ * Three kinds of codes (phase 1B, docs/phase-1b-implementation.md table 13.2; phase 1C,
+ * docs/phase-1c-implementation.md section 7.1 item 3):
  * - EVENT_ACTIONS: one press applies one order event (code -> OrderEvent);
  * - MENU_ACTIONS: the press opens a menu (aliases, new ETA, item problem), picks an option from
  *   it, goes back to the main keyboard, retries a dead-letter job, or runs an owner action that
  *   is not one order event (`rrefund`: «Повторить возврат», staff action retry_refund). Options
- *   that end in an event carry it, plus the parameter the option stands for.
+ *   that end in an event carry it, plus the parameter the option stands for;
+ * - WORKFLOW_ACTIONS (phase 1C): client bot and seller bot workflows (installation slots,
+ *   claims, bookings, the packaging photo, VIN requests) that call @detaly/orders and
+ *   @detaly/vin functions, sometimes after a ForceReply question (decision С25).
  *
- * `<id>` is the order uuid or the order item uuid depending on the code (actionTarget); `dlq`
- * carries a dead-letter job id instead.
+ * `<id>` is the order, item, claim, booking or VIN request uuid depending on the code
+ * (actionTarget); `dlq` carries a dead-letter job id instead.
  */
 import type { OrderEvent } from '@detaly/domain';
 
@@ -101,22 +105,85 @@ export const MENU_ACTIONS = {
 
 export type MenuAction = keyof typeof MENU_ACTIONS;
 
-export type CallbackAction = EventAction | MenuAction;
+/**
+ * Phase 1C workflow codes. Kept apart from MENU_ACTIONS so the phase 1B card menus stay a closed
+ * set (the seller bot switches over MenuActionSpec kinds).
+ */
+export type WorkflowActionSpec =
+  /** Client bot (decision С5): `install` lists slots, `islot` books one (nonce -> Redis). */
+  | { kind: 'client'; action: 'install' | 'islot' | 'orders' | 'unsub'; label: string }
+  /** Seller bot, claim target (decisions С8, С9). */
+  | {
+      kind: 'claim';
+      action: 'return_accepted' | 'refund' | 'replace' | 'reject' | 'close';
+      label: string;
+    }
+  /** Seller bot, booking target (decision С6). */
+  | { kind: 'booking'; action: 'confirm' | 'decline' | 'done' | 'no_show'; label: string }
+  /** Seller bot, order target: «Фото упаковки» (decision С17). */
+  | { kind: 'photo'; action: 'packaging'; label: string }
+  /** Seller bot, VIN request target (decision С13). */
+  | { kind: 'vin'; action: 'take' | 'answer' | 'fix' | 'send' | 'close'; label: string };
 
-/** Every callback code with its kind; no code is both an event and a menu action. */
-export const CALLBACK_ACTIONS: Readonly<Record<CallbackAction, 'event' | 'menu'>> = Object.freeze({
-  ...(Object.fromEntries(Object.keys(EVENT_ACTIONS).map((code) => [code, 'event'])) as Record<
-    EventAction,
-    'event'
-  >),
-  ...(Object.fromEntries(Object.keys(MENU_ACTIONS).map((code) => [code, 'menu'])) as Record<
-    MenuAction,
-    'menu'
-  >),
-});
+export const WORKFLOW_ACTIONS = {
+  // --- client bot ---------------------------------------------------------------------------
+  install: { kind: 'client', action: 'install', label: 'Записаться на установку' },
+  islot: { kind: 'client', action: 'islot', label: 'Выбрать время' },
+  orders: { kind: 'client', action: 'orders', label: 'Мои заказы' },
+  unsub: { kind: 'client', action: 'unsub', label: 'Отключить уведомления' },
+  // --- seller bot: claims (StaffActionCode, docs/phase-1c-implementation.md 5.2 item 4) ------
+  cret: { kind: 'claim', action: 'return_accepted', label: 'Принял возврат' },
+  cref: { kind: 'claim', action: 'refund', label: 'Вернуть деньги' },
+  crepl: { kind: 'claim', action: 'replace', label: 'Замена' },
+  crej: { kind: 'claim', action: 'reject', label: 'Отказать' },
+  cclose: { kind: 'claim', action: 'close', label: 'Замена выдана' },
+  // --- seller bot: installation bookings ----------------------------------------------------
+  bconf: { kind: 'booking', action: 'confirm', label: 'Подтвердить запись' },
+  bdecl: { kind: 'booking', action: 'decline', label: 'Отклонить запись' },
+  bdone: { kind: 'booking', action: 'done', label: 'Установка выполнена' },
+  bnoshow: { kind: 'booking', action: 'no_show', label: 'Не приехал' },
+  // --- seller bot: packaging photo ----------------------------------------------------------
+  pphoto: { kind: 'photo', action: 'packaging', label: 'Фото упаковки' },
+  // --- seller bot: VIN requests -------------------------------------------------------------
+  vtake: { kind: 'vin', action: 'take', label: 'Взять в работу' },
+  vans: { kind: 'vin', action: 'answer', label: 'Ответить строками' },
+  vfix: { kind: 'vin', action: 'fix', label: 'Исправить' },
+  vsend: { kind: 'vin', action: 'send', label: 'Отправить клиенту' },
+  vclose: { kind: 'vin', action: 'close', label: 'Закрыть заявку' },
+} as const satisfies Record<string, WorkflowActionSpec>;
 
-/** What the `<id>` part of callback_data refers to. */
-export type ActionTarget = 'order' | 'item' | 'order_or_item' | 'dead_letter';
+export type WorkflowAction = keyof typeof WORKFLOW_ACTIONS;
+
+export type CallbackAction = EventAction | MenuAction | WorkflowAction;
+
+export type CallbackActionKind = 'event' | 'menu' | 'workflow';
+
+function kindsOf<K extends string>(
+  codes: Readonly<Record<K, unknown>>,
+  kind: CallbackActionKind,
+): Record<K, CallbackActionKind> {
+  return Object.fromEntries(Object.keys(codes).map((code) => [code, kind])) as Record<
+    K,
+    CallbackActionKind
+  >;
+}
+
+/** Every callback code with its kind; no code belongs to two kinds. */
+export const CALLBACK_ACTIONS: Readonly<Record<CallbackAction, CallbackActionKind>> = Object.freeze(
+  {
+    ...kindsOf(EVENT_ACTIONS, 'event'),
+    ...kindsOf(MENU_ACTIONS, 'menu'),
+    ...kindsOf(WORKFLOW_ACTIONS, 'workflow'),
+  },
+);
+
+/**
+ * What the `<id>` part of callback_data refers to. Phase 1C: `claim` (claims.id), `booking`
+ * (install_bookings.id), `vin` (vin_requests.id). The client bot's `orders` and `unsub` carry the
+ * order of the message they are attached to; the bot acts on the pressing user.
+ */
+export type ActionTarget =
+  'order' | 'item' | 'order_or_item' | 'dead_letter' | 'claim' | 'booking' | 'vin';
 
 const ITEM_ACTIONS: ReadonlySet<string> = new Set<CallbackAction>([
   'icancel',
@@ -153,8 +220,8 @@ export function callbackCodeForStaffAction(action: string): string {
 }
 
 /**
- * Codes a client may press in a messenger (client bot, phase 1C). `refused` is shared with staff:
- * the client's eta_changed message offers it («Вернуть деньги» / «Отказаться от заказа»).
+ * Event codes a client may press in a messenger (client bot, phase 1C). `refused` is shared with
+ * staff: the client's eta_changed message offers it («Вернуть деньги» / «Отказаться от заказа»).
  */
 export const CLIENT_ACTIONS = [
   'confirm',
@@ -162,6 +229,25 @@ export const CLIENT_ACTIONS = [
   'refund',
   'refused',
 ] as const satisfies readonly EventAction[];
+
+/**
+ * Workflow codes a client may press in the client bot (decision С5): the installation menu and
+ * the slot choice, «Мои заказы», «Отключить уведомления».
+ */
+export const CLIENT_WORKFLOW_ACTIONS = [
+  'install',
+  'islot',
+  'orders',
+  'unsub',
+] as const satisfies readonly WorkflowAction[];
+
+/** A code the client bot accepts (event or workflow); every other code is staff-only. */
+export function isClientAction(value: string): boolean {
+  return (
+    (CLIENT_ACTIONS as readonly string[]).includes(value) ||
+    (CLIENT_WORKFLOW_ACTIONS as readonly string[]).includes(value)
+  );
+}
 
 export function isCallbackAction(value: string): value is CallbackAction {
   return Object.hasOwn(CALLBACK_ACTIONS, value);
@@ -179,6 +265,15 @@ export function menuAction(value: string): MenuActionSpec | null {
   return isMenuAction(value) ? MENU_ACTIONS[value] : null;
 }
 
+export function isWorkflowAction(value: string): value is WorkflowAction {
+  return Object.hasOwn(WORKFLOW_ACTIONS, value);
+}
+
+/** The spec of a phase 1C workflow code, or null. */
+export function workflowAction(value: string): WorkflowActionSpec | null {
+  return isWorkflowAction(value) ? WORKFLOW_ACTIONS[value] : null;
+}
+
 export function isOwnerOnlyAction(value: string): boolean {
   return (OWNER_ONLY_ACTIONS as readonly string[]).includes(value);
 }
@@ -188,12 +283,20 @@ export function actionTarget(value: string): ActionTarget | null {
   if (!isCallbackAction(value)) return null;
   if (value === 'dlq') return 'dead_letter';
   if (value === 'back') return 'order_or_item';
+  const workflow = workflowAction(value);
+  if (workflow !== null) {
+    if (workflow.kind === 'claim' || workflow.kind === 'booking' || workflow.kind === 'vin') {
+      return workflow.kind;
+    }
+    return 'order';
+  }
   return ITEM_ACTIONS.has(value) ? 'item' : 'order';
 }
 
 /**
  * The order event a code leads to: event codes map directly (phase 0 behaviour), menu options
- * (alt1, eta5, pdmg ...) give the event of the option; menu openers, `back` and `dlq` -> null.
+ * (alt1, eta5, pdmg ...) give the event of the option; menu openers, `back`, `dlq` and the
+ * phase 1C workflow codes (their functions decide which event, if any) -> null.
  */
 export function eventForAction(action: string): OrderEvent | null {
   if (isEventAction(action)) return EVENT_ACTIONS[action];

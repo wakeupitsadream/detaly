@@ -15,6 +15,14 @@ export function maskPhone(phone: string | null | undefined): string {
   return digits.length >= 4 ? `•••${digits.slice(-4)}` : '•••';
 }
 
+/**
+ * Short number of a VIN request for the client and the sellers card: the last 6 hex digits of
+ * its uuid v7 (the random part), upper case — '0192f0c4-…-0123456789ab' -> '6789AB'.
+ */
+export function vinRequestNumber(id: string): string {
+  return id.replace(/-/gu, '').slice(-6).toUpperCase();
+}
+
 export function itemsLine(items: readonly { brand: string; article: string }[]): string {
   if (items.length === 0) return '';
   const shown = items.slice(0, 3).map((i) => `${i.brand} ${i.article}`);

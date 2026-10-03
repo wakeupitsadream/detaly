@@ -11,7 +11,7 @@ function setup(
     order.push(name);
   };
   const resources: ShutdownResources = {
-    bot: { stop: track('bot.stop') },
+    bots: [{ name: 'sellerBot', stop: track('sellerBot.stop') }],
     dispatcher: { stop: track('dispatcher.stop') },
     workers: [{ close: track('worker.close') }, { close: track('worker.close') }],
     queues: [{ close: track('queue.close') }],
@@ -55,7 +55,7 @@ describe('installShutdown', () => {
     proc.emit('SIGTERM', 'SIGTERM');
     await vi.waitFor(() => expect(exit).toHaveBeenCalled());
     expect(order).toEqual([
-      'bot.stop',
+      'sellerBot.stop',
       'dispatcher.stop',
       'worker.close',
       'worker.close',
@@ -69,14 +69,14 @@ describe('installShutdown', () => {
   });
 
   it('handles SIGINT the same way and works without a bot', async () => {
-    const { order, proc, exit } = setup({ bot: null });
+    const { order, proc, exit } = setup({ bots: [] });
     proc.emit('SIGINT', 'SIGINT');
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0));
     expect(order[0]).toBe('dispatcher.stop');
   });
 
   it('stops the outbox dispatcher before the queues close', async () => {
-    const { order, proc, exit } = setup({ bot: null, dispatcher: null });
+    const { order, proc, exit } = setup({ bots: [], dispatcher: null });
     proc.emit('SIGTERM', 'SIGTERM');
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0));
     expect(order[0]).toBe('worker.close');
@@ -87,6 +87,50 @@ describe('installShutdown', () => {
     expect(second.order.indexOf('dispatcher.stop')).toBeLessThan(
       second.order.indexOf('queue.close'),
     );
+  });
+
+  it('stops the seller and client bots in parallel, before the dispatcher', async () => {
+    const seen: string[] = [];
+    let releaseSeller!: () => void;
+    const { proc, exit } = setup({
+      bots: [
+        {
+          name: 'sellerBot',
+          stop: () => {
+            seen.push('sellerBot.start');
+            return new Promise<void>((resolve) => {
+              releaseSeller = () => {
+                seen.push('sellerBot.stop');
+                resolve();
+              };
+            });
+          },
+        },
+        {
+          name: 'clientBot',
+          stop: async () => {
+            seen.push('clientBot.stop');
+          },
+        },
+      ],
+      dispatcher: {
+        stop: async () => {
+          seen.push('dispatcher.stop');
+        },
+      },
+    });
+    proc.emit('SIGTERM', 'SIGTERM');
+    await flush();
+    // The client bot does not wait for the seller bot; the dispatcher waits for both.
+    expect(seen).toEqual(['sellerBot.start', 'clientBot.stop']);
+    releaseSeller();
+    await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0));
+    expect(seen).toEqual([
+      'sellerBot.start',
+      'clientBot.stop',
+      'sellerBot.stop',
+      'dispatcher.stop',
+    ]);
   });
 
   it('exits with 1 on a second signal', async () => {
@@ -103,24 +147,27 @@ describe('installShutdown', () => {
 
   it('keeps going when a step fails', async () => {
     const { order, proc, exit, logger } = setup({
-      bot: {
-        stop: async () => {
-          throw new Error('telegram unreachable');
+      bots: [
+        {
+          name: 'clientBot',
+          stop: async () => {
+            throw new Error('telegram unreachable');
+          },
         },
-      },
+      ],
     });
     proc.emit('SIGTERM', 'SIGTERM');
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0));
     expect(order).toContain('sql.end');
     expect(logger.error).toHaveBeenCalledWith(
-      expect.objectContaining({ step: 'bot.stop' }),
+      expect.objectContaining({ step: 'clientBot.stop' }),
       'shutdown step failed',
     );
   });
 
   it('caps a hanging step and moves on', async () => {
     const { order, proc, exit } = setup(
-      { bot: { stop: () => new Promise(() => {}) } },
+      { bots: [{ stop: () => new Promise(() => {}) }] },
       { stepTimeoutMs: 20 },
     );
     proc.emit('SIGTERM', 'SIGTERM');

@@ -1,6 +1,10 @@
 // Real processes: `node --import tsx` like the Dockerfile CMD and the compose healthcheck.
+// Phase 1C: the worker with both bots (seller and client) long-polls a local fake Bot API, so
+// start and SIGTERM are checked without the network.
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRedis, type Redis } from '@detaly/config';
@@ -39,7 +43,11 @@ function spawnTsx(
   args: string[],
   env: Record<string, string | undefined>,
 ): Spawned {
-  const child = spawn(process.execPath, ['--import', 'tsx', script, ...args], {
+  return spawnNode(['--import', 'tsx', script, ...args], env);
+}
+
+function spawnNode(argv: string[], env: Record<string, string | undefined>): Spawned {
+  const child = spawn(process.execPath, argv, {
     cwd: WORKER_DIR,
     env: env as NodeJS.ProcessEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -51,6 +59,73 @@ function spawnTsx(
     child.on('exit', (code, signal) => resolve({ code, signal })),
   );
   return { output: () => output, exited, kill: (signal) => child.kill(signal) };
+}
+
+/**
+ * The worker of test/fixtures/worker-process.ts, with the bots pointed at a local Bot API
+ * (overrides.botClient.apiRoot from WORKER_TEST_TG_API_ROOT).
+ */
+const WORKER_WITH_FAKE_BOT_API = `
+import { createLogger, parseEnv } from '@detaly/config';
+import { runWorker } from './src/app.ts';
+const prefix = process.env.WORKER_TEST_PREFIX;
+if (!prefix?.startsWith('test:')) throw new Error('WORKER_TEST_PREFIX must start with test:');
+const env = parseEnv(process.env);
+const logger = createLogger('worker', { level: env.LOG_LEVEL, base: { gitSha: env.GIT_SHA } });
+await runWorker({
+  env,
+  logger,
+  bullPrefix: prefix + 'bull',
+  heartbeatKey: prefix + 'heartbeat',
+  keyPrefix: prefix,
+  outboxChannel: prefix + 'outbox',
+  overrides: { botClient: { apiRoot: process.env.WORKER_TEST_TG_API_ROOT } },
+});
+`;
+
+interface BotApiCall {
+  token: string;
+  method: string;
+  body: Record<string, unknown>;
+}
+
+/** A Bot API on 127.0.0.1: getMe, deleteWebhook, getUpdates (empty after a short wait). */
+async function fakeBotApi(): Promise<{ server: Server; root: string; calls: BotApiCall[] }> {
+  const calls: BotApiCall[] = [];
+  const server = createServer((req, res) => {
+    let raw = '';
+    req.on('data', (chunk: Buffer) => (raw += chunk.toString()));
+    req.on('end', () => {
+      const match = /^\/bot([^/]+)\/(\w+)$/.exec(req.url ?? '');
+      let body: Record<string, unknown>;
+      try {
+        body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+      } catch {
+        body = {};
+      }
+      const token = match?.[1] ?? '';
+      const method = match?.[2] ?? '';
+      calls.push({ token, method, body });
+      const reply = (result: unknown) => {
+        if (res.writableEnded || res.destroyed) return;
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, result }));
+      };
+      if (method === 'getMe') {
+        const id = Number(token.split(':')[0]);
+        return reply({ id, is_bot: true, first_name: 'test', username: `bot_${id}` });
+      }
+      if (method === 'getUpdates') {
+        const timeout = typeof body.timeout === 'number' ? body.timeout : 0;
+        setTimeout(() => reply([]), timeout > 0 ? 200 : 0).unref();
+        return;
+      }
+      reply(true);
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  return { server, root: `http://127.0.0.1:${port}`, calls };
 }
 
 function baseEnv(overrides: Record<string, string | undefined> = {}) {
@@ -123,6 +198,7 @@ describe.skipIf(!hasTestDatabase)('worker process', () => {
       throw error;
     }
     expect(child.output()).toContain('the seller bot is not started');
+    expect(child.output()).toContain('the client bot is not started');
     expect(child.output()).toContain('worker started');
     expect(child.output()).toContain('"payments":false');
     expect(child.output()).toContain('"rosskoCheckout":false');
@@ -142,6 +218,87 @@ describe.skipIf(!hasTestDatabase)('worker process', () => {
     expect(output).not.toContain('shutdown step failed');
     // No secrets or phones in the log.
     expect(output).not.toContain(String(minimalEnvSource().SESSION_SECRET));
+    expect(output).not.toMatch(/\+7\d{10}/);
+  });
+});
+
+describe.skipIf(!hasTestDatabase)('worker process with both bots', () => {
+  let databaseUrl: string;
+  let api: Awaited<ReturnType<typeof fakeBotApi>>;
+
+  beforeAll(async () => {
+    const url = await prepareOwnDatabase('proc_bots');
+    if (!url) throw new Error('DATABASE_URL_TEST is not set');
+    databaseUrl = url;
+    api = await fakeBotApi();
+  });
+
+  afterAll(async () => {
+    api.server.closeAllConnections();
+    await new Promise((resolve) => api.server.close(resolve));
+  });
+
+  it('starts the seller and the client bot, stops both on SIGTERM and exits 0', async () => {
+    const procPrefix = `${prefix}procbots:`;
+    const sellerToken = '1110001:seller-secret-not-real';
+    const clientToken = '2220002:client-secret-not-real';
+    const child = spawnNode(
+      ['--import', 'tsx', '--input-type=module', '-e', WORKER_WITH_FAKE_BOT_API],
+      baseEnv({
+        DATABASE_URL: databaseUrl,
+        TG_SELLER_BOT_TOKEN: sellerToken,
+        TG_CLIENT_BOT_TOKEN: clientToken,
+        TG_CLIENT_BOT_USERNAME: 'detaly_client_test_bot',
+        YOOKASSA_SHOP_ID: '',
+        YOOKASSA_SECRET_KEY: '',
+        SMS_PROVIDER: 'none',
+        WORKER_TEST_PREFIX: procPrefix,
+        WORKER_TEST_TG_API_ROOT: api.root,
+      }),
+    );
+    const polls = (token: string) =>
+      api.calls.filter((c) => c.token === token && c.method === 'getUpdates');
+    try {
+      await vi.waitFor(
+        () => {
+          expect(child.output()).toContain('seller bot started');
+          expect(child.output()).toContain('client bot started');
+          expect(polls(sellerToken).length).toBeGreaterThan(0);
+          expect(polls(clientToken).length).toBeGreaterThan(0);
+        },
+        { timeout: 20_000, interval: 200 },
+      );
+    } catch (error) {
+      child.kill('SIGKILL');
+      throw new Error(`${(error as Error).message}\n${child.output()}`, { cause: error });
+    }
+    // Each bot polls its own update types (the client bot also gets my_chat_member).
+    expect(polls(clientToken)[0]?.body.allowed_updates).toEqual([
+      'message',
+      'callback_query',
+      'my_chat_member',
+    ]);
+    expect(polls(sellerToken)[0]?.body.allowed_updates).toEqual(['message', 'callback_query']);
+    expect(child.output()).toContain('"clientBot":true');
+
+    const sentAt = Date.now();
+    child.kill('SIGTERM');
+    const result = await Promise.race([
+      child.exited,
+      new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 15_000)),
+    ]);
+    if (result === 'timeout') child.kill('SIGKILL');
+    const output = child.output();
+    expect(result, output).toEqual({ code: 0, signal: null });
+    expect(Date.now() - sentAt).toBeLessThan(10_000);
+    expect(output).toContain('shutdown complete');
+    expect(output).not.toContain('shutdown step failed');
+    // bot.stop() confirms the offset with a last getUpdates(limit 1): both bots stopped.
+    for (const token of [sellerToken, clientToken]) {
+      expect(polls(token).some((c) => c.body.limit === 1)).toBe(true);
+    }
+    expect(output).not.toContain('seller-secret');
+    expect(output).not.toContain('client-secret');
     expect(output).not.toMatch(/\+7\d{10}/);
   });
 });

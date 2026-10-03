@@ -1,7 +1,10 @@
 // Worker composition: WorkerDeps (create-deps.ts), Job Schedulers, Workers with dead-letter, the
-// outbox dispatcher, the seller bot and graceful shutdown. main.ts calls runWorker() with the
+// outbox dispatcher, the seller bot, the client bot (phase 1C) and graceful shutdown. main.ts calls runWorker() with the
 // real env; the process integration test runs the same function with test-only key prefixes.
 import { HEARTBEAT_KEY, type Env, type Logger } from '@detaly/config';
+import type { ApiClientOptions, Bot } from 'grammy';
+import { createClientBot } from './bots/client/bot';
+import { startClientBot, type ClientBotRunner } from './bots/client/runner';
 import { createSellerBot, startSellerBot, type SellerBotRunner } from './bots/seller/bot';
 import { createStaffCache, loadStaffTgIds } from './bots/seller/staff';
 import { createWorkerDeps, type CreateWorkerDepsOptions } from './create-deps';
@@ -27,8 +30,17 @@ export interface RunWorkerOptions {
   outboxChannel?: string;
   /** Exit function for shutdown (default process.exit). */
   exit?: (code: number) => void;
-  /** Transport overrides for tests (Rossko caller, fetch, Telegram API, seller cards). */
-  overrides?: Pick<CreateWorkerDepsOptions, 'rosskoCaller' | 'fetch' | 'telegram' | 'sellerCards'>;
+  /** Transport overrides for tests (Rossko caller, fetch, Telegram APIs, files, seller cards). */
+  overrides?: Pick<
+    CreateWorkerDepsOptions,
+    'rosskoCaller' | 'fetch' | 'telegram' | 'clientTelegram' | 'files' | 'sellerCards'
+  > & {
+    /**
+     * grammY client options of the long-polling bots (tests: `apiRoot` of a local fake Bot API,
+     * so both bots start and stop without the network).
+     */
+    botClient?: ApiClientOptions;
+  };
 }
 
 export async function runWorker({
@@ -41,6 +53,7 @@ export async function runWorker({
   exit,
   overrides,
 }: RunWorkerOptions): Promise<ShutdownHandle> {
+  const { botClient, ...depsOverrides } = overrides ?? {};
   const resources = createWorkerDeps({
     env,
     logger,
@@ -48,7 +61,7 @@ export async function runWorker({
     heartbeatKey,
     keyPrefix,
     outboxChannel,
-    ...overrides,
+    ...depsOverrides,
   });
   const { deps, workerRedis } = resources;
   const { db, redis, queues } = deps;
@@ -63,7 +76,7 @@ export async function runWorker({
   });
 
   // --- seller bot: /ping, order card buttons, «Счёт оплачен», /queues (all through deps) ---
-  let bot: ReturnType<typeof createSellerBot> | null = null;
+  let bot: Bot | null = null;
   if (env.TG_SELLER_BOT_TOKEN) {
     const staffCache = createStaffCache({ load: () => loadStaffTgIds(db), logger });
     bot = createSellerBot({
@@ -77,6 +90,7 @@ export async function runWorker({
       }),
       sellerChatId: env.TG_SELLER_CHAT_ID,
       logger,
+      client: botClient,
       deps,
     });
   } else {
@@ -84,13 +98,26 @@ export async function runWorker({
   }
   // --- end of the seller bot block ---
 
+  // --- client bot (phase 1C): binding by deep link, statuses, booking, /stop ---
+  let clientBot: Bot | null = null;
+  if (env.TG_CLIENT_BOT_TOKEN) {
+    clientBot = createClientBot({ token: env.TG_CLIENT_BOT_TOKEN, deps, client: botClient });
+  } else {
+    logger.warn('TG_CLIENT_BOT_TOKEN is empty: the client bot is not started');
+  }
+  // --- end of the client bot block ---
+
   // Polling starts after the schedulers are registered; shutdown stops whatever is running.
   let botRunner: SellerBotRunner | null = null;
+  let clientBotRunner: ClientBotRunner | null = null;
 
   // Signals are handled from here on, even if scheduler registration is still in flight.
   const handle = installShutdown({
     resources: {
-      bot: bot ? { stop: async () => botRunner?.stop() } : null,
+      bots: [
+        ...(bot ? [{ name: 'sellerBot', stop: async () => botRunner?.stop() }] : []),
+        ...(clientBot ? [{ name: 'clientBot', stop: async () => clientBotRunner?.stop() }] : []),
+      ],
       dispatcher,
       workers,
       queues: Object.values(queues),
@@ -111,11 +138,15 @@ export async function runWorker({
   if (handle.isShuttingDown()) return handle;
   dispatcher.start();
   if (bot) botRunner = startSellerBot(bot, { logger, token: env.TG_SELLER_BOT_TOKEN });
+  if (clientBot) {
+    clientBotRunner = startClientBot(clientBot, { logger, token: env.TG_CLIENT_BOT_TOKEN });
+  }
   logger.info(
     {
       queues: Object.keys(queues),
       workers: workers.map((w) => w.name),
       bot: bot !== null,
+      clientBot: clientBot !== null,
       payments: deps.payments !== null,
       sms: deps.smsDriver !== null,
       rosskoMode: env.ROSSKO_MODE,

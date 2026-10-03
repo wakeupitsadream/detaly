@@ -12,8 +12,15 @@ export interface RedisLike {
   disconnect(): void;
 }
 
+/** A long-polling bot (seller, client): `name` labels its shutdown step (`<name>.stop`). */
+export interface StoppableBot {
+  name?: string;
+  stop(): Promise<unknown>;
+}
+
 export interface ShutdownResources {
-  bot?: { stop(): Promise<unknown> } | null;
+  /** Bots stop first and in parallel, each within its own step cap (phase 1C: two bots). */
+  bots?: readonly StoppableBot[];
   /** Outbox dispatcher: stopped before the queues close (it adds jobs to them). */
   dispatcher?: { stop(): Promise<unknown> } | null;
   workers: readonly Closable[];
@@ -24,7 +31,7 @@ export interface ShutdownResources {
 }
 
 export const SHUTDOWN_TIMEOUT_MS = 25_000;
-/** One slow step (bot.stop needs the Telegram API) must not eat the whole budget. */
+/** One slow step (a bot's stop needs the Telegram API) must not eat the whole budget. */
 export const SHUTDOWN_STEP_TIMEOUT_MS = 8_000;
 
 type SignalSource = Pick<NodeJS.Process, 'on' | 'off'>;
@@ -68,7 +75,7 @@ function quitRedis(client: RedisLike): Promise<unknown> {
 }
 
 /**
- * Order: bot.stop → dispatcher.stop → worker.close (waits for running jobs) → queue.close →
+ * Order: bots stop (in parallel) → dispatcher.stop → worker.close (waits for running jobs) → queue.close →
  * redis.quit → sql.end. A failing step is logged and the next one still runs.
  */
 export function installShutdown({
@@ -98,8 +105,8 @@ export function installShutdown({
     }, timeoutMs);
     hardExit.unref();
 
-    const { bot, dispatcher, workers, queues, redis, sql } = resources;
-    if (bot) await step('bot.stop', () => bot.stop());
+    const { bots = [], dispatcher, workers, queues, redis, sql } = resources;
+    await Promise.all(bots.map((bot) => step(`${bot.name ?? 'bot'}.stop`, () => bot.stop())));
     if (dispatcher) await step('dispatcher.stop', () => dispatcher.stop());
     // Running jobs may take a while: workers get the remaining budget, not the step cap.
     await step('worker.close', () => Promise.all(workers.map((w) => w.close())), timeoutMs);

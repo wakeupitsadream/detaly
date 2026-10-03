@@ -12,6 +12,8 @@
  * Needs the 1C stand: scripts/e2e-1c.sh (web with FILES_STORAGE=local, TG_CLIENT_BOT_USERNAME,
  * the worker, the YooKassa mock). The VIN, the phone and every token go to E2E_SECRETS_FILE: the
  * script greps the logs for them. Screenshots: test-results/screens/<project>-vin-flow-*.png.
+ * Under scripts/e2e-1b.sh (no FILES_STORAGE, no TG_CLIENT_BOT_USERNAME: /vin has no photo input)
+ * the flow is skipped, as order-1c.spec.ts is without INSTALL_PARTNER_NAME.
  */
 import { expect, test } from '@playwright/test';
 import sharp from 'sharp';
@@ -29,6 +31,9 @@ const MOCK_URL = process.env.E2E_YOOKASSA_MOCK_URL ?? 'http://127.0.0.1:3199';
 const ADMIN_USER = process.env.E2E_ADMIN_USER ?? 'admin';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'e2e-admin-password';
 const PAID_WITHIN_MS = 30_000;
+/** The server env scripts/e2e-1c.sh exports: photo storage and the client bot's deep link. */
+const PHOTOS_ON = ['local', 's3'].includes(process.env.FILES_STORAGE ?? '');
+const BOT = process.env.TG_CLIENT_BOT_USERNAME ?? '';
 
 /** A VIN of the right shape, unique per run (not anybody's car). */
 function testVin(): string {
@@ -63,6 +68,10 @@ test.use({
 test('VIN request with photos -> answer with a typo -> /p/<token> -> checkout -> paid', async ({
   page,
 }, testInfo) => {
+  test.skip(
+    !PHOTOS_ON || !BOT,
+    'needs FILES_STORAGE=local and TG_CLIENT_BOT_USERNAME: bash scripts/e2e-1c.sh',
+  );
   test.setTimeout(150_000);
   const project = testInfo.project.name;
   const vin = testVin();
@@ -96,7 +105,7 @@ test('VIN request with photos -> answer with a typo -> /p/<token> -> checkout ->
   rememberSecrets(linkToken);
   await expect(page.getByTestId('vin-sent-title')).toHaveText('Заявка принята');
   const telegram = page.getByTestId('vin-telegram-link');
-  await expect(telegram).toHaveAttribute('href', `https://t.me/detaly_test_bot?start=${linkToken}`);
+  await expect(telegram).toHaveAttribute('href', `https://t.me/${BOT}?start=${linkToken}`);
   await expectNoHorizontalScroll(page, '/vin/sent/<link>');
   await screenshot(page, project, 'vin-flow-sent');
 

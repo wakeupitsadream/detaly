@@ -443,10 +443,14 @@
   .draw-line-y {
     animation: none;
   }
+  /* 0s, not 0.01ms: transition-property is `all` by default, so any non-zero duration makes every
+     style change a transition whose first frame shows the old value. PhotoInput's hydration
+     swap from `w-full` to `sr-only` then painted a 100%-wide absolute input for one frame: a
+     horizontal scroll on /vin at 375 and on /o/demo (e2e/screens.spec.ts, reduced motion). */
   *,
   *::before,
   *::after {
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
     scroll-behavior: auto !important;
   }
 }

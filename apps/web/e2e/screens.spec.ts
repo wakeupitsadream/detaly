@@ -111,6 +111,38 @@ test('/checkout without a cart redirects to the empty cart', async ({ page }) =>
   await expect(page.getByLabel('Телефон', { exact: true })).toHaveCount(0);
 });
 
+test.describe('reduced motion', () => {
+  test.use({ contextOptions: { reducedMotion: 'reduce' } });
+
+  test('/vin: no frame with a horizontal scroll while the photo input hydrates', async ({
+    page,
+  }) => {
+    // The check after load misses a one-frame overflow: every frame is measured from the start.
+    await page.addInitScript(() => {
+      const state = globalThis as unknown as { overflowFrames: number };
+      state.overflowFrames = 0;
+      const tick = () => {
+        const root = document.documentElement;
+        if (document.body && root.scrollWidth > root.clientWidth) state.overflowFrames += 1;
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    await page.goto('/vin');
+    const photos = page.getByTestId('vin-form').locator('input[type="file"]');
+    test.skip((await photos.count()) === 0, 'photos are off on this stand (FILES_STORAGE=none)');
+    // After hydration PhotoInput hides the plain input (`sr-only`) behind its label button.
+    await expect(photos).toHaveClass(/\bsr-only\b/);
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
+    const frames = await page.evaluate(
+      () => (globalThis as unknown as { overflowFrames: number }).overflowFrames,
+    );
+    expect(frames, 'frames with a horizontal scroll').toBe(0);
+  });
+});
+
 test('the search form submits to /search with the query', async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('Артикул детали').fill('oc 90');

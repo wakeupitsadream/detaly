@@ -1,6 +1,8 @@
 // Seller bot (Telegram, grammY, long polling). Staff only: /ping (phase 0); with `deps` (phase
 // 1B, docs/phase-1b-implementation.md section 13): order card buttons, «Счёт оплачен» with a
-// ForceReply and /queues for the owner.
+// ForceReply and /queues for the owner. Phase 1C (docs/phase-1c-implementation.md section 9):
+// claim, booking and packaging photo buttons, VIN request cards, ForceReply texts (claim
+// answers, VIN lines) and photos (packaging, returned part).
 import type { Logger } from '@detaly/config';
 import type { PingData } from '@detaly/notify';
 import { Bot, type ApiClientOptions } from 'grammy';
@@ -10,8 +12,9 @@ import { callbackHandler } from './callbacks';
 import { createCardService } from './cards';
 import { describeBotError, toSafeError } from './errors';
 import { allowedChats, pingHandler, staffOnly } from './handlers';
-import { invoiceReplyHandler } from './invoice';
+import { photoHandler } from './photos';
 import { queuesCommand } from './queues';
+import { replyHandler } from './replies';
 import type { IsStaff } from './staff';
 
 export interface SellerBotOptions {
@@ -47,7 +50,8 @@ export function createSellerBot({
     const cards = createCardService(deps, bot.api);
     bot.command('queues', queuesCommand(deps));
     bot.on('callback_query:data', callbackHandler({ deps, cards }));
-    bot.on('message:text', invoiceReplyHandler({ deps, cards }));
+    bot.on('message:text', replyHandler({ deps, cards }));
+    bot.on(['message:photo', 'message:document'], photoHandler({ deps, cards }));
   }
   // Any other press (no deps, a game or inline button): stop the spinner, say nothing.
   bot.on('callback_query', async (ctx) => {

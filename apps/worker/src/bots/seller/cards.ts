@@ -6,7 +6,12 @@
 // - post: a new card for the order; the order's older open cards are closed (keyboard removed);
 // - refresh: the latest open card is redrawn from the database (e.g. «Выдал» after the receipt);
 // - sendHandoverQr: the QR photo of a handover payment, to the sellers chat only (Б28);
-// - postVin / refreshVin: VIN request cards (phase 1C) — stubs until the seller-bot-1c package.
+// - postVin / refreshVin: VIN request cards (phase 1C, kind 'vin', docs/phase-1c-implementation.md
+//   section 9 item 5): the same nonce discipline — a new card closes the request's older open
+//   cards, every redraw rotates the nonce.
+//
+// Phase 1C order cards also carry the open claims, the active booking and the packaging photo
+// count (card-view.ts), with the availableStaffActions1C buttons.
 //
 // The same service backs the bot's button presses (redraw with a menu or the main keyboard);
 // the bot builds it over its own Api, the queue jobs over deps.telegram.
@@ -16,6 +21,7 @@ import {
   asc,
   desc,
   eq,
+  inArray,
   isNull,
   orderItems,
   orders,
@@ -28,15 +34,24 @@ import { CLIENT_TIME_ZONE, formatRub } from '@detaly/domain';
 import { FALLBACK_REASONS, newNonce } from '@detaly/notify';
 import {
   availableStaffActions,
+  availableStaffActions1C,
+  bookingSlot,
   loadClientPhone,
+  loadOrderPhotos,
   loadOrderSettings,
   loadOrderSnapshot,
   type StaffActionView,
 } from '@detaly/orders';
+import { loadVinRequestForStaff } from '@detaly/vin';
 import { InputFile } from 'grammy';
 import QRCode from 'qrcode';
-import type { SellerCardPort, SellerTelegramApi, WorkerDeps } from '../../deps';
-import { adminUrl } from '../../jobs/notify/template-data';
+import type {
+  SellerCardPort,
+  SellerCardPostResult,
+  SellerTelegramApi,
+  WorkerDeps,
+} from '../../deps';
+import { adminUrl, baseUrl } from '../../jobs/notify/template-data';
 import {
   headlineFor,
   mainKeyboard,
@@ -48,15 +63,36 @@ import {
   type InlineKeyboard,
 } from './card-view';
 import { describeBotError } from './errors';
+import { renderVinCardText, vinKeyboard, type VinCardData } from './vin-view';
 
 /** An order card (kinds order, qr): since phase 1C seller_cards.order_id is null for VIN cards. */
 export type SellerCardRow = typeof sellerCards.$inferSelect & { orderId: string };
+
+/** A VIN request card (kind vin): seller_cards.vin_request_id is set, order_id is null. */
+export type VinCardRow = typeof sellerCards.$inferSelect & { vinRequestId: string };
+
+/** The card behind a button: an order card or a VIN request card. */
+export type AnyCardRow = { type: 'order'; card: SellerCardRow } | { type: 'vin'; card: VinCardRow };
 
 /** The row as an order card, or null for a VIN request card. */
 function orderCard(row: typeof sellerCards.$inferSelect | undefined): SellerCardRow | null {
   if (row === undefined || row.orderId === null) return null;
   return { ...row, orderId: row.orderId };
 }
+
+/** The row as a VIN request card, or null. */
+function vinCard(row: typeof sellerCards.$inferSelect | undefined): VinCardRow | null {
+  if (row === undefined || row.kind !== 'vin' || row.vinRequestId === null) return null;
+  return { ...row, vinRequestId: row.vinRequestId };
+}
+
+/** APP_BASE_URL/admin/vin/<id> (Basic auth: the photos and the full phone are there). */
+export function vinAdminUrl(env: Pick<Env, 'APP_BASE_URL'>, vinRequestId: string): string {
+  return `${baseUrl(env)}/admin/vin/${vinRequestId}`;
+}
+
+/** First line of the VIN card posted after the master's answer. */
+export const VIN_PREVIEW_HEADLINE = 'Превью ответа · заявка VIN';
 
 /**
  * Cards in the sellers chat are drawn with the owner's buttons: the owner reads the same chat,
@@ -117,8 +153,21 @@ export interface RedrawResult {
 }
 
 export interface CardService extends SellerCardPort {
-  /** The card a button belongs to: an order card (any state) by its current nonce. */
-  findByNonce(nonce: string): Promise<SellerCardRow | null>;
+  /** The card a button belongs to: an order or a VIN request card (any state) by its nonce. */
+  findAnyByNonce(nonce: string): Promise<AnyCardRow | null>;
+  /**
+   * A new VIN card with a headline («Превью ответа» after the master's answer); closes the
+   * request's older open cards. postVin is this without a headline.
+   */
+  postVinCard(input: {
+    vinRequestId: string;
+    headline?: string | null;
+    note?: string | null;
+  }): Promise<SellerCardPostResult>;
+  /** Redraws an open VIN card with a new nonce; null when it is gone. */
+  redrawVin(cardId: string): Promise<{ vinRequestId: string } | null>;
+  /** The open order card behind a Telegram message (a photo sent in reply to it). */
+  openOrderCardAt(chatId: string, messageId: number): Promise<SellerCardRow | null>;
   /**
    * Takes the card for one press: rotates the nonce away from `nonce` if it is still the
    * current one of an open card. false -> another press (or a redraw) was first.
@@ -155,8 +204,11 @@ export function createCardService(
       settings,
       deps.now(),
     );
+    const actions1C = availableStaffActions1C(snapshot, CARD_ROLE, settings, deps.now());
     const phone = await loadClientPhone(db, snapshot.order.userId);
+    const packaging = await loadOrderPhotos(db, orderId, ['packaging']);
     const { order } = snapshot;
+    const itemOf = (id: string | null) => snapshot.items.find((item) => item.id === id) ?? null;
     return {
       order: {
         id: order.id,
@@ -178,6 +230,34 @@ export function createCardService(
       })),
       phone,
       actions,
+      actions1C,
+      // Open claims only, without texts (the client's description may hold PD).
+      claims: snapshot.claims
+        .filter((claim) => claim.closedAt === null)
+        .map((claim) => {
+          const item = itemOf(claim.orderItemId);
+          return {
+            id: claim.id,
+            kind: claim.kind,
+            item: item ? { brand: item.brand, article: item.article } : null,
+            deadlineAt: claim.deadlineAt,
+            returnAccepted: claim.returnAcceptedAt !== null,
+            photoCount: claim.photoCount,
+            decision: claim.decision,
+          };
+        }),
+      bookings: snapshot.bookings
+        .filter((booking) => booking.status === 'requested' || booking.status === 'confirmed')
+        .map((booking) => {
+          const slot = bookingSlot(booking.slotAt);
+          return {
+            id: booking.id,
+            dayText: slot.dayText,
+            timeText: slot.timeText,
+            status: booking.status,
+          };
+        }),
+      packagingPhotos: packaging.length,
       adminUrl: adminUrl(env, order.id),
       headline: extra.headline ?? null,
       note: extra.note ?? null,
@@ -220,6 +300,87 @@ export function createCardService(
         orderId: sellerCards.orderId,
       });
     for (const card of closed) await stripKeyboard(card);
+  }
+
+  async function closeOtherVinCards(vinRequestId: string, keepId: string): Promise<void> {
+    const closed = await db
+      .update(sellerCards)
+      .set({ closedAt: deps.now() })
+      .where(
+        and(
+          eq(sellerCards.vinRequestId, vinRequestId),
+          eq(sellerCards.kind, 'vin'),
+          isNull(sellerCards.closedAt),
+          sql`${sellerCards.id} <> ${keepId}`,
+        ),
+      )
+      .returning({
+        chatId: sellerCards.chatId,
+        messageId: sellerCards.messageId,
+        orderId: sellerCards.orderId,
+      });
+    for (const card of closed) await stripKeyboard(card);
+  }
+
+  async function loadVinCard(
+    vinRequestId: string,
+    extra: { headline?: string | null; note?: string | null } = {},
+  ): Promise<VinCardData | null> {
+    // The masked view: phone •••4567, digit runs of the texts hidden, photo keys never shown.
+    const request = await loadVinRequestForStaff(db, vinRequestId);
+    if (request === null) return null;
+    const settings = await loadOrderSettings(db, env);
+    return {
+      request,
+      headline: extra.headline ?? null,
+      note: extra.note ?? null,
+      adminUrl: vinAdminUrl(env, vinRequestId),
+      eta: settings.eta,
+    };
+  }
+
+  async function postVinCard(input: {
+    vinRequestId: string;
+    headline?: string | null;
+    note?: string | null;
+  }): Promise<SellerCardPostResult> {
+    const { vinRequestId } = input;
+    if (api === null) {
+      logger.warn({ vinRequestId }, 'seller VIN card skipped, TG_SELLER_BOT_TOKEN is empty');
+      return { status: 'skipped', fallbackReason: FALLBACK_REASONS.driverUnavailable };
+    }
+    if (env.TG_SELLER_CHAT_ID === undefined) {
+      logger.warn({ vinRequestId }, 'seller VIN card skipped, TG_SELLER_CHAT_ID is not set');
+      return { status: 'skipped', fallbackReason: FALLBACK_REASONS.driverUnavailable };
+    }
+    const chatId = String(env.TG_SELLER_CHAT_ID);
+    const data = await loadVinCard(vinRequestId, input);
+    if (data === null) {
+      logger.warn({ vinRequestId }, 'seller VIN card: request not found');
+      return { status: 'skipped', fallbackReason: 'vin_not_found' };
+    }
+    const nonce = newNonce();
+    const [row] = await db
+      .insert(sellerCards)
+      .values({ vinRequestId, chatId, nonce, kind: 'vin' })
+      .returning({ id: sellerCards.id });
+    const cardId = (row as { id: string }).id;
+    let messageId: number;
+    try {
+      const sent = await api.sendMessage(chatId, renderVinCardText(data), {
+        reply_markup: { inline_keyboard: vinKeyboard(data, nonce) },
+        link_preview_options: { is_disabled: true },
+      });
+      messageId = sent.message_id;
+    } catch (error) {
+      // No message: the row must not stay open (a refresh would try to edit nothing).
+      await db.update(sellerCards).set({ closedAt: deps.now() }).where(eq(sellerCards.id, cardId));
+      throw error;
+    }
+    await db.update(sellerCards).set({ messageId }).where(eq(sellerCards.id, cardId));
+    await closeOtherVinCards(vinRequestId, cardId);
+    logger.info({ vinRequestId, status: data.request.status }, 'seller VIN card posted');
+    return { status: 'posted' };
   }
 
   async function edit(
@@ -355,24 +516,83 @@ export function createCardService(
       logger.info({ orderNumber: order.number }, 'seller QR sent');
     },
 
-    // Phase 1C stubs (docs/phase-1c-implementation.md section 4): the seller-bot-1c package
-    // draws VIN request cards (kind 'vin') with their nonce and buttons.
-    async postVin({ vinRequestId }) {
-      logger.warn({ vinRequestId }, 'seller VIN card: not implemented yet');
-      return { status: 'skipped', fallbackReason: 'not_implemented' };
+    async postVin({ vinRequestId, note }) {
+      return postVinCard({ vinRequestId, note: note ?? null });
     },
 
-    async refreshVin() {
-      // Nothing to redraw until VIN cards exist.
-    },
+    postVinCard,
 
-    async findByNonce(nonce) {
+    async refreshVin(vinRequestId) {
       const [card] = await db
+        .select({ id: sellerCards.id })
+        .from(sellerCards)
+        .where(
+          and(
+            eq(sellerCards.vinRequestId, vinRequestId),
+            eq(sellerCards.kind, 'vin'),
+            isNull(sellerCards.closedAt),
+          ),
+        )
+        .orderBy(desc(sellerCards.createdAt), desc(sellerCards.id))
+        .limit(1);
+      if (!card) return;
+      await service.redrawVin(card.id);
+    },
+
+    async redrawVin(cardId) {
+      const [row] = await db.select().from(sellerCards).where(eq(sellerCards.id, cardId));
+      const card = vinCard(row);
+      if (!card || card.closedAt !== null || card.messageId === null) return null;
+      const data = await loadVinCard(card.vinRequestId);
+      if (data === null) return null;
+      const nonce = newNonce();
+      const rotated = await db
+        .update(sellerCards)
+        .set({ nonce })
+        .where(and(eq(sellerCards.id, card.id), isNull(sellerCards.closedAt)))
+        .returning({ id: sellerCards.id });
+      if (rotated.length === 0) return null;
+      try {
+        await edit(card, renderVinCardText(data), vinKeyboard(data, nonce));
+      } catch (error) {
+        if (!isMessageGone(error)) throw error;
+        await db
+          .update(sellerCards)
+          .set({ closedAt: deps.now() })
+          .where(eq(sellerCards.id, card.id));
+        logger.warn({ vinRequestId: card.vinRequestId }, 'seller VIN card message is gone, closed');
+        return null;
+      }
+      return { vinRequestId: card.vinRequestId };
+    },
+
+    async findAnyByNonce(nonce) {
+      const [row] = await db
         .select()
         .from(sellerCards)
-        .where(and(eq(sellerCards.nonce, nonce), eq(sellerCards.kind, 'order')))
+        .where(and(eq(sellerCards.nonce, nonce), inArray(sellerCards.kind, ['order', 'vin'])))
         .limit(1);
-      return orderCard(card);
+      const vin = vinCard(row);
+      if (vin) return { type: 'vin', card: vin };
+      const order = row?.kind === 'order' ? orderCard(row) : null;
+      return order ? { type: 'order', card: order } : null;
+    },
+
+    async openOrderCardAt(chatId, messageId) {
+      const [row] = await db
+        .select()
+        .from(sellerCards)
+        .where(
+          and(
+            eq(sellerCards.chatId, chatId),
+            eq(sellerCards.messageId, messageId),
+            eq(sellerCards.kind, 'order'),
+            isNull(sellerCards.closedAt),
+          ),
+        )
+        .orderBy(desc(sellerCards.createdAt))
+        .limit(1);
+      return orderCard(row);
     },
 
     async claim(card) {
@@ -444,11 +664,27 @@ export function createCardService(
           and(
             eq(sellerCards.chatId, chatId),
             eq(sellerCards.messageId, messageId),
-            eq(sellerCards.kind, 'order'),
+            inArray(sellerCards.kind, ['order', 'vin']),
           ),
         )
         .orderBy(desc(sellerCards.createdAt))
         .limit(1);
+      const vin = vinCard(row);
+      if (vin) {
+        try {
+          if (vin.closedAt === null) await service.redrawVin(vin.id);
+          else await stripKeyboard(vin);
+        } catch (error) {
+          logger.warn(
+            {
+              vinRequestId: vin.vinRequestId,
+              err: describeBotError(error, env.TG_SELLER_BOT_TOKEN),
+            },
+            'seller VIN card: redraw of a stale card failed',
+          );
+        }
+        return;
+      }
       const card = orderCard(row);
       if (!card) return;
       try {

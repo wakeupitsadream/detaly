@@ -2,9 +2,21 @@
 // the text is drawn from the database state (number, scheme, sum, date, items with their states,
 // the masked client phone, the needs_attention reason), the buttons from availableStaffActions.
 // No full phone, no address, no order token: the sellers chat lives in Telegram (PD minimisation).
+//
+// Phase 1C (docs/phase-1c-implementation.md section 9 item 1): the open claims (kind, item,
+// deadline, «возврат принят», the number of the client's photos — the photos themselves only in
+// the admin, decision С2) and the active installation booking (slot, status), their buttons from
+// availableStaffActions1C with the claim or booking id, «Фото упаковки» and its hint. Never the
+// client's claim text: it may hold PD.
 import {
   addDays,
+  CLAIM_DECISION_LABELS,
+  CLAIM_KIND_LABELS,
   formatRub,
+  localDate,
+  type ClaimDecision,
+  type ClaimKind,
+  type InstallBookingStatus,
   type IsoDate,
   type OrderItemState,
   type OrderNotifyTemplate,
@@ -23,7 +35,12 @@ import {
   promise,
   type MenuAction,
 } from '@detaly/notify';
-import { ETA_MENU_DAYS, ORDER_STATUS_LABELS, type StaffActionView } from '@detaly/orders';
+import {
+  ETA_MENU_DAYS,
+  ORDER_STATUS_LABELS,
+  type StaffActionView,
+  type StaffActionView1C,
+} from '@detaly/orders';
 
 export type InlineButton = { text: string; callback_data: string } | { text: string; url: string };
 export type InlineKeyboard = InlineButton[][];
@@ -88,6 +105,8 @@ const HEADLINES: Partial<Record<OrderNotifyTemplate, string>> = {
   staff_payment_rejected: 'ЮKassa не создала платёж',
   staff_refund_receipt_failed: 'Чек возврата не зарегистрирован',
   staff_claim_deadline: 'Претензия',
+  staff_claim_opened: 'Претензия',
+  staff_install_request: 'Запись на установку',
 };
 
 export function headlineFor(template: OrderNotifyTemplate | null | undefined): string {
@@ -117,12 +136,43 @@ export interface CardItem {
   state: OrderItemState;
 }
 
+/** An open claim on the card (no texts: the client's description may hold PD). */
+export interface CardClaim {
+  id: string;
+  kind: ClaimKind;
+  /** The claimed item; null for the whole order. */
+  item: Pick<CardItem, 'brand' | 'article'> | null;
+  deadlineAt: Date;
+  returnAccepted: boolean;
+  /** Photos the client attached (shown in the admin only). */
+  photoCount: number;
+  decision: ClaimDecision | null;
+}
+
+/** An active installation booking (requested / confirmed). No price anywhere. */
+export interface CardBooking {
+  id: string;
+  /** 'чт 9 окт' */
+  dayText: string;
+  /** '14:00' */
+  timeText: string;
+  status: InstallBookingStatus;
+}
+
 export interface CardData {
   order: CardOrder;
   items: CardItem[];
   /** The client's phone; only the last 4 digits are printed. */
   phone: string | null;
   actions: StaffActionView[];
+  /** Phase 1C buttons (claims, bookings, «Фото упаковки»); after the 1B ones. */
+  actions1C?: StaffActionView1C[];
+  /** Open claims of the order (phase 1C). */
+  claims?: CardClaim[];
+  /** Active bookings of the order (phase 1C). */
+  bookings?: CardBooking[];
+  /** Packaging photos stored for the order (phase 1C). */
+  packagingPhotos?: number;
   /** APP_BASE_URL/admin/orders/<id>. */
   adminUrl: string;
   headline?: string | null;
@@ -140,6 +190,47 @@ export interface CardMenu {
 
 function itemTitle(item: Pick<CardItem, 'brand' | 'article'>): string {
   return `${item.brand} ${item.article}`;
+}
+
+export const BOOKING_STATUS_LABELS: Record<InstallBookingStatus, string> = {
+  requested: 'ждёт подтверждения',
+  confirmed: 'подтверждена',
+  done: 'выполнена',
+  cancelled: 'отменена',
+  no_show: 'клиент не приехал',
+};
+
+/** Hint of a card in ordered_at_supplier (decision С17). */
+export const PACKAGING_PHOTO_HINT =
+  'Пришлите фото упаковки ответом на эту карточку, затем «Приехало»';
+
+/**
+ * «Претензия: брак · позиция MANN W 914/2 · ответить до 12 октября · возврат принят ✓ · фото
+ * клиента: 2 (в админке)».
+ */
+export function claimLine(claim: CardClaim): string {
+  const parts = [`Претензия: ${CLAIM_KIND_LABELS[claim.kind].toLowerCase()}`];
+  parts.push(claim.item ? `позиция ${itemTitle(claim.item)}` : 'весь заказ');
+  parts.push(`ответить до ${deadline(localDate(claim.deadlineAt))}`);
+  // A delay needs no returned part (decision С8).
+  if (claim.kind !== 'delay') parts.push(`возврат принят ${claim.returnAccepted ? '✓' : 'нет'}`);
+  parts.push(
+    claim.photoCount > 0 ? `фото клиента: ${claim.photoCount} (в админке)` : 'фото клиента: нет',
+  );
+  if (claim.decision !== null) {
+    const decision = `решение: ${CLAIM_DECISION_LABELS[claim.decision].toLowerCase()}`;
+    parts.push(
+      claim.decision === 'replace'
+        ? `${decision} — закажите замену, затем «Замена выдана»`
+        : decision,
+    );
+  }
+  return parts.join(' · ');
+}
+
+/** «Запись на установку: чт 9 окт 14:00 — ждёт подтверждения». */
+export function bookingLine(booking: CardBooking): string {
+  return `Запись на установку: ${booking.dayText} ${booking.timeText} — ${BOOKING_STATUS_LABELS[booking.status]}`;
 }
 
 export function renderCardText(data: CardData, menu: CardMenu | null = null): string {
@@ -164,8 +255,12 @@ export function renderCardText(data: CardData, menu: CardMenu | null = null): st
     const date = formatReplyBy(order.supplierReturnDeadlineAt);
     if (date) lines.push(`Вернуть Rossko до ${date}`);
   }
+  for (const claim of data.claims ?? []) lines.push(claimLine(claim));
+  for (const booking of data.bookings ?? []) lines.push(bookingLine(booking));
+  if ((data.packagingPhotos ?? 0) > 0) lines.push(`Фото упаковки: ${data.packagingPhotos}`);
+  if (order.status === 'ordered_at_supplier') lines.push(PACKAGING_PHOTO_HINT);
   if (data.note) lines.push(data.note);
-  const disabled = data.actions.filter((action) => !action.enabled);
+  const disabled = [...data.actions, ...(data.actions1C ?? [])].filter((action) => !action.enabled);
   for (const action of disabled) {
     lines.push(`«${action.label}» пока недоступно: ${action.disabledReason ?? 'проверьте заказ'}`);
   }
@@ -183,7 +278,15 @@ function actionButton(view: StaffActionView, orderId: string, nonce: string): In
   };
 }
 
-function adminRow(adminUrl: string): InlineButton[] {
+/** A phase 1C button: the id is the claim, the booking or (pphoto) the order. */
+function action1CButton(view: StaffActionView1C, orderId: string, nonce: string): InlineButton {
+  return {
+    text: view.label,
+    callback_data: buildCallbackData(view.code, view.claimId ?? view.bookingId ?? orderId, nonce),
+  };
+}
+
+export function adminRow(adminUrl: string): InlineButton[] {
   return [{ text: 'Открыть в админке', url: adminUrl }];
 }
 
@@ -192,6 +295,9 @@ export function mainKeyboard(data: CardData, nonce: string): InlineKeyboard {
   const rows: InlineKeyboard = data.actions
     .filter((action) => action.enabled)
     .map((action) => [actionButton(action, data.order.id, nonce)]);
+  for (const action of data.actions1C ?? []) {
+    if (action.enabled) rows.push([action1CButton(action, data.order.id, nonce)]);
+  }
   rows.push(adminRow(data.adminUrl));
   return rows;
 }

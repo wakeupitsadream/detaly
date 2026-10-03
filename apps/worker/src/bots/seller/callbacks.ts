@@ -9,8 +9,12 @@
 //   menu (aliases, new ETA, item problem, «Назад») or performStaffAction ->
 //   answerCallbackQuery(message) -> redraw with a new nonce.
 //
+// Phase 1C (docs/phase-1c-implementation.md section 9): the nonce may also belong to a VIN
+// request card (vin.ts), and the order card carries claim, booking and packaging photo buttons
+// whose id is the claim or the booking of the card's order (order-workflow.ts).
+//
 // Logs carry the order number, the action and the staff id; never a phone or an order token.
-import { and, desc, eq, orderEvents, orders, type Db } from '@detaly/db';
+import { and, claims, desc, eq, installBookings, orderEvents, orders, type Db } from '@detaly/db';
 import {
   addDays,
   localDate,
@@ -39,8 +43,10 @@ import {
 import type { CardService, SellerCardRow } from './cards';
 import { describeBotError } from './errors';
 import { askInvoiceReference } from './invoice';
+import { handleOrderWorkflowPress, isOrderWorkflowCode } from './order-workflow';
 import { retryDeadLetterPress } from './queues';
 import { loadStaffMember, type StaffMember } from './staff';
+import { handleVinPress } from './vin';
 
 export const STALE_CARD = 'Карточка устарела, откройте свежую';
 export const OWNER_ONLY_MESSAGE = 'Только владелец';
@@ -89,16 +95,34 @@ async function answer(ctx: Context, text?: string): Promise<void> {
   }
 }
 
-/** The card's order owns the id: the order itself or one of its items. */
+/**
+ * The card's order owns the id: the order itself, one of its items, or (phase 1C) one of its
+ * claims or bookings. VIN codes never belong to an order card.
+ */
 async function targetBelongs(
+  db: Db,
   cards: CardService,
   card: SellerCardRow,
   parsed: ParsedCallbackData,
 ): Promise<boolean> {
   const target = actionTarget(parsed.action);
-  if (target === null || target === 'dead_letter') return false;
+  if (target === null || target === 'dead_letter' || target === 'vin') return false;
   if (!isUuid(parsed.orderId)) return false;
   if (target === 'order') return parsed.orderId === card.orderId;
+  if (target === 'claim') {
+    const [row] = await db
+      .select({ orderId: claims.orderId })
+      .from(claims)
+      .where(eq(claims.id, parsed.orderId));
+    return row?.orderId === card.orderId;
+  }
+  if (target === 'booking') {
+    const [row] = await db
+      .select({ orderId: installBookings.orderId })
+      .from(installBookings)
+      .where(eq(installBookings.id, parsed.orderId));
+    return row?.orderId === card.orderId;
+  }
   if (target === 'order_or_item' && parsed.orderId === card.orderId) return true;
   return (await cards.item(card.orderId, parsed.orderId)) !== null;
 }
@@ -207,14 +231,14 @@ export function callbackHandler(input: {
       return answer(ctx, message);
     }
 
-    const card = await cards.findByNonce(parsed.nonce);
+    const found = await cards.findAnyByNonce(parsed.nonce);
     const message = query.message;
     if (
-      card === null ||
-      card.closedAt !== null ||
+      found === null ||
+      found.card.closedAt !== null ||
       message === undefined ||
-      card.chatId !== String(message.chat.id) ||
-      card.messageId !== message.message_id
+      found.card.chatId !== String(message.chat.id) ||
+      found.card.messageId !== message.message_id
     ) {
       await answer(ctx, STALE_CARD);
       // The keyboard of this message is behind its card (a double press, an edit that failed
@@ -222,7 +246,19 @@ export function callbackHandler(input: {
       if (message !== undefined) await cards.heal(String(message.chat.id), message.message_id);
       return;
     }
-    if (!(await targetBelongs(cards, card, parsed))) return answer(ctx, STALE_CARD);
+    if (found.type === 'vin') {
+      // A VIN request card: its buttons carry the request id.
+      if (actionTarget(parsed.action) !== 'vin' || parsed.orderId !== found.card.vinRequestId) {
+        return answer(ctx, STALE_CARD);
+      }
+      return handleVinPress(ctx, { deps, cards, card: found.card, parsed, staff });
+    }
+    const card = found.card;
+    if (!(await targetBelongs(deps.db, cards, card, parsed))) return answer(ctx, STALE_CARD);
+
+    if (isOrderWorkflowCode(parsed.action)) {
+      return handleOrderWorkflowPress(ctx, { deps, cards, card, parsed, staff });
+    }
 
     if (parsed.action === 'invpaid') {
       // The card stays as it is until the payment reference arrives (invoice.ts).

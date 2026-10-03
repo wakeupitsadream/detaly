@@ -18,6 +18,10 @@
  * notification (confirm_request / payment_link) as an outbox row. The payment itself is created
  * lazily by «Оплатить» on /o/<token> (decision Б5).
  *
+ * Phase 1C (decision С14): a cart filled from a VIN proposal carries carts.vin_request_id; the
+ * order created from it gets orders.vin_request_id, the request becomes `converted`
+ * (markVinConverted) and the journal gets `vin_order` — in the same order transaction.
+ *
  * Personal data (phone, name, IP, user agent) goes only to the database: log lines carry the
  * order number, scheme and counts.
  */
@@ -56,8 +60,14 @@ import {
   type RepricedLine,
   type TransitionContext,
 } from '@detaly/domain';
-import { loadOrderSnapshot, persistTransition, type EngineDeps } from '@detaly/orders';
+import {
+  loadOrderSnapshot,
+  persistTransition,
+  recordJournalEvent,
+  type EngineDeps,
+} from '@detaly/orders';
 import { RosskoRateLimitError, type RosskoClient } from '@detaly/rossko';
+import { markVinConverted } from '@detaly/vin';
 import {
   fetchFreshOffers,
   findActiveCart,
@@ -237,7 +247,13 @@ function documentsMatch(input: CheckoutInput, gate: Extract<CheckoutGate, { open
 }
 
 type TxOutcome =
-  | { kind: 'created'; accessToken: string; number: string; scheme: PaymentScheme }
+  | {
+      kind: 'created';
+      accessToken: string;
+      number: string;
+      scheme: PaymentScheme;
+      vinRequestId: string | null;
+    }
   | { kind: 'replay'; accessToken: string; number: string }
   | { kind: 'cart_changed' };
 
@@ -306,7 +322,7 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
       // Serializes submits of one cart: a parallel double submit waits here and then finds
       // the order created by the first one.
       const [locked] = await tx
-        .select({ id: carts.id, status: carts.status })
+        .select({ id: carts.id, status: carts.status, vinRequestId: carts.vinRequestId })
         .from(carts)
         .where(eq(carts.id, cartId))
         .for('update');
@@ -361,6 +377,8 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
       const courierFeeKop = 0;
       const totalKop = totals.subtotalKop + courierFeeKop;
       const accessToken = newAccessToken();
+      // The master's proposal this cart was filled from (phase 1C), if any.
+      const vinRequestId = locked.vinRequestId;
 
       // 2. orders: draft first, the transition below moves it (decision Д11 for expires_at).
       const [order] = await tx
@@ -381,6 +399,7 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
           preferredChannel: input.channel,
           checkoutKey: input.checkoutKey,
           cartId,
+          vinRequestId,
           // expires_at is set by the transition below (engine, decision Б5).
           expiresAt: null,
         })
@@ -491,7 +510,20 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
         },
       );
 
-      // 7. The checked-out lines leave the cart; an empty cart is converted.
+      // 7. A cart from a VIN proposal (decision С14): the request is converted and the journal
+      // says the order came from it, in this transaction.
+      if (vinRequestId !== null) {
+        await markVinConverted(tx, { vinRequestId, orderId: order.id, now: at });
+        await recordJournalEvent(tx, {
+          orderId: order.id,
+          type: 'vin_order',
+          actor: { type: 'client', id: user.id },
+          payload: { vinRequestId },
+          at,
+        });
+      }
+
+      // 8. The checked-out lines leave the cart; an empty cart is converted.
       await removeCartLines(tx, cartId, ids);
       const left = await tx
         .select({ id: cartItems.id })
@@ -507,7 +539,13 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
         )
         .where(eq(carts.id, cartId));
 
-      return { kind: 'created', accessToken, number: order.number, scheme: decision.scheme };
+      return {
+        kind: 'created',
+        accessToken,
+        number: order.number,
+        scheme: decision.scheme,
+        vinRequestId,
+      };
     });
   }
 
@@ -694,7 +732,13 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
     }
     nudge();
     logger.info(
-      { number: outcome.number, scheme: outcome.scheme, items: okLines.length, part },
+      {
+        number: outcome.number,
+        scheme: outcome.scheme,
+        items: okLines.length,
+        part,
+        ...(outcome.vinRequestId ? { vinRequest: outcome.vinRequestId } : {}),
+      },
       'order created',
     );
     return respond(201, { orderUrl: orderUrl(outcome.accessToken), number: outcome.number });

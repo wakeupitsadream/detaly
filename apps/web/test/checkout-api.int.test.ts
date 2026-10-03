@@ -17,6 +17,7 @@ import {
   outbox,
   sha256Hex,
   users,
+  vinRequests,
   type Db,
 } from '@detaly/db';
 import {
@@ -37,6 +38,7 @@ import {
   type RosskoCaller,
   type RosskoClient,
 } from '@detaly/rossko';
+import { createVinRequest } from '@detaly/vin';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -1198,5 +1200,57 @@ describe('checkout terms the client saw (audit of phase 1A)', () => {
     const p = ready(await page(cart.token));
     expect(p.minimums.ok).toBe(true);
     expect(p.offerSplit).toBe(false);
+  });
+});
+
+describe('POST /api/checkout: a cart from a VIN proposal (phase 1C, decision С14)', () => {
+  async function vinRequest(): Promise<string> {
+    const open = await gate();
+    if (!open.open) throw new Error('gate closed');
+    const created = await createVinRequest(db, {
+      vin: 'XTA210990Y1234567',
+      carText: null,
+      needText: 'масляный фильтр',
+      phone: randomPhone().e164,
+      channel: 'sms',
+      photoKeys: [],
+      consent: {
+        documentVersionId: open.docs.consentPd.id,
+        textSha256: open.docs.consentPd.sha256,
+        ip: null,
+        userAgent: null,
+      },
+      requestKey: uuidV7(),
+      now: new Date(),
+    });
+    return created.vinRequestId;
+  }
+
+  it('the order carries vin_request_id, the request is converted, the journal has vin_order', async () => {
+    const vinRequestId = await vinRequest();
+    const cart = await makeCart(KNECHT_LOCAL);
+    await db.update(carts).set({ vinRequestId }).where(eq(carts.id, cart.id));
+    const p = ready(await page(cart.token));
+    const res = await submit({ token: cart.token, page: p });
+    expect(res.status).toBe(201);
+    const order = await orderByUrl(res.json.orderUrl);
+    expect(order.vinRequestId).toBe(vinRequestId);
+    expect(order.events.map((e) => e.type)).toEqual(['checkout', 'vin_order']);
+    expect(order.events[1]).toMatchObject({ actorType: 'client', payload: { vinRequestId } });
+    const [request] = await db.select().from(vinRequests).where(eq(vinRequests.id, vinRequestId));
+    expect(request?.status).toBe('converted');
+    expect(logText()).not.toContain(cart.token);
+  });
+
+  it('a refused checkout leaves the request as it was', async () => {
+    const vinRequestId = await vinRequest();
+    const cart = await makeCart(KNECHT_LOCAL);
+    await db.update(carts).set({ vinRequestId }).where(eq(carts.id, cart.id));
+    const p = ready(await page(cart.token));
+    priceFactor = 1.5;
+    const res = await submit({ token: cart.token, page: p });
+    expect(res.status).toBe(409);
+    const [request] = await db.select().from(vinRequests).where(eq(vinRequests.id, vinRequestId));
+    expect(request?.status).toBe('new');
   });
 });

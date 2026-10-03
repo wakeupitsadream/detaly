@@ -153,6 +153,18 @@ describe('DEMO_MODE routes', () => {
       import('@/app/api/admin/orders/[id]/actions/route').then((m) =>
         m.POST(request(), { params: Promise.resolve({ id: '1' }) }),
       ),
+      // Phase 1C: the admin VIN actions and files, and every proposal but the sample.
+      import('@/app/api/admin/vin/[id]/actions/route').then((m) =>
+        m.POST(request(), { params: Promise.resolve({ id: '1' }) }),
+      ),
+      import('@/app/api/admin/files/[...key]/route').then((m) =>
+        m.GET(new Request('http://localhost:3000/x'), {
+          params: Promise.resolve({ key: ['vin', 'a', 'b.jpg'] }),
+        }),
+      ),
+      import('@/app/api/proposals/[token]/take/route').then((m) =>
+        m.POST(request(), { params: Promise.resolve({ token: 'A'.repeat(32) }) }),
+      ),
     ]);
     for (const response of routes) expect(response.status).toBe(404);
   });
@@ -174,5 +186,84 @@ describe('DEMO_MODE routes', () => {
     );
     expect(response.status).toBe(303);
     expect(response.headers.getSetCookie().join('\n')).toMatch(/^demo_cart=/m);
+  });
+});
+
+describe('DEMO_MODE phase 1C (decision С21)', () => {
+  it('POST /api/vin answers 303 /vin/sent?demo=1 without reading the body', async () => {
+    const { POST } = await import('@/app/api/vin/route');
+    let read = false;
+    // highWaterMark 0: pull runs only when somebody reads the body.
+    const body = new ReadableStream(
+      {
+        pull() {
+          read = true;
+          throw new Error('the demo must not read the VIN form');
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const request = new Request('http://localhost:3000/api/vin', {
+      method: 'POST',
+      headers: {
+        origin: 'http://localhost:3000',
+        'content-type': 'multipart/form-data; boundary=x',
+      },
+      body,
+      duplex: 'half',
+    } as RequestInit);
+    const response = await POST(request);
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('/vin/sent?demo=1');
+    expect(read).toBe(false);
+    expect(request.bodyUsed).toBe(false);
+  });
+
+  it('/p/demo renders the sample with «Оформить и оплатить» to the demo take', async () => {
+    const { default: ProposalPage } = await import('@/app/(site)/p/[token]/page');
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const html = renderToStaticMarkup(
+      await ProposalPage({ params: Promise.resolve({ token: 'demo' }) }),
+    );
+    expect(html).toContain('action="/api/proposals/demo/take"');
+    expect(html).toContain('data-testid="proposal-line"');
+    expect(html).toContain('не подошла к автомобилю из заявки');
+  });
+
+  it('«Оформить и оплатить» on /p/demo fills the demo cart (the sample quantity wins) -> /cart', async () => {
+    const { POST } = await import('@/app/api/proposals/[token]/take/route');
+    const { buildDemoProposal } = await import('@/server/demo/proposal-fixture');
+    const { decodeDemoCart, encodeDemoCart, newDemoLineId } =
+      await import('@/server/demo/cart-cookie');
+    const { getSupplier } = await import('@/server/supplier');
+    const supplier = getSupplier();
+    const sample = await buildDemoProposal({
+      rossko: supplier.rossko,
+      loadSettings: () => supplier.settings.get(),
+    });
+    const first = sample.picks[0];
+    if (!first) throw new Error('no sample picks');
+    const existing = encodeDemoCart(
+      [{ id: newDemoLineId(), q: first.q, offerId: first.offerId, qty: first.qty + 4 }],
+      SECRET,
+    );
+    const take = (origin: string) =>
+      POST(
+        new Request('http://localhost:3000/api/proposals/demo/take', {
+          method: 'POST',
+          headers: { origin, cookie: `demo_cart=${existing}` },
+        }),
+        { params: Promise.resolve({ token: 'demo' }) },
+      );
+    expect((await take('https://evil.example')).status).toBe(403);
+    const response = await take('http://localhost:3000');
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('/cart');
+    const cookie = response.headers.getSetCookie().find((c) => c.startsWith('demo_cart='));
+    const value = cookie?.split(';')[0]?.slice('demo_cart='.length);
+    const lines = decodeDemoCart(value, SECRET);
+    expect(lines.map((l) => [l.offerId, l.qty]).sort()).toEqual(
+      sample.picks.map((p) => [p.offerId, p.qty]).sort(),
+    );
   });
 });

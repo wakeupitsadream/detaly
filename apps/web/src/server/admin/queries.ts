@@ -6,10 +6,12 @@
 import {
   and,
   asc,
+  claims,
   clientApprovals,
   desc,
   eq,
   inArray,
+  installBookings,
   orderEvents,
   orderItems,
   orders,
@@ -40,8 +42,26 @@ export const ADMIN_PAGE_SIZE = 50;
 
 /** «Требуют внимания» (section 15.2). */
 export const ATTENTION_FILTER = 'attention';
+/** Phase 1C (decision С26): «Претензии открыты» — a claim with closed_at null. */
+export const CLAIMS_OPEN_FILTER = 'claims_open';
+/** Phase 1C (decision С26): «Запись ждёт подтверждения» — a booking in `requested`. */
+export const BOOKING_REQUESTED_FILTER = 'install_requested';
 
-export type AdminStatusFilter = OrderStatus | typeof ATTENTION_FILTER | null;
+/** Filters of the list besides an order status. */
+export const ADMIN_EXTRA_FILTERS = [
+  ATTENTION_FILTER,
+  CLAIMS_OPEN_FILTER,
+  BOOKING_REQUESTED_FILTER,
+] as const;
+export type AdminExtraFilter = (typeof ADMIN_EXTRA_FILTERS)[number];
+
+export const ADMIN_EXTRA_FILTER_LABELS: Record<AdminExtraFilter, string> = {
+  attention: 'Требуют внимания',
+  claims_open: 'Претензии открыты',
+  install_requested: 'Запись ждёт подтверждения',
+};
+
+export type AdminStatusFilter = OrderStatus | AdminExtraFilter | null;
 
 export interface AdminListQuery {
   status: AdminStatusFilter;
@@ -64,12 +84,11 @@ export function parseAdminListQuery(
   params: Record<string, string | string[] | undefined>,
 ): AdminListQuery {
   const statusRaw = first(params.status);
-  const status: AdminStatusFilter =
-    statusRaw === ATTENTION_FILTER
-      ? ATTENTION_FILTER
-      : isOneOf(ORDER_STATUSES, statusRaw)
-        ? statusRaw
-        : null;
+  const status: AdminStatusFilter = isOneOf(ADMIN_EXTRA_FILTERS, statusRaw)
+    ? statusRaw
+    : isOneOf(ORDER_STATUSES, statusRaw)
+      ? statusRaw
+      : null;
   const q = first(params.q).trim().slice(0, MAX_QUERY_LENGTH);
   const pageRaw = Number.parseInt(first(params.page), 10);
   const page = Number.isSafeInteger(pageRaw) && pageRaw >= 1 ? Math.min(pageRaw, MAX_PAGE) : 1;
@@ -131,6 +150,20 @@ export function attentionCondition(): SQL {
   )`;
 }
 
+/** «Претензии открыты»: the order has a claim that is not closed (decided replace included). */
+export function openClaimsCondition(): SQL {
+  return sql`exists (
+    select 1 from ${claims} c where c.order_id = ${orders.id} and c.closed_at is null
+  )`;
+}
+
+/** «Запись ждёт подтверждения»: a booking the sellers have not confirmed or declined yet. */
+export function requestedBookingCondition(): SQL {
+  return sql`exists (
+    select 1 from ${installBookings} b where b.order_id = ${orders.id} and b.status = 'requested'
+  )`;
+}
+
 export interface AdminOrderRow {
   id: string;
   number: string;
@@ -157,6 +190,8 @@ export async function listAdminOrders(
   if (search.kind === 'invalid') return { rows: [], hasNext: false, invalidSearch: true };
   const conditions: SQL[] = [];
   if (query.status === ATTENTION_FILTER) conditions.push(attentionCondition());
+  else if (query.status === CLAIMS_OPEN_FILTER) conditions.push(openClaimsCondition());
+  else if (query.status === BOOKING_REQUESTED_FILTER) conditions.push(requestedBookingCondition());
   else if (query.status !== null) conditions.push(eq(orders.status, query.status));
   if (search.kind === 'number') conditions.push(eq(orders.number, search.number));
   if (search.kind === 'last4') {

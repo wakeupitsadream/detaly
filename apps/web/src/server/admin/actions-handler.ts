@@ -7,11 +7,15 @@
  * performStaffAction as the owner (decision Б19: actor staff 'admin', via 'admin').
  * Done: 303 back to the card with `?done=<message>`. Refused by the engine (for example
  * «Выдал» without a succeeded receipt): 409 with the engine's text and a link back.
+ * Phase 1C (server/admin/actions-1c.ts): claims, bookings and the packaging photo; forms with a
+ * photo are multipart/form-data (read by readPhotoForm, one photo at most), a missing answer
+ * text or photo is 422.
  * Logs carry the order number, the action code and the outcome only.
  */
 import type { Logger } from '@detaly/config';
 import { and, eq, orderItems, orders, supplierReturns } from '@detaly/db';
 import { isIsoDate } from '@detaly/domain';
+import type { FileStore } from '@detaly/files';
 import {
   performStaffAction,
   type EngineDeps,
@@ -22,9 +26,12 @@ import {
 } from '@detaly/orders';
 import { ADMIN_CHALLENGE, ADMIN_RESPONSE_HEADERS, checkAdminAuth } from '../admin-auth';
 import { readBoundedText } from '../body';
-import { errorInfo } from '../errors';
+import { errorInfo, isNamedError } from '../errors';
 import { isSameOrigin } from '../request-guards';
+import { readPhotoForm, UploadError, uploadErrorMessage, uploadErrorStatus } from '../uploads';
+import { isAdminAction1C, performAdmin1CAction } from './actions-1c';
 import { CONFIRM_FIELD, CONFIRM_VALUE, DESTRUCTIVE_ADMIN_ACTIONS } from './destructive';
+import { parseRubToKop } from './form-fields';
 import { isUuid, latestRecheckItems } from './queries';
 
 /** A card form is a handful of short fields. */
@@ -33,6 +40,10 @@ export const MAX_ADMIN_ACTION_BODY_BYTES = 8 * 1024;
 export interface AdminActionDeps {
   engine: EngineDeps;
   logger?: Pick<Logger, 'info' | 'warn' | 'error'>;
+  /** Photo storage of the 1C forms; without it photos are refused like FILES_STORAGE=none. */
+  files?: FileStore;
+  /** One photo, bytes (FILES_MAX_UPLOAD_MB); default from the engine env. */
+  maxPhotoBytes?: number;
 }
 
 /** Every code the card may post (seller bot table 13.2 plus the admin-only actions). */
@@ -83,13 +94,7 @@ function isActionCode(value: string): value is StaffActionCode {
   return (ADMIN_ACTION_CODES as readonly string[]).includes(value);
 }
 
-/** «1 234,50» / «1234.5» / «1234» -> kopecks; null for anything else. */
-export function parseRubToKop(raw: string): number | null {
-  const text = raw.replace(/\s/g, '').replace(',', '.');
-  const match = /^(\d{1,9})(?:\.(\d{1,2}))?$/.exec(text);
-  if (!match?.[1]) return null;
-  return Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2, '0'));
-}
+export { parseRubToKop };
 
 /** «12345, 67890 / 555» -> ['12345', '67890', '555']. */
 export function splitIds(raw: string): string[] {
@@ -142,6 +147,14 @@ function redirectDone(orderId: string, message: string): Response {
 }
 
 type Form = URLSearchParams;
+
+/** Photo storage switched off (deps without `files`). */
+const NO_FILES: FileStore = {
+  kind: 'none',
+  put: () => Promise.reject(new Error('photo storage is off')),
+  get: () => Promise.resolve(null),
+  delete: () => Promise.resolve(),
+};
 
 function field(form: Form, name: string, max = 500): string {
   return (form.get(name) ?? '').trim().slice(0, max);
@@ -289,11 +302,39 @@ async function buildAction(
   return { ok: true, targetId, input };
 }
 
-async function readForm(request: Request): Promise<Form | null> {
+type ReadForm =
+  { ok: true; form: Form; photos: Uint8Array[] } | { ok: false; status: number; message: string };
+
+/**
+ * The posted form: urlencoded (most actions) or multipart with at most one photo (the 1C photo
+ * forms). Photos are refused while photo storage is off.
+ */
+async function readForm(request: Request, deps: AdminActionDeps): Promise<ReadForm> {
+  const bad: ReadForm = { ok: false, status: 400, message: ADMIN_ACTION_MESSAGES.badRequest };
   const type = (request.headers.get('content-type') ?? '').toLowerCase();
-  if (!type.includes('application/x-www-form-urlencoded')) return null;
-  const body = await readBoundedText(request, MAX_ADMIN_ACTION_BODY_BYTES);
-  return body.ok ? new URLSearchParams(body.text) : null;
+  if (type.includes('application/x-www-form-urlencoded')) {
+    const body = await readBoundedText(request, MAX_ADMIN_ACTION_BODY_BYTES);
+    return body.ok ? { ok: true, form: new URLSearchParams(body.text), photos: [] } : bad;
+  }
+  if (!type.includes('multipart/form-data')) return bad;
+  const photosOn = deps.files !== undefined && deps.files.kind !== 'none';
+  const maxFileBytes = deps.maxPhotoBytes ?? deps.engine.env.FILES_MAX_UPLOAD_MB * 1024 * 1024;
+  try {
+    const parsed = await readPhotoForm(request, { maxFiles: photosOn ? 1 : 0, maxFileBytes });
+    const form = new URLSearchParams();
+    for (const [name, value] of parsed.fields) form.set(name, value);
+    return { ok: true, form, photos: parsed.photos };
+  } catch (error) {
+    if (!isNamedError(error, UploadError, 'UploadError')) throw error;
+    const message =
+      error.reason === 'too_many' && !photosOn
+        ? 'Хранилище фото не настроено (FILES_STORAGE)'
+        : uploadErrorMessage(error.reason, {
+            maxFiles: 1,
+            maxFileMb: Math.round(maxFileBytes / (1024 * 1024)),
+          });
+    return { ok: false, status: uploadErrorStatus(error.reason), message };
+  }
 }
 
 export async function handleAdminAction(
@@ -323,16 +364,33 @@ export async function handleAdminAction(
   const back = cardPath(orderId);
 
   try {
-    const form = await readForm(request);
-    if (form === null) return page(400, ADMIN_ACTION_MESSAGES.badRequest, back);
+    const read = await readForm(request, deps);
+    if (!read.ok) return page(read.status, read.message, back);
+    const { form } = read;
     const action = field(form, 'action', 32);
-    if (!isActionCode(action)) return page(400, 'Неизвестное действие', back);
+    if (!isActionCode(action) && !isAdminAction1C(action)) {
+      return page(400, 'Неизвестное действие', back);
+    }
 
     const [order] = await deps.engine.db
       .select({ id: orders.id, number: orders.number })
       .from(orders)
       .where(eq(orders.id, orderId));
     if (!order) return page(404, ADMIN_ACTION_MESSAGES.notFound, null);
+
+    if (isAdminAction1C(action)) {
+      const outcome = await performAdmin1CAction(action, {
+        engine: deps.engine,
+        files: deps.files ?? NO_FILES,
+        orderId: order.id,
+        form,
+        photos: read.photos,
+        confirmed: form.get(CONFIRM_FIELD) === CONFIRM_VALUE,
+      });
+      deps.logger?.info({ order: order.number, action, ok: outcome.ok }, 'admin action');
+      if (!outcome.ok) return page(outcome.status, outcome.message, back);
+      return redirectDone(order.id, outcome.message);
+    }
 
     const built = await buildAction(deps, order.id, action, form);
     if (!built.ok) return page(400, built.message, back);

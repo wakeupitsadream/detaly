@@ -54,7 +54,8 @@ export function parseManualAnswer(text: string): ManualAnswer {
     if (words.length === 0) return;
     let quantity = 1;
     const last = words.at(-1) as string;
-    if (words.length >= 3 && /^\d+$/u.test(last)) {
+    // A quantity has no leading zero: 'BOSCH 0 451 103 079' keeps '079' in the article.
+    if (words.length >= 3 && /^(?:0|[1-9]\d*)$/u.test(last)) {
       quantity = Number(last);
       words.pop();
       if (quantity < 1 || quantity > MAX_QUANTITY) {

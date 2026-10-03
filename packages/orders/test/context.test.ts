@@ -3,9 +3,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   availableStaffActions,
+  availableStaffActions1C,
   buildTransitionContext,
   planItemChanges,
   resolveOrderSettings,
+  type BookingSummary,
+  type ClaimSummary,
   type ItemChange,
   type OrderItemRow,
   type OrderSettings,
@@ -138,6 +141,9 @@ function snapshot(
     refunds?: RefundRow[];
     clientArrived?: boolean;
     expiresAt?: Date | null;
+    claims?: ClaimSummary[];
+    bookings?: BookingSummary[];
+    handedAt?: Date | null;
   } = {},
 ): OrderSnapshot {
   const scheme = options.scheme ?? 'prepay';
@@ -166,7 +172,7 @@ function snapshot(
       paidAt: null,
       orderedAt: null,
       receivedAt: null,
-      handedAt: null,
+      handedAt: options.handedAt ?? null,
       completedAt: null,
       cancelledAt: null,
       clientArrivedAt: options.clientArrived ? NOW : null,
@@ -183,6 +189,8 @@ function snapshot(
     supplierOrders: [],
     openApproval: null,
     noShowCount: 0,
+    claims: options.claims ?? [],
+    bookings: options.bookings ?? [],
   };
 }
 
@@ -403,6 +411,158 @@ describe('availableStaffActions', () => {
       ['iarr', a.id],
       ['iprob', a.id],
       ['refused', null],
+    ]);
+  });
+});
+
+describe('phase 1C: claims and bookings in the context and the staff actions', () => {
+  function claim(overrides: Partial<ClaimSummary> = {}): ClaimSummary {
+    return {
+      id: uid(),
+      orderItemId: null,
+      kind: 'defect',
+      openedAt: NOW,
+      deadlineAt: new Date(NOW.getTime() + 10 * 86_400_000),
+      decision: null,
+      decidedAt: null,
+      returnAcceptedAt: null,
+      compensationAmountKop: null,
+      refundId: null,
+      closedAt: null,
+      photoCount: 0,
+      ...overrides,
+    };
+  }
+  function booking(overrides: Partial<BookingSummary> = {}): BookingSummary {
+    return {
+      id: uid(),
+      slotAt: new Date(NOW.getTime() + 3_600_000),
+      status: 'requested',
+      createdVia: 'web',
+      confirmedAt: null,
+      cancelledAt: null,
+      ...overrides,
+    };
+  }
+  const handed = (claims: ClaimSummary[], bookings: BookingSummary[] = []) =>
+    snapshot('handed', {
+      items: [item('handed'), item('handed')],
+      claims,
+      bookings,
+      handedAt: NOW,
+    });
+  const claimViews = (snap: OrderSnapshot, role: 'seller' | 'owner' = 'seller') =>
+    availableStaffActions1C(snap, role, settings, NOW)
+      .filter((v) => v.claimId !== undefined)
+      .map((v) => ({
+        code: v.code,
+        enabled: v.enabled,
+        reason: v.disabledReason ?? null,
+        needsReason: v.needsReason ?? false,
+      }));
+
+  it('openClaims counts the claims not closed yet (completion_timeout waits for them)', () => {
+    const snap = handed([claim(), claim({ closedAt: NOW }), claim({ decision: 'replace' })]);
+    expect(buildTransitionContext(snap, seller, {}, settings, NOW).openClaims).toBe(2);
+    expect(buildTransitionContext(handed([]), seller, {}, settings, NOW).openClaims).toBe(0);
+    // The claim facts of a decision never leak into the context.
+    const ctx = buildTransitionContext(
+      snap,
+      seller,
+      { claimId: 'c', claimOpenedAt: NOW.toISOString(), claimKind: 'defect' },
+      settings,
+      NOW,
+    );
+    expect(ctx).not.toHaveProperty('claimId');
+    expect(ctx).not.toHaveProperty('claimOpenedAt');
+    expect(ctx.claimKind).toBe('defect');
+  });
+
+  it('an undecided claim without the return: «Принял возврат», refund disabled for a seller', () => {
+    const c = claim();
+    expect(claimViews(handed([c]))).toEqual([
+      { code: 'cret', enabled: true, reason: null, needsReason: false },
+      { code: 'cref', enabled: false, reason: 'Сначала «Принял возврат»', needsReason: false },
+      { code: 'crepl', enabled: true, reason: null, needsReason: false },
+      { code: 'crej', enabled: true, reason: null, needsReason: false },
+    ]);
+    // The owner may refund with a reason.
+    expect(claimViews(handed([c]), 'owner').find((v) => v.code === 'cref')).toEqual({
+      code: 'cref',
+      enabled: true,
+      reason: null,
+      needsReason: true,
+    });
+    const all = availableStaffActions1C(handed([c]), 'seller', settings, NOW);
+    expect(all.filter((v) => v.claimId === c.id)).toHaveLength(4);
+  });
+
+  it('after «Принял возврат» the refund is open; replace -> only «Замена выдана»; closed -> nothing', () => {
+    const accepted = claimViews(handed([claim({ returnAcceptedAt: NOW })]));
+    expect(accepted.map((v) => v.code)).toEqual(['cref', 'crepl', 'crej']);
+    expect(accepted[0]).toMatchObject({ enabled: true });
+    expect(claimViews(handed([claim({ decision: 'replace' })])).map((v) => v.code)).toEqual([
+      'cclose',
+    ]);
+    expect(claimViews(handed([claim({ decision: 'reject', closedAt: NOW })]))).toEqual([]);
+  });
+
+  it('a delay before the handover: refund and reject only', () => {
+    const snap = snapshot('ordered_at_supplier', { claims: [claim({ kind: 'delay' })] });
+    expect(claimViews(snap)).toEqual([
+      { code: 'cref', enabled: true, reason: null, needsReason: false },
+      { code: 'crej', enabled: true, reason: null, needsReason: false },
+    ]);
+  });
+
+  it('«Фото упаковки» on the way and at the point; the 1B buttons stay as they were', () => {
+    const codes1C = (status: OrderStatus) =>
+      availableStaffActions1C(snapshot(status), 'seller', settings, NOW).map((v) => v.code);
+    expect(codes1C('ordered_at_supplier')).toEqual(['pphoto']);
+    expect(codes1C('ready')).toEqual(['pphoto']);
+    expect(codes1C('confirmed')).toEqual([]);
+    const oneB = availableStaffActions(handed([claim()]), 'seller', settings, NOW);
+    expect(oneB.some((v) => v.claimId !== undefined)).toBe(false);
+  });
+
+  it('two open claims are told apart by kind and item', () => {
+    const snap = handed([claim(), claim({ kind: 'not_fit' })]);
+    const labels = availableStaffActions1C(snap, 'seller', settings, NOW)
+      .filter((v) => v.code === 'crej')
+      .map((v) => v.label);
+    expect(labels).toEqual(['Отказать по претензии · Брак', 'Отказать по претензии · Не подошла']);
+  });
+
+  it('bookings: confirm / decline; done and no-show only after the slot started', () => {
+    const requested = booking();
+    const confirmed = booking({ status: 'confirmed', confirmedAt: NOW });
+    const views = availableStaffActions1C(
+      handed([], [requested, confirmed, booking({ status: 'cancelled' })]),
+      'seller',
+      settings,
+      NOW,
+    ).filter((v) => v.bookingId !== undefined);
+    expect(views.map((v) => [v.code, v.bookingId, v.enabled])).toEqual([
+      ['bconf', requested.id, true],
+      ['bdecl', requested.id, true],
+      ['bdone', confirmed.id, false],
+      ['bnoshow', confirmed.id, false],
+      ['bdecl', confirmed.id, true],
+    ]);
+    expect(views.find((v) => v.code === 'bdone')?.disabledReason).toBe(
+      'Время записи ещё не наступило',
+    );
+    expect(views[0]?.label).toMatch(/^Подтвердить запись \S+ \d+ \S+ \d{2}:\d{2}$/);
+    const later = availableStaffActions1C(
+      handed([], [confirmed]),
+      'seller',
+      settings,
+      new Date(NOW.getTime() + 2 * 3_600_000),
+    ).filter((v) => v.bookingId !== undefined);
+    expect(later.map((v) => [v.code, v.enabled])).toEqual([
+      ['bdone', true],
+      ['bnoshow', true],
+      ['bdecl', true],
     ]);
   });
 });

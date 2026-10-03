@@ -14,6 +14,7 @@
  */
 import {
   and,
+  claims,
   clientApprovals,
   eq,
   orderEvents,
@@ -28,6 +29,8 @@ import {
 import {
   amountMatches,
   amountMismatch,
+  claimDeadline,
+  claimRefundReason,
   effectsFor,
   isIsoDate,
   localDate,
@@ -37,6 +40,7 @@ import {
   RefundPlanError,
   refundReasonFor,
   resolveTransition,
+  TIMERS,
   type ApprovalDecision,
   type ApprovalProposal,
   type OrderEvent,
@@ -56,7 +60,13 @@ import {
   refundablePayment,
   untouchedDuplicatePayments,
 } from './context';
-import { canReachClient, enqueueNotify, enqueueOutbox, recordJournalEvent } from './journal';
+import {
+  canReachClient,
+  enqueueNotify,
+  enqueueOutbox,
+  hasMessengerBinding,
+  recordJournalEvent,
+} from './journal';
 import {
   createPaymentRows,
   createRefund,
@@ -555,15 +565,35 @@ async function persistDecision(
         const mismatch =
           amountMismatch.test(ctx) ||
           (from === 'needs_attention' && order.attentionReason === 'amount_mismatch');
+        // A claim refund (decisions С9, С10): the reason is the claim kind and the 10 days of
+        // art. 22 run from the client's request (claims.opened_at), not from the decision.
+        const claimId = facts.claimId ?? null;
+        const claimKind = facts.claimKind ?? null;
+        const claimRefund = claimId !== null && claimKind !== null;
+        const openedAt = claimRefund && facts.claimOpenedAt ? new Date(facts.claimOpenedAt) : null;
+        const requestedAt =
+          openedAt !== null && !Number.isNaN(openedAt.getTime()) && openedAt <= at ? openedAt : at;
         const refund = await createRefund(tx, snapshot, {
           ...target,
-          reason: refundReasonFor(event, { amountMismatch: mismatch }),
-          requestedAt: at,
+          reason: claimRefund
+            ? claimRefundReason(claimKind)
+            : refundReasonFor(event, { amountMismatch: mismatch, claimKind }),
+          requestedAt,
+          at,
           actor,
           env: deps.env,
         });
         payload.refundId = refund.refundId;
         payload.refundKop = refund.amountKop;
+        if (claimRefund) {
+          const linked = await tx
+            .update(claims)
+            .set({ refundId: refund.refundId, updatedAt: at })
+            .where(and(eq(claims.id, claimId), eq(claims.orderId, order.id)))
+            .returning({ id: claims.id });
+          if (linked.length === 0) throw new EngineError('claim');
+          payload.claimId = claimId;
+        }
         if (target.scope === 'order') {
           // The whole order goes back: a duplicate payment (two tabs, an old QR) goes back
           // whole too, as an orphan refund that does not drive the order status.
@@ -683,16 +713,35 @@ async function persistDecision(
         // The task itself is the sellers' notification (staff_cancel_at_supplier_task).
         payload.tasks = ['cancel_at_supplier'];
         break;
-      case 'open_claim':
-        // Claims arrive in phase 1C: the request is kept in the journal.
-        await recordJournalEvent(tx, {
-          orderId: order.id,
-          type: 'claim_deferred',
-          actor,
-          payload: { orderEventId: eventId },
-          at,
-        });
+      case 'open_claim': {
+        // Decision С7: the claims row of the request (openClaim checked the kind, the target
+        // and the request key under this lock). The client's text and photos stay in the row:
+        // the journal gets ids and the kind only.
+        const draft = facts.claim;
+        if (draft === undefined) throw new EngineError('claim');
+        const inserted = await tx
+          .insert(claims)
+          .values({
+            id: draft.id,
+            orderId: order.id,
+            orderItemId: draft.orderItemId,
+            kind: draft.kind,
+            openedAt: at,
+            deadlineAt: claimDeadline(at),
+            clientText: draft.clientText,
+            photos: draft.photos,
+            openedVia: draft.openedVia,
+            requestKey: draft.requestKey,
+          })
+          .onConflictDoNothing({ target: claims.requestKey })
+          .returning({ id: claims.id });
+        if (inserted.length === 0) throw new EngineError('claim_duplicate');
+        payload.claimId = draft.id;
+        payload.claimKind = draft.kind;
+        payload.deadlineAt = claimDeadline(at).toISOString();
+        if (draft.photos.length > 0) payload.photoCount = draft.photos.length;
         break;
+      }
     }
   }
 
@@ -743,11 +792,20 @@ async function persistDecision(
     createdAt: at,
   });
   for (const spec of rule.notify) {
+    // Decision С17: the client's «arrived» waits a little, so that a packaging photo sent right
+    // after «Приехало» goes out with it. Only a messenger carries the photo: an SMS client
+    // (no binding) gets the message at once.
+    const delayed =
+      spec.audience === 'client' &&
+      spec.template === 'arrived' &&
+      to === 'ready' &&
+      (await hasMessengerBinding(tx, order.userId));
     await enqueueNotify(tx, {
       orderId: order.id,
       orderEventId: eventId,
       audience: spec.audience,
       template: spec.template,
+      ...(delayed ? { availableAt: new Date(at.getTime() + TIMERS.arrivedPhotoGraceMs) } : {}),
     });
   }
 

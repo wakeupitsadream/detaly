@@ -59,6 +59,10 @@ export async function enqueueNotify(
     orderEventId: string;
     audience: NotifyAudience;
     template: OrderNotifyTemplate;
+    /** Not before this instant (outbox.available_at); default now. */
+    availableAt?: Date;
+    /** A short line for the sellers card (no PD), notify/order job data `note`. */
+    note?: string;
   },
 ): Promise<boolean> {
   return enqueueOutbox(tx, {
@@ -70,7 +74,9 @@ export async function enqueueNotify(
       orderEventId: input.orderEventId,
       audience: input.audience,
       template: input.template,
+      ...(input.note ? { note: input.note } : {}),
     },
+    ...(input.availableAt ? { availableAt: input.availableAt } : {}),
   });
 }
 
@@ -99,6 +105,16 @@ export async function recordJournalEvent(
     ...(input.at ? { createdAt: input.at } : {}),
   });
   return { orderEventId: id };
+}
+
+/** The user has an unblocked messenger binding (a channel that can carry a photo). */
+export async function hasMessengerBinding(tx: Tx, userId: string): Promise<boolean> {
+  const [row] = await tx
+    .select({ id: messengerBindings.id })
+    .from(messengerBindings)
+    .where(and(eq(messengerBindings.userId, userId), isNull(messengerBindings.blockedAt)))
+    .limit(1);
+  return row !== undefined;
 }
 
 /** Messenger channels with client drivers. Telegram/MAX bindings appear in 1C/2 with drivers. */

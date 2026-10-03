@@ -5,9 +5,11 @@
  */
 import {
   and,
+  claims,
   desc,
   eq,
   inArray,
+  installBookings,
   orderEvents,
   orderItems,
   orders,
@@ -19,6 +21,7 @@ import {
 import {
   addDays,
   type ApprovalProposal,
+  CLAIM_KIND_LABELS,
   isIsoDate,
   localDate,
   REFUSABLE_STATUSES,
@@ -41,7 +44,10 @@ import {
   refundablePayment,
   settlementReceiptSucceededOf,
 } from './context';
+import { acceptClaimReturn, closeClaim, decideClaim } from './claims';
 import { applyTransition, applyTransitionInTx, clock, nudge } from './engine';
+import { bookingSlot, decideInstall } from './install';
+import { addOrderPhoto } from './photos';
 import { enqueueOutbox, recordJournalEvent } from './journal';
 import {
   createRefund,
@@ -55,16 +61,21 @@ import { loadOrderSettings } from './settings';
 import { isUuid, loadOrderSnapshot } from './snapshot';
 import type {
   ActorRef,
+  AnyStaffActionCode,
   ApplyResult,
+  BookingStaffActionCode,
+  ClaimStaffActionCode,
+  ClaimSummary,
   ClientAction,
+  InstallDecision,
   EngineDeps,
   ItemProblem,
   OrderSettings,
   OrderSnapshot,
-  StaffActionCode,
   StaffActionInput,
   StaffActionResult,
   StaffActionView,
+  StaffActionView1C,
   TransitionFacts,
   Tx,
 } from './types';
@@ -115,6 +126,8 @@ const GUARD_MESSAGES: Record<string, string> = {
   receipt_lines: 'Чек не собирается: проверьте позиции',
   receipt_codes_missing: 'Не заданы коды НДС и системы налогообложения',
   receipt_total_mismatch: 'Сумма позиций не равна сумме заказа',
+  claim_refund_allowed: 'Сначала «Принял возврат»',
+  money_held: 'Нет оплаты, которую можно вернуть',
 };
 
 /** Seller-facing text of a failed transition. */
@@ -132,7 +145,7 @@ export function failureMessage(result: Extract<ApplyResult, { ok: false }>): str
   return 'Действие сейчас недоступно';
 }
 
-const SUCCESS_MESSAGES: Record<StaffActionCode, string> = {
+const SUCCESS_MESSAGES: Record<AnyStaffActionCode, string> = {
   recheck: 'Проверяем цены и наличие у Rossko…',
   refused: 'Заказ отменён',
   cancel: 'Заказ отменён',
@@ -154,10 +167,44 @@ const SUCCESS_MESSAGES: Record<StaffActionCode, string> = {
   stock_item: 'Деталь записана на склад',
   refund_payment: 'Возврат платежа создан',
   retry_refund: 'Возврат отправлен повторно',
+  cret: 'Возврат принят',
+  cref: 'Возврат денег по претензии создан',
+  crepl: 'Решение: замена',
+  crej: 'Отказ по претензии записан',
+  cclose: 'Замена выдана, претензия закрыта',
+  bconf: 'Запись подтверждена',
+  bdecl: 'Запись отклонена',
+  bdone: 'Установка отмечена выполненной',
+  bnoshow: 'Отмечено: клиент не приехал на установку',
+  pphoto: 'Фото сохранено',
 };
 
+const CLAIM_ACTIONS: ReadonlySet<AnyStaffActionCode> = new Set<ClaimStaffActionCode>([
+  'cret',
+  'cref',
+  'crepl',
+  'crej',
+  'cclose',
+]);
+
+const BOOKING_DECISIONS: Readonly<Record<BookingStaffActionCode, InstallDecision>> = {
+  bconf: 'confirm',
+  bdecl: 'decline',
+  bdone: 'done',
+  bnoshow: 'no_show',
+};
+
+function isBookingAction(code: AnyStaffActionCode): code is BookingStaffActionCode {
+  return code in BOOKING_DECISIONS;
+}
+
+/** Statuses after the handover: the part is with the client. */
+const AFTER_HANDOVER: readonly OrderStatus[] = ['handed', 'completed'];
+/** «Фото упаковки» (decision С17): while the part is on its way or at the point. */
+const PACKAGING_PHOTO_STATUSES: readonly OrderStatus[] = ['ordered_at_supplier', 'ready'];
+
 /** Actions only the owner (or the admin acting as the owner) may take. */
-const OWNER_ONLY: ReadonlySet<StaffActionCode> = new Set([
+const OWNER_ONLY: ReadonlySet<AnyStaffActionCode> = new Set<AnyStaffActionCode>([
   'invpaid',
   'manual_supplier_order',
   'supplier_return_accept',
@@ -168,7 +215,7 @@ const OWNER_ONLY: ReadonlySet<StaffActionCode> = new Set([
 ]);
 
 /** Actions whose target is an order item. */
-const ITEM_ACTIONS: ReadonlySet<StaffActionCode> = new Set([
+const ITEM_ACTIONS: ReadonlySet<AnyStaffActionCode> = new Set<AnyStaffActionCode>([
   'ialt',
   'ieta',
   'icancel',
@@ -205,17 +252,7 @@ export function availableStaffActions(
 ): StaffActionView[] {
   const { order } = snapshot;
   const status = order.status;
-  const actor: ActorRef = { type: 'staff', id: null, staffRole: role };
-  const check = (
-    event: OrderEvent,
-    itemId: string | null = null,
-    facts: TransitionFacts = {},
-  ): TransitionResult => {
-    const all: TransitionFacts = { ...facts, ...(itemId ? { scope: 'item' as const } : {}) };
-    const changes = planItemChanges(event, snapshot, { ...all, itemId });
-    const ctx = buildTransitionContext(snapshot, actor, all, settings, now, changes);
-    return resolveTransition(status, event, ctx);
-  };
+  const check = staffCheck(snapshot, role, settings, now);
   const views: StaffActionView[] = [];
   const add = (view: StaffActionView) => views.push({ disabledReason: null, ...view });
   const moneyHeld = moneyHeldOf(snapshot);
@@ -332,7 +369,154 @@ export function availableStaffActions(
   if (role === 'owner' && retryableRefunds(snapshot).length > 0) {
     add({ code: 'retry_refund', label: 'Повторить возврат', enabled: true });
   }
+
   return views;
+}
+
+/** Resolves an event for a staff member on the snapshot (no writes): what the buttons offer. */
+function staffCheck(
+  snapshot: OrderSnapshot,
+  role: StaffRole,
+  settings: OrderSettings,
+  now: Date,
+): Check {
+  const actor: ActorRef = { type: 'staff', id: null, staffRole: role };
+  return (event, itemId = null, facts = {}) => {
+    const all: TransitionFacts = { ...facts, ...(itemId ? { scope: 'item' as const } : {}) };
+    const changes = planItemChanges(event, snapshot, { ...all, itemId });
+    const ctx = buildTransitionContext(snapshot, actor, all, settings, now, changes);
+    return resolveTransition(snapshot.order.status, event, ctx);
+  };
+}
+
+/**
+ * Phase 1C buttons (section 5.2) for the bot card and the admin page, after those of
+ * availableStaffActions: per open claim «Принял возврат» (cret), «Вернуть деньги» (cref, disabled
+ * for a seller until the return is accepted, enabled with needsReason for the owner), «Замена»
+ * (crepl), «Отказать» (crej), «Замена выдана» (cclose); per active booking bconf / bdecl / bdone /
+ * bnoshow; «Фото упаковки» (pphoto) while the part is on its way or at the point.
+ */
+export function availableStaffActions1C(
+  snapshot: OrderSnapshot,
+  role: StaffRole,
+  settings: OrderSettings,
+  now: Date,
+): StaffActionView1C[] {
+  const status = snapshot.order.status;
+  const check = staffCheck(snapshot, role, settings, now);
+  const views: StaffActionView1C[] = [];
+  const add = (view: StaffActionView1C) => views.push({ disabledReason: null, ...view });
+  const openClaims = snapshot.claims.filter((claim) => claim.closedAt === null);
+  for (const claim of openClaims) {
+    const about = openClaims.length > 1 ? ` · ${claimTitle(snapshot, claim)}` : '';
+    const target = { claimId: claim.id };
+    if (claim.decision === 'replace') {
+      add({ code: 'cclose', label: `Замена выдана${about}`, ...target, enabled: true });
+      continue;
+    }
+    if (claim.decision !== null) continue;
+    const afterHandover = AFTER_HANDOVER.includes(status);
+    const returnAccepted = claim.returnAcceptedAt !== null;
+    if (afterHandover && claim.kind !== 'delay' && !returnAccepted) {
+      add({ code: 'cret', label: `Принял возврат${about}`, ...target, enabled: true });
+    }
+    const refund = claimRefundCheck(snapshot, claim, check)?.(role) ?? null;
+    if (refund !== null) {
+      const reasonNote = refund.needsReason ? ' (нужна причина)' : '';
+      add({ code: 'cref', label: `Вернуть деньги${reasonNote}${about}`, ...target, ...refund });
+    }
+    if (afterHandover && claim.kind !== 'delay') {
+      add({ code: 'crepl', label: `Замена${about}`, ...target, enabled: true });
+    }
+    add({ code: 'crej', label: `Отказать по претензии${about}`, ...target, enabled: true });
+  }
+  for (const booking of snapshot.bookings) {
+    const target = { bookingId: booking.id };
+    const slot = bookingSlot(booking.slotAt);
+    const when = `${slot.dayText} ${slot.timeText}`;
+    if (booking.status === 'requested') {
+      add({ code: 'bconf', label: `Подтвердить запись ${when}`, ...target, enabled: true });
+      add({ code: 'bdecl', label: `Отклонить запись ${when}`, ...target, enabled: true });
+    } else if (booking.status === 'confirmed') {
+      const started = now.getTime() >= booking.slotAt.getTime();
+      const notYet = started ? null : 'Время записи ещё не наступило';
+      add({
+        code: 'bdone',
+        label: `Установка выполнена ${when}`,
+        ...target,
+        enabled: started,
+        disabledReason: notYet,
+      });
+      add({
+        code: 'bnoshow',
+        label: `Не приехал на установку ${when}`,
+        ...target,
+        enabled: started,
+        disabledReason: notYet,
+      });
+      add({ code: 'bdecl', label: `Отменить запись ${when}`, ...target, enabled: true });
+    }
+  }
+  if (PACKAGING_PHOTO_STATUSES.includes(status)) {
+    add({ code: 'pphoto', label: 'Фото упаковки', enabled: true });
+  }
+  return views;
+}
+
+function claimTitle(snapshot: OrderSnapshot, claim: ClaimSummary): string {
+  const kind = CLAIM_KIND_LABELS[claim.kind];
+  const item = snapshot.items.find((i) => i.id === claim.orderItemId);
+  return item ? `${kind}: ${itemTitle(item)}` : kind;
+}
+
+type Check = (
+  event: OrderEvent,
+  itemId?: string | null,
+  facts?: TransitionFacts,
+) => TransitionResult;
+
+/**
+ * «Вернуть деньги» of an undecided claim: the refund rule of its status with the claim facts.
+ * Without «Принял возврат» (not a delay) a seller sees it disabled; the owner sees it enabled with
+ * «нужна причина» (the override reason, PLAN section 2). null: no refund in this status.
+ */
+function claimRefundCheck(
+  snapshot: OrderSnapshot,
+  claim: ClaimSummary,
+  check: Check,
+):
+  | ((role: StaffRole) => Pick<StaffActionView1C, 'enabled' | 'disabledReason' | 'needsReason'>)
+  | null {
+  const status = snapshot.order.status;
+  const facts: TransitionFacts = {
+    claimKind: claim.kind,
+    returnAccepted: claim.returnAcceptedAt !== null,
+  };
+  let event: OrderEvent;
+  let itemId: string | null = null;
+  if (AFTER_HANDOVER.includes(status)) {
+    event = 'claim_refund_approved';
+    itemId = claim.orderItemId;
+    facts.scope = itemId === null ? 'order' : 'item';
+  } else if (claim.kind === 'delay' && REFUSABLE.includes(status)) {
+    event = 'client_refused';
+    facts.scope = 'order';
+  } else {
+    return null;
+  }
+  const plain = check(event, itemId, facts);
+  const overridden = check(event, itemId, { ...facts, ownerOverrideReason: 'override' });
+  return (role) => {
+    if (plain.ok) return { enabled: true };
+    if (plain.failed.includes('claim_refund_allowed')) {
+      if (role === 'owner' && overridden.ok) {
+        return { enabled: true, needsReason: true };
+      }
+      return { enabled: false, disabledReason: GUARD_MESSAGES.claim_refund_allowed ?? null };
+    }
+    const reason = plain.failed.map((name) => GUARD_MESSAGES[name]).find(Boolean);
+    return { enabled: false, disabledReason: reason ?? 'Возврат сейчас недоступен' };
+  };
 }
 
 /** The pending `full` receipt of a held handover payment («Повторить чек» at the point). */
@@ -357,10 +541,24 @@ function pendingHandoverReceipt(snapshot: OrderSnapshot) {
 
 async function resolveTarget(
   deps: EngineDeps,
-  action: StaffActionCode,
+  action: AnyStaffActionCode,
   targetId: string,
 ): Promise<{ orderId: string; itemId: string | null } | null> {
   if (!isUuid(targetId)) return null;
+  if (CLAIM_ACTIONS.has(action)) {
+    const [claim] = await deps.db
+      .select({ orderId: claims.orderId })
+      .from(claims)
+      .where(eq(claims.id, targetId));
+    return claim ? { orderId: claim.orderId, itemId: null } : null;
+  }
+  if (isBookingAction(action)) {
+    const [booking] = await deps.db
+      .select({ orderId: installBookings.orderId })
+      .from(installBookings)
+      .where(eq(installBookings.id, targetId));
+    return booking ? { orderId: booking.orderId, itemId: null } : null;
+  }
   if (!ITEM_ACTIONS.has(action)) {
     const [order] = await deps.db
       .select({ id: orders.id })
@@ -435,7 +633,8 @@ export async function performStaffAction(
   deps: EngineDeps,
   args: {
     staff: { id: string | null; role: StaffRole; via: 'bot' | 'admin' };
-    action: StaffActionCode;
+    /** 1B codes and the phase 1C ones (StaffActionCode1C). */
+    action: AnyStaffActionCode;
     /** Order id or item id depending on the action (table 13.2). */
     targetId: string;
     input?: StaffActionInput;
@@ -632,6 +831,40 @@ export async function performStaffAction(
       return refundPayment(deps, orderId, actor, input, done, refuse);
     case 'retry_refund':
       return retryRefund(deps, orderId, actor, input, done, refuse);
+    // --- phase 1C: the target id is the claim, the booking or the order ---------------------
+    case 'cret':
+      if (!input.photoKey) return refuse('Пришлите фото возвращённой детали');
+      return acceptClaimReturn(deps, { claimId: args.targetId, photoKey: input.photoKey, staff });
+    case 'cref':
+    case 'crepl':
+    case 'crej':
+      return decideClaim(deps, {
+        claimId: args.targetId,
+        decision: action === 'cref' ? 'refund' : action === 'crepl' ? 'replace' : 'reject',
+        text: input.text ?? '',
+        staff,
+        overrideReason: action === 'cref' ? (input.reason ?? null) : null,
+      });
+    case 'cclose':
+      return closeClaim(deps, { claimId: args.targetId, staff, note: input.note ?? null });
+    case 'bconf':
+    case 'bdecl':
+    case 'bdone':
+    case 'bnoshow':
+      return decideInstall(deps, {
+        bookingId: args.targetId,
+        decision: BOOKING_DECISIONS[action],
+        note: input.note ?? null,
+        staff,
+      });
+    case 'pphoto':
+      if (!input.photoKey) return refuse('Пришлите фото упаковки');
+      return addOrderPhoto(deps, {
+        orderId,
+        kind: input.photoKind ?? 'packaging',
+        fileKey: input.photoKey,
+        staff,
+      });
   }
 }
 
@@ -1024,4 +1257,16 @@ export async function loadStaffActions(
   if (snapshot === null) return null;
   const settings = await loadOrderSettings(deps.db, deps.env);
   return availableStaffActions(snapshot, role, settings, clock(deps));
+}
+
+/** loadStaffActions for the phase 1C buttons (availableStaffActions1C), no lock. */
+export async function loadStaffActions1C(
+  deps: EngineDeps,
+  orderId: string,
+  role: StaffRole,
+): Promise<StaffActionView1C[] | null> {
+  const snapshot = await loadOrderSnapshot(deps.db, orderId, { lock: false });
+  if (snapshot === null) return null;
+  const settings = await loadOrderSettings(deps.db, deps.env);
+  return availableStaffActions1C(snapshot, role, settings, clock(deps));
 }

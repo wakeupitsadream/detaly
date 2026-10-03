@@ -420,6 +420,29 @@ export function providerReceipt(
   };
 }
 
+// --- phase 1C ---------------------------------------------------------------------------------
+
+/** Env of the 1C services: the partner service (bookings on) and the working hours. */
+export const PHASE_1C_ENV = {
+  INSTALL_PARTNER_NAME: 'Сервис56',
+  PICKUP_HOURS: 'Пн-Вс 10:00-19:00',
+};
+
+/** A FileStore key of an order (`order` or `claim` scope). */
+export function fileKey(scope: 'order' | 'claim', orderId: string): string {
+  return `${scope}/${orderId}/${uuidv7()}.jpg`;
+}
+
+/** Marks a seeded order handed at `at` with a promised date (claims need both). */
+export async function setHanded(
+  db: Db,
+  orderId: string,
+  at: Date,
+  promisedDate: string = '2026-10-05',
+): Promise<void> {
+  await db.update(orders).set({ handedAt: at, promisedDate }).where(eq(orders.id, orderId));
+}
+
 /** Phone digits must never appear in journal payloads or outbox data. */
 export function assertNoPhone(value: unknown, phone: string): void {
   const text = JSON.stringify(value);

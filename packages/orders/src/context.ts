@@ -283,7 +283,9 @@ export function buildTransitionContext(
       order.status === 'ready' &&
       order.expiresAt !== null &&
       order.expiresAt.getTime() <= now.getTime(),
-    openClaims: 0,
+    // Decision С11: completion_timeout waits until every claim is closed (a replacement keeps
+    // the order handed).
+    openClaims: snapshot.claims.filter((claim) => claim.closedAt === null).length,
   };
 
   const {
@@ -294,6 +296,9 @@ export function buildTransitionContext(
     refundId: _refundId,
     proposal: _proposal,
     problem: _problem,
+    claimId: _claimId,
+    claimOpenedAt: _claimOpenedAt,
+    claim: _claim,
     ...overrides
   } = facts;
   return { ...derived, ...defined(overrides) };

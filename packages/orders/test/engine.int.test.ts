@@ -804,21 +804,20 @@ describe.skipIf(!DB_URL)('applyTransition', () => {
     }
   });
 
-  it('claim_opened keeps the status and journals claim_deferred (claims are 1C)', async () => {
+  it('claim_opened without the claim draft writes nothing (phase 1C: openClaim passes it)', async () => {
     const seeded = await seedOrder(db, { status: 'handed' });
     const result = await applyTransition(deps, {
       orderId: seeded.orderId,
       event: 'claim_opened',
       actor: { type: 'client', id: seeded.userId },
     });
-    expect(result).toMatchObject({
-      ok: true,
-      from: 'handed',
-      to: 'handed',
-      effects: ['open_claim'],
+    expect(result).toEqual({
+      ok: false,
+      reason: 'guard_failed',
+      failed: ['claim'],
+      status: 'handed',
     });
-    const types = (await eventsOf(db, seeded.orderId)).map((e) => e.type);
-    expect(types).toEqual(['claim_opened', 'claim_deferred']);
+    expect(await eventsOf(db, seeded.orderId)).toEqual([]);
   });
 
   it('a failing effect rolls back the item writes of the transition (savepoint)', async () => {

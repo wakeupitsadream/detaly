@@ -23,5 +23,5 @@ export {
   type IngestedImage,
   type IngestOptions,
 } from './image';
-export { createS3FileStore, type S3FileStoreOptions } from './s3';
+export { createS3FileStore, S3_TIMEOUT_MS, S3FileStoreError, type S3FileStoreOptions } from './s3';
 export { createFileStoreFromEnv, DEFAULT_S3_REGION, type FilesEnv } from './from-env';

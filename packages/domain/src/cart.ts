@@ -26,6 +26,13 @@ import type {
 
 /** Largest quantity of one line. */
 export const MAX_LINE_QTY = 99;
+/** Most lines in one cart (decision Д17); a VIN proposal copied into a cart obeys it too. */
+export const MAX_CART_LINES = 20;
+/**
+ * Most distinct query articles in one cart: GetSearch calls past the cache per checkout. A VIN
+ * proposal is limited the same way, since checkout re-runs GetSearch per distinct article.
+ */
+export const MAX_CART_SEARCHES = 10;
 
 /** cart_items.search_article_norm / order_items.search_article_norm (DB check). */
 export const ARTICLE_NORM_RE = /^[A-Z0-9]{1,64}$/;

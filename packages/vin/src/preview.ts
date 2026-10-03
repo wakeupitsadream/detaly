@@ -23,6 +23,7 @@ import {
   DateError,
   etaDate as offerEtaDate,
   isExcluded,
+  MAX_CART_SEARCHES,
   MAX_LINE_QTY,
   MoneyError,
   offerViewId,
@@ -46,11 +47,10 @@ import { normalizeArticle } from '@detaly/rossko';
 import { parseManualAnswer } from './manual-resolver';
 
 /**
- * Distinct query articles in one proposal. Mirrors MAX_CART_SEARCHES of the web cart
- * (apps/web/src/server/cart-store.ts): checkout re-runs GetSearch per distinct article and
- * refuses a cart with more, so a proposal must not have more either.
+ * Distinct query articles in one proposal: MAX_CART_SEARCHES of @detaly/domain. Checkout re-runs
+ * GetSearch per distinct article and refuses a cart with more, so a proposal must not have more.
  */
-export const VIN_PROPOSAL_SEARCHES_MAX = 10;
+export const VIN_PROPOSAL_SEARCHES_MAX = MAX_CART_SEARCHES;
 /** The '>' comment to the client, characters. */
 export const VIN_COMMENT_MAX = 500;
 /** The '# заметка' of a line, characters. */

@@ -15,12 +15,13 @@
  * Runs in the caller's transaction; both carts are locked (`for update`), the proposal first.
  */
 import { and, cartItems, carts, eq, isNull, type Executor } from '@detaly/db';
+import { MAX_CART_LINES } from '@detaly/domain';
 import { v7 as uuidv7 } from 'uuid';
 import { VIN_PROPOSAL_SEARCHES_MAX } from './preview';
 import { isUuidString } from './requests';
 
-/** Lines of one cart; mirrors MAX_CART_LINES of the web cart (apps/web/src/server/cart-store.ts). */
-export const PROPOSAL_TARGET_LINES_MAX = 20;
+/** Lines of one cart: MAX_CART_LINES of @detaly/domain (the web cart obeys the same limit). */
+export const PROPOSAL_TARGET_LINES_MAX = MAX_CART_LINES;
 
 export type CopyProposalRefusal =
   /** No proposal cart with this id, or the target is not an active client cart. */

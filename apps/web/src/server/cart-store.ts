@@ -21,10 +21,8 @@ import { searchFailure, type CallPriority, type RosskoClient } from '@detaly/ros
 
 /** Cookie with the cart token (decision Д21). No `__Host-` prefix: e2e runs on plain http. */
 export const CART_COOKIE = 'cart';
-/** Most lines in one cart (decision Д17). */
-export const MAX_CART_LINES = 20;
-/** Most distinct query articles in one cart: GetSearch calls past the cache per checkout. */
-export const MAX_CART_SEARCHES = 10;
+/** Cart limits live in @detaly/domain (shared with VIN proposals in @detaly/vin). */
+export { MAX_CART_LINES, MAX_CART_SEARCHES } from '@detaly/domain';
 
 const CART_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 

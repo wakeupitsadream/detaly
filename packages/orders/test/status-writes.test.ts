@@ -12,6 +12,11 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.
 const SOURCE_DIRS = ['apps/web/src', 'apps/worker/src', 'packages', 'scripts'];
 const SKIP_DIRS = new Set(['node_modules', '.next', 'dist', 'test', 'e2e', 'fixtures', 'drizzle']);
 const ENGINE = 'packages/orders/src/engine.ts';
+/**
+ * Order columns another package may set outside the engine: links that never drive the state
+ * machine. `vin_request_id` is set by markVinConverted (@detaly/vin) in the checkout transaction.
+ */
+const NON_LIFECYCLE_COLUMNS = new Set(['vinRequestId']);
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
   const abs = path.join(ROOT, dir);
@@ -42,9 +47,20 @@ describe('orders.status is written only by @detaly/orders', () => {
   });
 
   it('updates the orders table only in the engine', () => {
-    const offenders = files.filter(
-      (file) => file !== ENGINE && ORDER_UPDATE.test(readFileSync(path.join(ROOT, file), 'utf8')),
-    );
+    const offenders: string[] = [];
+    for (const file of files) {
+      if (file === ENGINE) continue;
+      const text = readFileSync(path.join(ROOT, file), 'utf8');
+      for (const match of text.matchAll(new RegExp(ORDER_UPDATE.source, 'gi'))) {
+        // Outside the engine only a Drizzle update whose `.set({...})` touches link columns that
+        // carry no lifecycle (NON_LIFECYCLE_COLUMNS) is allowed, e.g. the VIN checkout hook.
+        const window = text.slice(match.index, match.index + 400);
+        const set = /^\.update\([^)]*\)\s*\.set\(\{([^}]*)\}\)/.exec(window);
+        const keys = set ? [...set[1]!.matchAll(/(\w+)\s*:/g)].map((m) => m[1]!) : [];
+        const allowed = keys.length > 0 && keys.every((key) => NON_LIFECYCLE_COLUMNS.has(key));
+        if (!allowed) offenders.push(file);
+      }
+    }
     expect(offenders).toEqual([]);
   });
 

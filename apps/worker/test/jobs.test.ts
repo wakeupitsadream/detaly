@@ -100,17 +100,13 @@ describe('phase 1B processors', () => {
     expect((error as Error).message).toBe('housekeeping timers needs WorkerDeps');
   });
 
-  it('phase 1C stubs: notify/vin fails without retries, retention deletes nothing', async () => {
+  it('phase 1C: notify/vin rejects bad data without retries, retention needs WorkerDeps', async () => {
+    // The processors themselves: test/notify-1c.int.test.ts, test/housekeeping-1c.int.test.ts.
     const vin = await PROCESSORS.notify({ name: 'vin', data: {} } as Job, deps).catch(
       (e: unknown) => e,
     );
     expect(vin).toBeInstanceOf(UnrecoverableError);
-    expect((vin as Error).message).toBe('notify/vin: not implemented');
-    const debug = vi.fn();
-    const full = { db: {}, engine: {}, logger: { debug } } as unknown as WorkerDeps;
-    await expect(processHousekeeping({ name: 'retention' }, full)).resolves.toEqual({
-      deleted: 0,
-    });
+    expect((vin as Error).message).toBe('notify/vin: bad job data');
     const { redis } = fakeRedis();
     await expect(
       processHousekeeping(

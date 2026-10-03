@@ -1,26 +1,34 @@
 // Data of order notification templates (docs/phase-1b-implementation.md section 12.1): the
 // order number, scheme, brand + article of the items, sum, dates, /o/<token> and admin links,
 // the pickup point from env. Client templates never get the phone (PD minimisation, PLAN
-// section 4); staff templates get it and print it masked.
+// section 4); staff templates get it and print it masked. Phase 1C adds the installation
+// partner, the packaging photo of `arrived`, the slot of install_* and the claim of claim_*
+// (addPhase1cData) — never the client's claim text or the master's decision text.
 import type { Env } from '@detaly/config';
 import {
   and,
   asc,
+  claims,
   clientApprovals,
   desc,
   eq,
   inArray,
+  installBookings,
   isNull,
   orderItems,
+  orderPhotos,
   orders,
   payments,
   refunds,
+  sql,
   supplierOrders,
   users,
   type Executor,
 } from '@detaly/db';
 import {
   DROPPED_ORDER_ITEM_STATES,
+  INSTALL_HOLDING_STATUSES,
+  installSlotOf,
   isIsoDate,
   localDate,
   type ApprovalProposal,
@@ -30,7 +38,7 @@ import {
   type OrderNotifyTemplate,
 } from '@detaly/domain';
 import { promise, type OrderTemplateData, type PickupPoint } from '@detaly/notify';
-import type { OrderSettings } from '@detaly/orders';
+import { isUuid, type OrderSettings } from '@detaly/orders';
 
 const HOUR_MS = 3_600_000;
 
@@ -103,10 +111,16 @@ export async function loadTemplateData(
     /** payments.id from the event payload (amount of the payment the event is about). */
     paymentId?: string | null;
     extras?: TemplateExtras;
+    /**
+     * Payload of the order event the job hangs on: `claimId` / `bookingId` (phase 1C journal
+     * events and reminders) pick the claim or the booking a message is about.
+     */
+    eventPayload?: Record<string, unknown> | null;
     sendAt: Date;
   },
 ): Promise<LoadedTemplateData | null> {
   const { env, settings, orderId, audience, template, extras = {}, sendAt } = input;
+  const eventPayload = input.eventPayload ?? {};
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
   if (!order) return null;
 
@@ -199,6 +213,127 @@ export async function loadTemplateData(
       .limit(1);
     if (refund) data.deadlineDate = localDate(refund.deadlineAt);
   }
+  await addPhase1cData(db, { env, order, template, eventPayload, data });
   if (data.deadlineDate && !isIsoDate(data.deadlineDate)) data.deadlineDate = null;
   return { order, data };
+}
+
+const CLAIM_TEMPLATES: readonly OrderNotifyTemplate[] = [
+  'claim_received',
+  'claim_decided',
+  'staff_claim_opened',
+  'staff_claim_deadline',
+];
+const INSTALL_TEMPLATES: readonly OrderNotifyTemplate[] = [
+  'arrived',
+  'install_requested',
+  'install_confirmed',
+  'install_declined',
+  'install_reminder',
+  'staff_install_request',
+];
+
+/** A uuid from the event payload: `key` itself or `<object>.id` (e.g. payload.claim.id). */
+function payloadId(payload: Record<string, unknown>, key: string, object: string): string | null {
+  if (isUuid(payload[key])) return payload[key];
+  const nested = payload[object];
+  if (typeof nested === 'object' && nested !== null) {
+    const id = (nested as Record<string, unknown>).id;
+    if (isUuid(id)) return id;
+  }
+  return null;
+}
+
+/** 'чт 8 окт 14:00' of a slot in the client time zone. */
+export function slotText(slotAt: Date): string {
+  const slot = installSlotOf({ slotStart: slotAt, carReadyAt: slotAt });
+  return `${slot.dayText} ${slot.timeText}`;
+}
+
+/**
+ * Phase 1C data (docs/phase-1c-implementation.md section 7.2 item 2): the installation partner,
+ * the packaging photo of `arrived` (one key, never claim or return photos), the slot of install_*,
+ * the claim (kind, decision, answer deadline) of claim_* — without the client's or the master's
+ * texts (decision С2).
+ */
+async function addPhase1cData(
+  db: Executor,
+  input: {
+    env: Env;
+    order: OrderRow;
+    template: OrderNotifyTemplate;
+    eventPayload: Record<string, unknown>;
+    data: OrderTemplateData;
+  },
+): Promise<void> {
+  const { env, order, template, eventPayload, data } = input;
+  if (INSTALL_TEMPLATES.includes(template)) {
+    data.installPartner = env.INSTALL_PARTNER_NAME ?? null;
+    data.installPartnerRequisites = env.INSTALL_PARTNER_REQUISITES ?? null;
+  }
+
+  if (template === 'arrived') {
+    // Already booked (a reminder on day 3/6/9): no second «Записаться на установку».
+    const [active] = await db
+      .select({ id: installBookings.id })
+      .from(installBookings)
+      .where(
+        and(
+          eq(installBookings.orderId, order.id),
+          inArray(installBookings.status, [...INSTALL_HOLDING_STATUSES]),
+        ),
+      )
+      .limit(1);
+    if (active) data.installPartner = null;
+    const photos = await db
+      .select({ key: orderPhotos.s3Key })
+      .from(orderPhotos)
+      .where(and(eq(orderPhotos.orderId, order.id), eq(orderPhotos.kind, 'packaging')))
+      .orderBy(desc(orderPhotos.createdAt), desc(orderPhotos.id))
+      .limit(1);
+    data.photos = photos.map((photo) => photo.key);
+  }
+
+  if (INSTALL_TEMPLATES.includes(template) && template !== 'arrived') {
+    const bookingId = payloadId(eventPayload, 'bookingId', 'booking');
+    const [booking] = await db
+      .select({ slotAt: installBookings.slotAt })
+      .from(installBookings)
+      .where(
+        bookingId === null
+          ? eq(installBookings.orderId, order.id)
+          : and(eq(installBookings.orderId, order.id), eq(installBookings.id, bookingId)),
+      )
+      .orderBy(desc(installBookings.createdAt), desc(installBookings.id))
+      .limit(1);
+    data.slotText = booking ? slotText(booking.slotAt) : null;
+  }
+
+  if (CLAIM_TEMPLATES.includes(template)) {
+    const claimId = payloadId(eventPayload, 'claimId', 'claim');
+    const [claim] = await db
+      .select({ kind: claims.kind, decision: claims.decision, deadlineAt: claims.deadlineAt })
+      .from(claims)
+      .where(
+        claimId === null
+          ? eq(claims.orderId, order.id)
+          : and(eq(claims.orderId, order.id), eq(claims.id, claimId)),
+      )
+      // Without an id: the latest decided claim for claim_decided, the latest opened otherwise.
+      .orderBy(
+        ...(template === 'claim_decided' ? [sql`${claims.decidedAt} desc nulls last`] : []),
+        desc(claims.openedAt),
+        desc(claims.id),
+      )
+      .limit(1);
+    if (claim) {
+      const deadlineDate = localDate(claim.deadlineAt);
+      data.claim = { kind: claim.kind, decision: claim.decision, deadlineDate };
+      if (template === 'staff_claim_deadline' || template === 'staff_claim_opened') {
+        data.deadlineDate ??= deadlineDate;
+      }
+    } else {
+      data.claim = null;
+    }
+  }
 }

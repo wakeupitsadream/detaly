@@ -5,8 +5,9 @@
 //   chat) written before posting, so a retry after success does not post twice;
 // - owner: the owner's private chat through the AlertPort (it keeps its own `alert:<key>` row);
 // - client: a notifications row with dedupe_key `${order_event_id}:${template}:${channel ?? 'none'}`
-//   in status `queued` BEFORE sending, then the Notifier with the available drivers (SMS when
-//   configured; client messengers arrive in 1C). Result: sent / skipped + fallback_reason /
+//   in status `queued` BEFORE sending, then the Notifier with the available drivers (phase 1C:
+//   the client bot's Telegram with the packaging photo, then SMS by the allowlist; a blocked
+//   chat sets messenger_bindings.blocked_at and falls back). Result: sent / skipped + fallback_reason /
 //   failed + attempts + error (no PD). A row already final -> nothing is sent again.
 //
 // After decision_needed (the first one of an approval): sent -> client_approvals.notified_at and
@@ -19,7 +20,6 @@ import {
   clientApprovals,
   eq,
   isNull,
-  messengerBindings,
   notifications,
   orderEvents,
   orders,
@@ -35,13 +35,10 @@ import {
   type OrderNotifyTemplate,
 } from '@detaly/domain';
 import {
-  ChannelBlockedError,
   createNotifier,
   renderTemplate,
   selectChannel,
-  SmsGatewayError,
   UnrecoverableSmsError,
-  type ChannelDriver,
   type NotifyRecipient,
   type NotifyResult,
 } from '@detaly/notify';
@@ -55,7 +52,17 @@ import {
 import { UnrecoverableError, type Job } from 'bullmq';
 import type { WorkerDeps } from '../../deps';
 import { refreshCard } from '../receipts/offset';
-import { guardedSmsDriver } from './sms';
+import {
+  clientDrivers,
+  loadBindings,
+  lockRow,
+  markBlocked,
+  nudge,
+  rowsOf,
+  safeError,
+  sellersChatId,
+  smsPhone,
+} from './shared';
 import { loadTemplateData, type TemplateExtras } from './template-data';
 
 const HOUR_MS = 3_600_000;
@@ -110,53 +117,7 @@ export function isFinalAttempt(job: Pick<Job, 'attemptsMade' | 'opts'>): boolean
   return (job.attemptsMade ?? 0) + 1 >= (job.opts?.attempts ?? 1);
 }
 
-/** notifications.error / logs: provider and code for known errors, the class name otherwise. */
-function safeError(error: unknown): string {
-  if (
-    error instanceof UnrecoverableSmsError ||
-    error instanceof SmsGatewayError ||
-    error instanceof ChannelBlockedError
-  ) {
-    return error.message.slice(0, 200);
-  }
-  if (error instanceof Error) {
-    const code = (error as { code?: unknown }).code;
-    return typeof code === 'string' ? `${error.name}:${code}` : error.name;
-  }
-  return 'unknown';
-}
-
-/** Client drivers of 1B: SMS behind the guard. Telegram/MAX client drivers arrive in 1C/2. */
-export function clientDrivers(deps: WorkerDeps): ChannelDriver[] {
-  return deps.smsDriver ? [guardedSmsDriver(deps, deps.smsDriver)] : [];
-}
-
-/** Wakes the outbox dispatcher after a commit that may have queued rows; never throws. */
-function nudge(deps: WorkerDeps): void {
-  try {
-    deps.engine.nudge?.();
-  } catch {
-    // best effort: the dispatcher polls anyway (decision Б1)
-  }
-}
-
-function sellersChatId(deps: WorkerDeps): string {
-  return deps.env.TG_SELLER_CHAT_ID === undefined ? 'sellers' : String(deps.env.TG_SELLER_CHAT_ID);
-}
-
-/** The notifications rows of (event, template) — any channel (Б20 key prefix). */
-async function rowsOf(db: Executor, prefix: string) {
-  return db
-    .select({
-      id: notifications.id,
-      dedupeKey: notifications.dedupeKey,
-      status: notifications.status,
-      attempts: notifications.attempts,
-    })
-    .from(notifications)
-    .where(sql`starts_with(${notifications.dedupeKey}, ${prefix})`)
-    .orderBy(asc(notifications.createdAt));
-}
+export { clientDrivers } from './shared';
 
 export async function processNotifyOrder(job: Job, deps: WorkerDeps): Promise<NotifyOrderOutcome> {
   const data = parseData(job.data);
@@ -209,6 +170,7 @@ async function templateData(ctx: NotifyContext, sendAt: Date) {
     template: ctx.data.template,
     paymentId: paymentIdOf(ctx.payload),
     extras: ctx.data,
+    eventPayload: ctx.payload,
     sendAt,
   });
 }
@@ -352,16 +314,6 @@ async function currentApproval(
   return expected === null || expected === open.id ? open : null;
 }
 
-/** `select … for update` of a notifications row; its status (null when it is gone). */
-async function lockRow(tx: Executor, id: string): Promise<string | null> {
-  const [locked] = await tx
-    .select({ status: notifications.status })
-    .from(notifications)
-    .where(eq(notifications.id, id))
-    .for('update');
-  return locked?.status ?? null;
-}
-
 // ---------------------------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------------------------
@@ -376,27 +328,12 @@ async function loadRecipient(
     .innerJoin(users, eq(users.id, orders.userId))
     .where(eq(orders.id, orderId));
   if (!row) return null;
-  const bindings = await db
-    .select({
-      channel: messengerBindings.channel,
-      chatId: messengerBindings.chatId,
-      isPrimary: messengerBindings.isPrimary,
-      blockedAt: messengerBindings.blockedAt,
-    })
-    .from(messengerBindings)
-    .where(eq(messengerBindings.userId, row.userId));
-  const phone = row.anonymizedAt === null && /^\+\d{10,15}$/.test(row.phone) ? row.phone : null;
   return {
     userId: row.userId,
     recipient: {
       kind: 'client',
-      bindings: bindings.map((b) => ({
-        channel: b.channel,
-        chatId: b.chatId,
-        isPrimary: b.isPrimary,
-        blocked: b.blockedAt !== null,
-      })),
-      phone,
+      bindings: await loadBindings(db, row.userId),
+      phone: smsPhone(row.phone, row.anonymizedAt),
     },
   };
 }
@@ -534,20 +471,7 @@ async function notifyClient(ctx: NotifyContext): Promise<NotifyOrderOutcome> {
         })
         .where(eq(notifications.id, row.id));
     }
-    for (const blocked of result.blocked) {
-      if (blocked.channel === 'sms') continue;
-      await tx
-        .update(messengerBindings)
-        .set({ blockedAt: at, updatedAt: at })
-        .where(
-          and(
-            eq(messengerBindings.userId, target.userId),
-            eq(messengerBindings.channel, blocked.channel),
-            eq(messengerBindings.chatId, blocked.address),
-            isNull(messengerBindings.blockedAt),
-          ),
-        );
-    }
+    await markBlocked(tx, target.userId, result.blocked, at);
     await afterDecisionNeeded(
       tx,
       ctx,

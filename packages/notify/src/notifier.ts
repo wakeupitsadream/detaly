@@ -4,21 +4,26 @@
  * allowlisted templates only; otherwise the notification is `skipped` with a fallback reason
  * (and transitions that wait for the client do not start their timers).
  */
-import type { OrderNotifyTemplate } from '@detaly/domain';
+import { isOneOf, VIN_NOTIFY_TEMPLATES, type OrderNotifyTemplate } from '@detaly/domain';
 import type { NotificationChannel } from '@detaly/domain/statuses';
 import { renderOrderTemplate } from './templates/order';
 import { renderPing } from './templates/ping';
-import { renderVinProposal } from './templates/vin';
+import { renderVinTemplate } from './templates/vin';
 import type {
   ChannelAddress,
   NotifyRecipient,
   OrderTemplateData,
   PingData,
   RenderedMessage,
-  VinProposalData,
+  VinTemplateData,
 } from './types';
 
-/** Templates that may go by SMS when the client has no messenger (PLAN section 4). */
+/**
+ * Templates that may go by SMS when the client has no messenger (PLAN section 4): confirmation
+ * of pay on handover, the proposal link, «нужно ваше решение», «приехало», «деньги отправлены».
+ * vin_received is not here (decision С20): without a messenger the client waits for the
+ * proposal SMS.
+ */
 export const SMS_ALLOWED_TEMPLATES = [
   'confirm_request',
   'vin_proposal',
@@ -28,7 +33,8 @@ export const SMS_ALLOWED_TEMPLATES = [
 ] as const satisfies readonly NotifyTemplateId[];
 
 export type TemplateDataMap = { [K in OrderNotifyTemplate]: OrderTemplateData } & {
-  vin_proposal: VinProposalData;
+  vin_received: VinTemplateData;
+  vin_proposal: VinTemplateData;
   ping: PingData;
 };
 export type NotifyTemplateId = keyof TemplateDataMap;
@@ -42,7 +48,9 @@ export function renderTemplate<T extends NotifyTemplateId>(
   data: TemplateDataMap[T],
 ): RenderedMessage {
   if (template === 'ping') return renderPing(data as PingData);
-  if (template === 'vin_proposal') return renderVinProposal(data as VinProposalData);
+  if (isOneOf(VIN_NOTIFY_TEMPLATES, template)) {
+    return renderVinTemplate(template, data as VinTemplateData);
+  }
   return renderOrderTemplate(template as OrderNotifyTemplate, data as OrderTemplateData);
 }
 

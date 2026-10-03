@@ -14,6 +14,7 @@ import { claimDecision, claimKind, installBookingStatus, photoKind } from './enu
 import { orderItems, orders } from './orders';
 import { refunds } from './payments';
 import { staff, users } from './people';
+import { supplierOrders } from './supplier';
 
 /** Nil uuid: a claim about the whole order in the "one open claim per target" index. */
 const WHOLE_ORDER = sql.raw(`'00000000-0000-0000-0000-000000000000'::uuid`);
@@ -62,6 +63,11 @@ export const claims = pgTable(
     refundId: uuid().references(() => refunds.id),
     /** «Замена выдана» note (no PD). */
     replacementNote: text(),
+    // --- phase 1C audit: the replacement purchase (PLAN section 3 «replace → новый заказ позиции»)
+    /** «Замена заказана»: the replacement items and their supplier order were written. */
+    replacementOrderedAt: tstz(),
+    /** The supplier order (Rossko numbers) of the replacement. */
+    replacementSupplierOrderId: uuid().references(() => supplierOrders.id),
   },
   (t) => [
     index('claims_deadline_at_open_idx')
@@ -83,6 +89,11 @@ export const claims = pgTable(
       'claims',
       'override_reason',
       sql`${t.overrideReason} is null or (${t.decision} is not null and ${t.decision} = 'refund' and length(btrim(${t.overrideReason})) > 0)`,
+    ),
+    namedCheck(
+      'claims',
+      'replacement_ordered',
+      sql`${t.replacementOrderedAt} is null or (${t.decision} = 'replace' and ${t.replacementSupplierOrderId} is not null)`,
     ),
     namedCheck('claims', 'client_text', sql`length(${t.clientText}) <= 1000`),
     namedCheck('claims', 'opened_via', sql`${t.openedVia} in (${sqlList(CLAIM_OPENED_VIA)})`),

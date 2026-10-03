@@ -17,6 +17,8 @@ import {
   inArray,
   orderItems,
   orderPhotos,
+  supplierOrderItems,
+  supplierOrders,
   supplierReturns,
   type Executor,
 } from '@detaly/db';
@@ -27,6 +29,8 @@ import {
   CLAIM_TEXT_MAX,
   claimKindsAvailable,
   FILE_KEY_PATTERN,
+  formatDayMonth,
+  localDate,
   REFUSABLE_STATUSES,
   type ClaimDecision,
   type ClaimKind,
@@ -61,7 +65,25 @@ const NOTE_MAX = 500;
 
 /** Sellers card line of a replacement decision (decision С9). */
 export const REPLACEMENT_TASK_NOTE =
-  'Решение по претензии: замена — закажите замену («Заказано вручную» в админке или ЛК Rossko), затем «Замена выдана»';
+  'Решение по претензии: замена — закажите замену в ЛК Rossko, запишите номер заказа («Замена заказана» в админке), затем «Замена выдана»';
+
+/** «Замена выдана» before «Замена заказана»: the replacement purchase is not recorded yet. */
+export const REPLACEMENT_NOT_ORDERED =
+  'Сначала «Замена заказана» с номером заказа Rossko (админка)';
+
+/** A delay before the handover is a refusal of the whole order (decision С10). */
+export const DELAY_WHOLE_ORDER_ONLY =
+  'Просрочку до получения заявляют по всему заказу: деньги возвращаются за весь заказ';
+
+/**
+ * Sellers card line of a claim refund with the part accepted back: the part lies at the point
+ * and must go back to Rossko before the supplier window closes (PLAN section 3, risk 8), or to
+ * stock («Rossko не принял»).
+ */
+export function supplierReturnTaskNote(deadline: Date | null): string {
+  const until = deadline === null ? '' : ` до ${formatDayMonth(localDate(deadline))}`;
+  return `Возврат по претензии: деталь у вас — вернуть Rossko${until} (возврат поставщику в админке); не примут — «Rossko не принял», деталь на склад`;
+}
 
 /** A FileStore key of this order: `<scope>/<order id>/<uuid>.jpg` with an allowed scope. */
 export function isOrderFileKey(
@@ -234,6 +256,11 @@ export async function openClaim(
         kinds,
       };
     }
+    // A delay before the handover is the refusal of the whole order (client_refused, decision
+    // С10): a claim on one item would refund and cancel the items that came on time as well.
+    if (itemId !== null && input.kind === 'delay' && REFUSABLE.includes(order.status)) {
+      return bad(DELAY_WHOLE_ORDER_ONLY);
+    }
     if (itemId !== null) {
       const item = snapshot.items.find((i) => i.id === itemId);
       const fits = AFTER_HANDOVER.includes(order.status)
@@ -405,6 +432,9 @@ function refundEventFor(
     ...(overrideReason !== null ? { ownerOverrideReason: overrideReason } : {}),
   };
   if (AFTER_HANDOVER.includes(status)) {
+    // A delay after the handover: the part stays with the client, art. 23.1 gives a penalty
+    // (the owner's compensation), never the price back (guard claim_refundable_kind).
+    if (claim.kind === 'delay') return null;
     const itemId = claim.orderItemId;
     return {
       event: 'claim_refund_approved',
@@ -412,14 +442,26 @@ function refundEventFor(
       facts: { ...base, scope: itemId === null ? 'order' : 'item' },
     };
   }
-  // A delay before the handover is the refusal rule (refund_pending, refund_prepayment).
-  if (claim.kind === 'delay' && REFUSABLE.includes(status)) {
+  // A delay before the handover is the refusal rule (refund_pending, refund_prepayment) of the
+  // whole order; openClaim takes no item for it (a legacy item claim gets no refund here).
+  if (claim.kind === 'delay' && claim.orderItemId === null && REFUSABLE.includes(status)) {
     return { event: 'client_refused', itemId: null, facts: { ...base, scope: 'order' } };
   }
   return null;
 }
 
+/** The handed items a claim is about: its item, or every handed item of a whole-order claim. */
+function handedTargets(snapshot: OrderSnapshot, claim: ClaimRow) {
+  return snapshot.items.filter(
+    (item) =>
+      item.state === 'handed' && (claim.orderItemId === null || item.id === claim.orderItemId),
+  );
+}
+
 function refundRefusal(result: Extract<ApplyResult, { ok: false }>, staff: StaffRef): string {
+  if (result.failed.includes('claim_refundable_kind')) {
+    return 'По просрочке после получения — компенсация (неустойка), не возврат денег';
+  }
   if (result.failed.includes('claim_refund_allowed')) {
     return staff.role === 'owner'
       ? 'Деталь не принята: укажите причину возврата без приёмки'
@@ -438,12 +480,15 @@ function refundRefusal(result: Extract<ApplyResult, { ok: false }>, staff: Staff
 /**
  * The decision on a claim, always with the answer to the client (1..2000 characters, shown on
  * /o/<token>; the messenger only says «ответ готов»):
- * - refund: claim_refund_approved (after the handover) or client_refused (a delay before it) with
- *   the claim facts; refunds.requested_at = claims.opened_at, reason = the claim kind,
- *   claims.refund_id; the claim closes (the refund lives on with its own deadline). Without
- *   «Принял возврат» (not a delay) only the owner with a reason (in order_events);
+ * - refund: claim_refund_approved (after the handover; never for a delay, art. 23.1 gives a
+ *   penalty there) or client_refused (a whole-order delay before it) with the claim facts;
+ *   refunds.requested_at = claims.opened_at, reason = the claim kind, claims.refund_id; the claim
+ *   closes (the refund lives on with its own deadline). Without «Принял возврат» only the owner
+ *   with a reason (in order_events); with it the part goes back to Rossko (supplier_returns
+ *   kind return, or claim for a defect) and the sellers get the task;
  * - replace: supplier_returns kind claim per item + a task to the sellers; the claim stays open
- *   until «Замена выдана» (closeClaim); no receipt (VERIFY: an exchange for the same goods);
+ *   through «Замена заказана» (orderClaimReplacement) until «Замена выдана» (closeClaim); no
+ *   receipt (VERIFY: an exchange for the same goods);
  * - reject: a reasoned answer, the claim closes.
  */
 export async function decideClaim(
@@ -475,6 +520,8 @@ export async function decideClaim(
     const actor = staffActor(input.staff);
     let overrideUsed: string | null = null;
     let message: string;
+    /** A note for the sellers' card: the replacement or the return to Rossko to arrange. */
+    let supplierTask: string | null = null;
 
     switch (input.decision) {
       case 'refund': {
@@ -482,7 +529,19 @@ export async function decideClaim(
         const needsOverride = claim.kind !== 'delay' && claim.returnAcceptedAt === null;
         overrideUsed = needsOverride && reason !== '' ? reason : null;
         const plan = refundEventFor(snapshot, claim, overrideUsed);
-        if (plan === null) return refuse('Возврат по претензии в этом статусе недоступен');
+        if (plan === null) {
+          return refuse(
+            claim.kind === 'delay' && AFTER_HANDOVER.includes(order.status)
+              ? 'По просрочке после получения — компенсация (неустойка), не возврат денег'
+              : 'Возврат по претензии в этом статусе недоступен',
+          );
+        }
+        // The part accepted back lies at the point: a return to Rossko (a defect is a claim to
+        // the supplier), with the sellers' task below and the reminder before the deadline.
+        const returned =
+          plan.event === 'claim_refund_approved' && claim.returnAcceptedAt !== null
+            ? handedTargets(snapshot, claim)
+            : [];
         const applied = await applyTransitionInTx(
           tx,
           deps,
@@ -502,6 +561,36 @@ export async function decideClaim(
           { snapshot },
         );
         if (!applied.ok) return refuse(refundRefusal(applied, input.staff));
+        if (returned.length > 0) {
+          const kind = claim.kind === 'defect' ? ('claim' as const) : ('return' as const);
+          const rows = await tx
+            .insert(supplierReturns)
+            .values(
+              returned.map((item) => ({
+                orderItemId: item.id,
+                kind,
+                status: 'requested' as const,
+                amountExpectedKop: item.priceSupplierAtOrderKop * item.qty,
+                note: `claim:${claim.id}`,
+                createdAt: at,
+                updatedAt: at,
+              })),
+            )
+            .returning({ id: supplierReturns.id });
+          await recordJournalEvent(tx, {
+            orderId: order.id,
+            type: 'supplier_return_created',
+            actor,
+            payload: {
+              supplierReturnIds: rows.map((r) => r.id),
+              kind,
+              itemIds: returned.map((i) => i.id),
+              claimId: claim.id,
+            },
+            at,
+          });
+          supplierTask = supplierReturnTaskNote(order.supplierReturnDeadlineAt);
+        }
         message = 'Возврат денег по претензии создан';
         break;
       }
@@ -509,11 +598,7 @@ export async function decideClaim(
         if (claim.kind === 'delay' || !AFTER_HANDOVER.includes(order.status)) {
           return refuse('Замена — только по выданной детали');
         }
-        const targets = snapshot.items.filter(
-          (item) =>
-            item.state === 'handed' &&
-            (claim.orderItemId === null || item.id === claim.orderItemId),
-        );
+        const targets = handedTargets(snapshot, claim);
         if (targets.length === 0) return refuse('Нет выданной позиции для замены');
         const rows = await tx
           .insert(supplierReturns)
@@ -541,7 +626,8 @@ export async function decideClaim(
           },
           at,
         });
-        message = 'Решение: замена. Закажите замену, затем «Замена выдана»';
+        supplierTask = REPLACEMENT_TASK_NOTE;
+        message = 'Решение: замена. Закажите замену у Rossko, затем «Замена заказана» в админке';
         break;
       }
       case 'reject':
@@ -578,13 +664,13 @@ export async function decideClaim(
       audience: 'client',
       template: 'claim_decided',
     });
-    if (input.decision === 'replace') {
+    if (supplierTask !== null) {
       await enqueueNotify(tx, {
         orderId: order.id,
         orderEventId,
         audience: 'sellers',
         template: 'staff_claim_opened',
-        note: REPLACEMENT_TASK_NOTE,
+        note: supplierTask,
       });
     }
     if (input.compensationKop !== undefined && input.compensationKop !== null) {
@@ -601,7 +687,105 @@ export async function decideClaim(
   });
 }
 
-/** «Замена выдана»: closes a claim decided as replace (journal claim_closed). */
+/** Rossko order numbers of a manual purchase: trimmed, non-empty, at most 64 characters. */
+const ROSSKO_ID_MAX = 64;
+
+/**
+ * «Замена заказана» (PLAN section 3: replace → a new order of the item): for a claim decided
+ * as replace, each handed item it covers gets a replacement order_items row (state ordered, the
+ * same prices: an exchange for the same goods, no receipt) and the old row becomes `replaced`
+ * with replaced_by_item_id; one `created` supplier order with the Rossko numbers covers the
+ * replacements (supplier_orders / supplier_order_items: the purchase is in the books and in the
+ * journal for the act). claims.replacement_ordered_at opens «Замена выдана».
+ */
+export async function orderClaimReplacement(
+  deps: EngineDeps,
+  input: { claimId: string; rosskoOrderIds: readonly string[]; staff: StaffRef },
+): Promise<ServiceResult> {
+  const ids = [...new Set(input.rosskoOrderIds.map((id) => id.trim()).filter((id) => id !== ''))];
+  return withLockedClaim(deps, input.claimId, async ({ tx, snapshot, claim, at }) => {
+    const { order } = snapshot;
+    const refuse = (message: string): ServiceResult => ({ ok: false, message, orderId: order.id });
+    if (ids.length === 0 || ids.some((id) => id.length > ROSSKO_ID_MAX)) {
+      return refuse('Укажите номера заказов Rossko');
+    }
+    if (claim.closedAt !== null) return refuse('Претензия уже закрыта');
+    if (claim.decision !== 'replace') return refuse('Замена — только по решению «Замена»');
+    if (claim.replacementOrderedAt !== null) return refuse('Замена уже заказана');
+    if (!AFTER_HANDOVER.includes(order.status)) return refuse('Замена — только по выданной детали');
+    const targets = handedTargets(snapshot, claim);
+    if (targets.length === 0) return refuse('Нет выданной позиции для замены');
+
+    const attemptNo = Math.max(0, ...snapshot.supplierOrders.map((s) => s.attemptNo)) + 1;
+    const [created] = await tx
+      .insert(supplierOrders)
+      .values({ orderId: order.id, attemptNo, status: 'created', rosskoOrderIds: ids })
+      .returning({ id: supplierOrders.id });
+    const supplierOrderId = (created as { id: string }).id;
+    const newItemIds: string[] = [];
+    // VERIFY: Rossko terms of a replacement under a claim (free against the returned part, or a
+    // new purchase at today's price): the replacement row keeps the supplier price of the order.
+    for (const old of targets) {
+      const id = uuidv7();
+      await tx.insert(orderItems).values({
+        id,
+        orderId: order.id,
+        offerKey: old.offerKey,
+        searchArticleNorm: old.searchArticleNorm,
+        brand: old.brand,
+        article: old.article,
+        name: old.name,
+        qty: old.qty,
+        stockId: old.stockId,
+        isLocal: old.isLocal,
+        priceSupplierAtOrderKop: old.priceSupplierAtOrderKop,
+        priceClientKop: old.priceClientKop,
+        markupBp: old.markupBp,
+        etaDate: old.etaDate,
+        offerSnapshot: old.offerSnapshot,
+        state: 'ordered',
+        createdAt: at,
+        updatedAt: at,
+      });
+      await tx
+        .update(orderItems)
+        .set({ state: 'replaced', replacedByItemId: id, updatedAt: at })
+        .where(and(eq(orderItems.id, old.id), eq(orderItems.orderId, order.id)));
+      newItemIds.push(id);
+    }
+    await tx
+      .insert(supplierOrderItems)
+      .values(newItemIds.map((orderItemId) => ({ supplierOrderId, orderItemId })));
+    await tx
+      .update(claims)
+      .set({ replacementOrderedAt: at, replacementSupplierOrderId: supplierOrderId, updatedAt: at })
+      .where(eq(claims.id, claim.id));
+    await recordJournalEvent(tx, {
+      orderId: order.id,
+      type: 'claim_replacement_ordered',
+      actor: staffActor(input.staff),
+      payload: {
+        claimId: claim.id,
+        supplierOrderId,
+        rosskoOrderIds: ids,
+        itemIds: targets.map((i) => i.id),
+        newItemIds,
+        via: input.staff.via,
+      },
+      at,
+    });
+    return {
+      ok: true,
+      message: 'Замена заказана. Когда клиент получит деталь — «Замена выдана»',
+      orderId: order.id,
+    };
+  });
+}
+
+/**
+ * «Замена выдана»: closes a claim decided as replace once the replacement was ordered
+ * («Замена заказана»); its replacement items become handed (journal claim_closed).
+ */
 export async function closeClaim(
   deps: EngineDeps,
   input: { claimId: string; staff: StaffRef; note?: string | null },
@@ -615,6 +799,30 @@ export async function closeClaim(
     if (claim.decision !== 'replace') {
       return { ok: false, message: 'Закрыть можно только претензию с заменой', orderId: order.id };
     }
+    if (claim.replacementOrderedAt === null || claim.replacementSupplierOrderId === null) {
+      return { ok: false, message: REPLACEMENT_NOT_ORDERED, orderId: order.id };
+    }
+    const links = await tx
+      .select({ id: supplierOrderItems.orderItemId })
+      .from(supplierOrderItems)
+      .where(eq(supplierOrderItems.supplierOrderId, claim.replacementSupplierOrderId));
+    const handed = snapshot.items.filter(
+      (item) => item.state === 'ordered' && links.some((link) => link.id === item.id),
+    );
+    if (handed.length > 0) {
+      await tx
+        .update(orderItems)
+        .set({ state: 'handed', arrivedAt: at, updatedAt: at })
+        .where(
+          and(
+            eq(orderItems.orderId, order.id),
+            inArray(
+              orderItems.id,
+              handed.map((item) => item.id),
+            ),
+          ),
+        );
+    }
     await tx
       .update(claims)
       .set({ closedAt: at, replacementNote: note, updatedAt: at })
@@ -623,7 +831,12 @@ export async function closeClaim(
       orderId: order.id,
       type: 'claim_closed',
       actor: staffActor(input.staff),
-      payload: { claimId: claim.id, decision: 'replace', via: input.staff.via },
+      payload: {
+        claimId: claim.id,
+        decision: 'replace',
+        via: input.staff.via,
+        itemIds: handed.map((item) => item.id),
+      },
       at,
     });
     return { ok: true, message: 'Замена выдана, претензия закрыта', orderId: order.id };
@@ -745,6 +958,7 @@ export async function loadClaimsView(
       compensationAmountKop: row.compensationAmountKop,
       refundId: row.refundId,
       closedAt: row.closedAt,
+      replacementOrderedAt: row.replacementOrderedAt,
       photoCount: keys.length,
       photos: keys,
       returnPhotos: photos

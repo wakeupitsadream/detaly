@@ -38,3 +38,35 @@ const DIGIT_RUN_RE = /(?<![A-Za-z\d])\+?\d(?:[\s\-()]*\d){6,}(?![A-Za-z])/g;
 export function maskDigits(text: string): string {
   return text.replace(DIGIT_RUN_RE, '•••');
 }
+
+/** Letters of Russian registration plates (Cyrillic and their Latin look-alikes). */
+const PLATE_LETTER = '[АВЕКМНОРСТУХABEKMHOPCTYX]';
+/**
+ * Russian registration plates (ГОСТ Р 50577): «А123ВС56», «а 123 вс 156», «АВ123 56» (taxi),
+ * «А123ВС» without the region when written in Cyrillic. A plate ties the car to its owner in
+ * the traffic police register, so it is personal data next to a phone or a name (decision С2).
+ */
+const PLATE_RES: readonly RegExp[] = [
+  // Л ЦЦЦ ЛЛ РР(Р)
+  new RegExp(
+    `(?<![\\p{L}\\d])${PLATE_LETTER}\\s?\\d{3}\\s?${PLATE_LETTER}{2}\\s?\\d{2,3}(?![\\p{L}\\d])`,
+    'giu',
+  ),
+  // ЛЛ ЦЦЦ РР(Р): taxi and trailers, Cyrillic only (a Latin «HC12356» may be an article)
+  /(?<![\p{L}\d])[АВЕКМНОРСТУХ]{2}\s?\d{3}\s?\d{2,3}(?![\p{L}\d])/giu,
+  // Л ЦЦЦ ЛЛ without the region, Cyrillic only (a Latin «A123BC» may be an article)
+  /(?<![\p{L}\d])[АВЕКМНОРСТУХ]\s?\d{3}\s?[АВЕКМНОРСТУХ]{2}(?![\p{L}\d])/giu,
+];
+const EMAIL_RE = /[\p{L}\d._%+-]+@[\p{L}\d-]+(?:\.[\p{L}\d-]+)+/giu;
+
+/**
+ * A client's free text on its way to the sellers chat (Telegram is a foreign service, PLAN
+ * section 4): digit runs (maskDigits), registration plates and e-mail addresses become '•••'.
+ * Names and addresses cannot be recognised reliably: the chat gets a short fragment only and the
+ * full text stays in the admin.
+ */
+export function maskClientText(text: string): string {
+  let out = text.replace(EMAIL_RE, '•••');
+  for (const re of PLATE_RES) out = out.replace(re, '•••');
+  return maskDigits(out);
+}

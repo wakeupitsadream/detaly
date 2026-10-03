@@ -94,6 +94,8 @@ export interface ClaimSummary {
   compensationAmountKop: Kop | null;
   refundId: string | null;
   closedAt: Date | null;
+  /** «Замена заказана» of a replace decision (the replacement items were written). */
+  replacementOrderedAt: Date | null;
   /** Photos the client attached (the keys stay in the read models). */
   photoCount: number;
 }

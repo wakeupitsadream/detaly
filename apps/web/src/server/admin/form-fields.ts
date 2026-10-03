@@ -12,3 +12,11 @@ export function parseRubToKop(raw: string): number | null {
 export function formField(form: URLSearchParams, name: string, max = 500): string {
   return (form.get(name) ?? '').trim().slice(0, max);
 }
+
+/** «12345, 67890 / 555» -> ['12345', '67890', '555']. */
+export function splitIds(raw: string): string[] {
+  return raw
+    .split(/[\s,;/]+/)
+    .map((id) => id.trim())
+    .filter((id) => id !== '');
+}

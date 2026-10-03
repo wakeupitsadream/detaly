@@ -389,13 +389,22 @@ export const noOpenClaims = guard('no_open_claims', (c) => c.openClaims === 0);
 export const claimIsDelay = guard('claim_is_delay', (c) => c.claimKind === 'delay');
 
 /**
- * PLAN section 2 invariant: a claim refund (except kind=delay) needs the returned part
- * accepted, or an owner override with a written reason.
+ * A claim refund after the handover is never a delay claim: once the part is with the client,
+ * art. 23.1 ЗоЗПП gives a penalty (the owner's compensation), not the price back. The PLAN
+ * section 2 exception for kind=delay applies before the handover only, where the refund is the
+ * refusal rule (client_refused) and needs no returned part. Without a claim kind (the owner's
+ * «Вернуть платёж» after the handover) the refund is not a delay one.
+ */
+export const claimRefundableKind = guard('claim_refundable_kind', (c) => c.claimKind !== 'delay');
+
+/**
+ * PLAN section 2 invariant: a claim refund (after the handover; a delay never gets here, see
+ * claimRefundableKind) needs the returned part accepted, or an owner override with a written
+ * reason.
  */
 export const claimRefundAllowed = guard(
   'claim_refund_allowed',
   (c) =>
-    c.claimKind === 'delay' ||
     c.returnAccepted === true ||
     (c.actor === 'staff' &&
       c.staffRole === 'owner' &&

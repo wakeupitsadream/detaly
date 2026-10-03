@@ -47,6 +47,7 @@ describe('client timeline phrases', () => {
         'claim_closed',
         'claim_compensation',
         'claim_decided',
+        'claim_replacement_ordered',
         'claim_return_accepted',
         'install_cancelled',
         'install_confirmed',
@@ -187,6 +188,12 @@ describe('phase 1C phrases (section 10.5)', () => {
     expect(
       eventPhrase({ type: 'claim_closed', toStatus: null, payload: { decision: 'replace' } }),
     ).toBe('Замена выдана, претензия закрыта');
+    expect(
+      eventPhrase({ type: 'claim_closed', toStatus: null, payload: { reason: 'superseded' } }),
+    ).toBe('Претензия закрыта: по заказу оформлен возврат или отмена');
+    expect(eventPhrase({ type: 'claim_replacement_ordered', toStatus: null, payload: {} })).toBe(
+      'Замену заказали у поставщика',
+    );
   });
 
   it('installation: the slot in the client zone, who cancelled', () => {

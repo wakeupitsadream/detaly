@@ -38,6 +38,7 @@ const FUNCTIONS = [
   'acceptClaimReturn',
   'decideClaim',
   'closeClaim',
+  'orderClaimReplacement',
   'recordClaimCompensation',
   'addOrderPhoto',
   'loadClaimsView',

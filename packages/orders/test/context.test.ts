@@ -429,6 +429,7 @@ describe('phase 1C: claims and bookings in the context and the staff actions', (
       compensationAmountKop: null,
       refundId: null,
       closedAt: null,
+      replacementOrderedAt: null,
       photoCount: 0,
       ...overrides,
     };

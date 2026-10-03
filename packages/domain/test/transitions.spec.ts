@@ -461,7 +461,12 @@ const EXPECTED: readonly Row[] = [
     ownerCtx({ scope: 'order', claimKind: 'defect', ownerOverrideReason: 'фото брака' }),
     'refund_pending',
   ],
-  ['completed', 'claim_refund_approved', staff({ scope: 'item', claimKind: 'delay' }), 'completed'],
+  [
+    'completed',
+    'claim_refund_approved',
+    staff({ scope: 'item', claimKind: 'refusal', returnAccepted: true }),
+    'completed',
+  ],
   // phase 1C: a delay claim before the handover, money held (a self-transition)
   ...REFUSABLE_STATUSES.map((status): Row => [
     status,
@@ -1344,10 +1349,37 @@ describe('phase 1C rules (docs/phase-1c-implementation.md section 3.4)', () => {
         ownerCtx({ ...facts, ownerOverrideReason: '' }),
       ),
     ).toMatchObject({ ok: false, failed: ['claim_refund_allowed'] });
-    // a delay claim needs no return
-    expect(
-      resolveTransition('handed', 'claim_refund_approved', staff({ ...facts, claimKind: 'delay' })),
-    ).toMatchObject({ ok: true });
+  });
+
+  it('a delay claim after the handover never refunds the price (art. 23.1: a penalty)', () => {
+    for (const status of ['handed', 'completed'] as const) {
+      for (const scope of ['order', 'item'] as const) {
+        const facts = { scope, claimKind: 'delay', returnAccepted: true } as const;
+        expect(resolveTransition(status, 'claim_refund_approved', staff(facts))).toMatchObject({
+          ok: false,
+          reason: 'guard_failed',
+          failed: ['claim_refundable_kind'],
+        });
+        expect(
+          resolveTransition(
+            status,
+            'claim_refund_approved',
+            ownerCtx({ ...facts, ownerOverrideReason: 'просрочка' }),
+          ),
+        ).toMatchObject({ ok: false, failed: ['claim_refundable_kind'] });
+      }
+    }
+  });
+
+  it('a claim refund of one item tells the client about the claim refund, not a cancellation', () => {
+    const result = resolveTransition(
+      'handed',
+      'claim_refund_approved',
+      staff({ scope: 'item', claimKind: 'defect', returnAccepted: true }),
+    );
+    expect(result).toMatchObject({ ok: true });
+    if (!result.ok) return;
+    expect(result.rule.notify.map((n) => n.template)).toEqual(['claim_refund_started']);
   });
 
   it('phase 1C notification templates are registered', () => {

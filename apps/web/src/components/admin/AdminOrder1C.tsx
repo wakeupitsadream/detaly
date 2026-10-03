@@ -230,6 +230,27 @@ function ClaimActions({
         break;
     }
   }
+  if (claim.decision === 'replace' && claim.open && claim.replacementOrderedAt === null) {
+    // PLAN section 3: replace → a new order of the item, recorded with the Rossko numbers.
+    forms.unshift(
+      <Form1C
+        key="claim_reorder"
+        orderId={orderId}
+        code="claim_reorder"
+        label="Замена заказана"
+        hidden={hidden}
+      >
+        <input
+          type="text"
+          name="rosskoOrderIds"
+          required
+          maxLength={500}
+          placeholder="Номера заказов Rossko через запятую"
+          className={`${ADMIN_INPUT_CLASS} w-72 max-w-full`}
+        />
+      </Form1C>,
+    );
+  }
   if (claim.kind === 'delay' && claim.compensationAmountKop === null && claim.open) {
     forms.push(
       <Form1C

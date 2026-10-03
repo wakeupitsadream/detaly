@@ -97,6 +97,7 @@ export async function loadOrderSnapshot(
         compensationAmountKop: claims.compensationAmountKop,
         refundId: claims.refundId,
         closedAt: claims.closedAt,
+        replacementOrderedAt: claims.replacementOrderedAt,
         photos: claims.photos,
       })
       .from(claims)

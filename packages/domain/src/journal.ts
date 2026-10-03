@@ -49,8 +49,16 @@ export const JOURNAL_EVENTS = [
   'claim_return_accepted',
   /** A claim decision (refund / replace / reject) with the answer text (text not journaled). */
   'claim_decided',
-  /** A claim closed without a refund transition («Замена выдана», reject). */
+  /**
+   * A claim closed without a refund transition («Замена выдана», reject), or superseded by the
+   * order's refund or cancellation (payload.reason 'superseded').
+   */
   'claim_closed',
+  /**
+   * «Замена заказана» of a replace decision: the replacement items (replaced_by_item_id) and
+   * their supplier order with the Rossko numbers (PLAN section 3 «replace → новый заказ позиции»).
+   */
+  'claim_replacement_ordered',
   /** Compensation under art. 23.1 recorded by the owner (paid outside the system). */
   'claim_compensation',
   /** Installation booking requested by the client (web or bot) or staff. */

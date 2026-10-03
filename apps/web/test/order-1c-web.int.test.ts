@@ -17,6 +17,7 @@ import {
   orderItems,
   orderPhotos,
   orders,
+  payments,
   users,
   type Db,
 } from '@detaly/db';
@@ -618,6 +619,45 @@ describe('POST /api/orders/<token>/claims', () => {
       await claimForm({ kind: 'defect', last4: ready.last4, requestKey: randomUUID() }),
     );
     expect(refused.status).toBe(409);
+  });
+
+  it('a delay before the handover: the whole order only (the form has no items, an item post is 422)', async () => {
+    const order = await insertOrder({
+      status: 'ordered_at_supplier',
+      scheme: 'prepay',
+      itemState: 'ordered',
+      promisedDate: '2026-01-05',
+    });
+    await db.insert(payments).values({
+      orderId: order.id,
+      kind: 'prepayment',
+      status: 'succeeded',
+      amountKop: 2 * 52_800 + 117_000,
+      idempotenceKey: randomUUID(),
+      providerPaymentId: `pay-${randomUUID()}`,
+      confirmationType: 'redirect',
+      paidAt: new Date(),
+    });
+    const html = await renderOrder(order);
+    expect(html).toContain('data-testid="claim-kind-delay"');
+    // One target only: the whole order goes as a hidden field, no item radios.
+    expect(html).not.toContain('data-testid="claim-target"');
+    const byItem = await claim(
+      order,
+      await claimForm({
+        kind: 'delay',
+        itemId: order.itemIds[0]!,
+        last4: order.last4,
+        requestKey: randomUUID(),
+      }),
+    );
+    expect(byItem.status).toBe(422);
+    expect(await claimsOf(order.id)).toEqual([]);
+    const whole = await claim(
+      order,
+      await claimForm({ kind: 'delay', last4: order.last4, requestKey: randomUUID() }),
+    );
+    expect(whole.status).toBe(200);
   });
 
   it('missing digits or kind: 422; foreign Origin: 403', async () => {

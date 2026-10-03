@@ -24,8 +24,9 @@ function NextSteps({ claim, pickup }: { claim: ClaimCardView; pickup: PickupInfo
   if (claim.kind === 'delay') {
     return (
       <p className="text-sm" data-testid="claim-steps">
-        Ничего приносить не нужно. Ответим до {claim.deadlineText}; если решим вернуть деньги —
-        вернём в течение 10 дней после решения на ту же карту.
+        Ничего приносить не нужно. Ответим до {claim.deadlineText}. Если заказ ещё не получен и
+        решим вернуть деньги — вернём на ту же карту не позже {claim.deadlineText}. Если заказ уже
+        получен — рассчитаем неустойку за просрочку.
       </p>
     );
   }
@@ -40,8 +41,8 @@ function NextSteps({ claim, pickup }: { claim: ClaimCardView; pickup: PickupInfo
       <li>Без упаковки тоже примем — решим по состоянию детали.</li>
       <li>Мастер примет деталь и сфотографирует её при вас.</li>
       <li>
-        Ответим до {claim.deadlineText}. Если решим вернуть деньги — вернём в течение 10 дней после
-        решения на ту же карту.
+        Ответим до {claim.deadlineText}. Если решим вернуть деньги — вернём на ту же карту не позже{' '}
+        {claim.deadlineText} (10 дней со дня претензии).
       </li>
     </ol>
   );

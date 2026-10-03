@@ -105,8 +105,13 @@ const claimAnswer = (d: OrderTemplateData): string => {
   const date = d.claim?.deadlineDate ?? d.deadlineDate;
   return date ? `Ответим до ${deadline(date)}.` : 'Ответим в течение 10 дней.';
 };
-const claimMoney =
-  'Если решение — возврат, деньги придут на ту же карту в течение 10 дней после решения.';
+/** Art. 22 ЗоЗПП: the money of a claim refund within 10 days of the claim, not of the decision. */
+const claimMoney = (d: OrderTemplateData): string => {
+  const date = d.claim?.deadlineDate ?? d.deadlineDate;
+  return date
+    ? `Если решение — возврат, деньги вернём на ту же карту не позже ${deadline(date)}.`
+    : 'Если решение — возврат, деньги вернём на ту же карту в течение 10 дней со дня претензии.';
+};
 
 const storagePhrase = (d: OrderTemplateData): string =>
   d.scheme === 'prepay'
@@ -267,14 +272,20 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
   claim_received: (d) =>
     msg(
       d.claim?.kind === 'delay'
-        ? lines(head(d), 'Претензия о просрочке принята.', claimAnswer(d), claimMoney)
+        ? lines(
+            head(d),
+            'Претензия о просрочке принята.',
+            claimAnswer(d),
+            // Before the handover the money goes back; after it, art. 23.1 gives a penalty.
+            `${claimMoney(d)} Если заказ уже получен — рассчитаем неустойку за просрочку.`,
+          )
         : lines(
             head(d),
             `Претензия принята${claimKind(d) ? ` (${claimKind(d)})` : ''}. Что дальше:`,
             `1. Принесите деталь в упаковке в ${pickupPlace(d)}. Без упаковки тоже примем — решим по состоянию детали.`,
             '2. Мастер примет деталь и сфотографирует её.',
             `3. ${claimAnswer(d)}`,
-            `4. ${claimMoney}`,
+            `4. ${claimMoney(d)}`,
           ),
       [orderLink(d, 'Претензия на странице заказа', 'claim')],
     ),
@@ -290,6 +301,21 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
     msg(lines(head(d), 'Ответ по претензии готов — он на странице заказа.'), [
       orderLink(d, 'Открыть ответ', 'claim'),
     ]),
+  // A claim refund of one handed item (claim_refund_approved, scope item): the order stays
+  // handed and paid, the money of that item goes back by the claim (art. 22: 10 days of it).
+  claim_refund_started: (d) => {
+    const date = d.claim?.deadlineDate ?? d.deadlineDate;
+    return msg(
+      lines(
+        head(d),
+        what(d) ? `Возврат по претензии: ${what(d)}.` : 'Возврат по претензии.',
+        date
+          ? `Деньги за деталь вернём на ту же карту не позже ${deadline(date)}.`
+          : 'Деньги за деталь вернём на ту же карту в течение 10 дней со дня претензии.',
+      ),
+      [orderLink(d, 'Открыть заказ', 'claim')],
+    );
+  },
   // Installation is the partner's service: no price anywhere (decision С6, PLAN risk 11).
   install_requested: (d) =>
     msg(

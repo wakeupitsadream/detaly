@@ -31,7 +31,7 @@ import { isSameOrigin } from '../request-guards';
 import { readPhotoForm, UploadError, uploadErrorMessage, uploadErrorStatus } from '../uploads';
 import { isAdminAction1C, performAdmin1CAction } from './actions-1c';
 import { CONFIRM_FIELD, CONFIRM_VALUE, DESTRUCTIVE_ADMIN_ACTIONS } from './destructive';
-import { parseRubToKop } from './form-fields';
+import { parseRubToKop, splitIds } from './form-fields';
 import { isUuid, latestRecheckItems } from './queries';
 
 /** A card form is a handful of short fields. */
@@ -94,15 +94,7 @@ function isActionCode(value: string): value is StaffActionCode {
   return (ADMIN_ACTION_CODES as readonly string[]).includes(value);
 }
 
-export { parseRubToKop };
-
-/** «12345, 67890 / 555» -> ['12345', '67890', '555']. */
-export function splitIds(raw: string): string[] {
-  return raw
-    .split(/[\s,;/]+/)
-    .map((id) => id.trim())
-    .filter((id) => id !== '');
-}
+export { parseRubToKop, splitIds };
 
 const NO_STORE_HEADERS = ADMIN_RESPONSE_HEADERS;
 

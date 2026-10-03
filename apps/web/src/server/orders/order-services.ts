@@ -285,9 +285,11 @@ export async function loadOrderServices(
     const items = view.items.filter((item) =>
       afterHandover ? item.state === 'handed' : isLiveState(item.state),
     );
+    // Before the handover the only claim is a delay, and a delay is the refusal of the whole
+    // order (decision С10): no item targets.
     const targets: ClaimTarget[] = [
       { value: '', label: 'Весь заказ' },
-      ...items
+      ...(afterHandover ? items : [])
         .filter((item) => !openItems.has(item.id))
         .map((item) => ({ value: item.id, label: `${item.brand} ${item.article} — ${item.name}` })),
     ];

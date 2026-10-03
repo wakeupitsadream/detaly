@@ -19,6 +19,7 @@ import {
   orderPhotos,
   orders,
   outbox,
+  supplierOrders,
   users,
   vinRequests,
   type Db,
@@ -480,6 +481,71 @@ describe('admin: claims, bookings and photos on the order card', () => {
     const [decided] = await db.select().from(claims).where(eq(claims.id, claimId));
     expect(decided).toMatchObject({ decision: 'reject', decisionText: 'Следов брака не нашли' });
     expect(decided?.closedAt).not.toBeNull();
+  });
+
+  it('replace: «Замена заказана» with the Rossko numbers, then «Замена выдана»', async () => {
+    const order = await seedOrder('handed');
+    const claimId = await openDefectClaim(order.id, order.itemId, order.userId);
+    const replace = await act(
+      order.id,
+      urlencoded(path(order.id), { action: 'crepl', claimId, text: 'Заменим на новую' }),
+    );
+    expect(replace.status).toBe(303);
+
+    const early = await act(order.id, urlencoded(path(order.id), { action: 'cclose', claimId }));
+    expect(early.status).toBe(409);
+    expect(await errorText(early)).toContain('Сначала «Замена заказана»');
+
+    let data = await loadAdminOrder1C(engine, order.id);
+    if (!data) throw new Error('1C data');
+    const html = renderToStaticMarkup(
+      createElement(AdminOrder1C, {
+        orderId: order.id,
+        data,
+        items: [{ id: order.itemId, title: 'MANN W 914/2' }],
+        canOpenClaim: true,
+      }),
+    );
+    expect(html).toContain('data-action="claim_reorder"');
+    expect(html).toContain('name="rosskoOrderIds"');
+
+    const empty = await act(
+      order.id,
+      urlencoded(path(order.id), { action: 'claim_reorder', claimId, rosskoOrderIds: ' ' }),
+    );
+    expect(empty.status).toBe(422);
+    const ordered = await act(
+      order.id,
+      urlencoded(path(order.id), {
+        action: 'claim_reorder',
+        claimId,
+        rosskoOrderIds: '12345, 67890',
+      }),
+    );
+    expect(ordered.status).toBe(303);
+    const [row] = await db.select().from(claims).where(eq(claims.id, claimId));
+    expect(row?.replacementOrderedAt).not.toBeNull();
+    const [purchase] = await db
+      .select()
+      .from(supplierOrders)
+      .where(eq(supplierOrders.id, row!.replacementSupplierOrderId!));
+    expect(purchase?.rosskoOrderIds).toEqual(['12345', '67890']);
+
+    data = await loadAdminOrder1C(engine, order.id);
+    if (!data) throw new Error('1C data');
+    expect(
+      renderToStaticMarkup(
+        createElement(AdminOrder1C, { orderId: order.id, data, items: [], canOpenClaim: true }),
+      ),
+    ).not.toContain('data-action="claim_reorder"');
+
+    const closed = await act(
+      order.id,
+      urlencoded(path(order.id), { action: 'cclose', claimId, note: 'выдали' }),
+    );
+    expect(closed.status).toBe(303);
+    const [done] = await db.select().from(claims).where(eq(claims.id, claimId));
+    expect(done?.closedAt).not.toBeNull();
   });
 
   it('claim opened from the admin; the same request key twice is one claim', async () => {

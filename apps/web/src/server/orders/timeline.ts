@@ -298,9 +298,14 @@ function journalPhrase(event: PhraseInput): string | null {
         : 'Ответ по претензии готов';
     }
     case 'claim_closed':
+      if (payloadField(event.payload, 'reason') === 'superseded') {
+        return 'Претензия закрыта: по заказу оформлен возврат или отмена';
+      }
       return payloadField(event.payload, 'decision') === 'replace'
         ? 'Замена выдана, претензия закрыта'
         : 'Претензия закрыта';
+    case 'claim_replacement_ordered':
+      return 'Замену заказали у поставщика';
     case 'claim_compensation':
       return 'Назначена компенсация за просрочку';
     case 'install_requested': {

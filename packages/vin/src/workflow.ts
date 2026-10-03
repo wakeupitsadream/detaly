@@ -28,7 +28,7 @@ import {
 import {
   ARTICLE_NORM_RE,
   isKop,
-  maskDigits,
+  maskClientText,
   phoneLast4,
   PROPOSAL_TTL_DAYS,
   safeMul,
@@ -428,7 +428,7 @@ export interface VinRequestStaffView {
   status: VinRequestStatus;
   /** Full VIN (a VIN alone is not PD; logs still use maskVin). */
   vin: string | null;
-  /** Texts with 7+ digit runs masked (maskDigits) unless revealPd. */
+  /** Texts with digit runs, plates and e-mails masked (maskClientText) unless revealPd. */
   carText: string | null;
   needText: string;
   /** '•••4567', or the full E.164 number with revealPd (admin). */
@@ -452,7 +452,8 @@ export interface VinRequestStaffView {
 }
 
 /**
- * A request for the seller bot (default: phone as '•••4567', digit runs of the texts masked) or
+ * A request for the seller bot (default: phone as '•••4567', digit runs, plates and e-mails of
+ * the texts masked) or
  * the admin (`revealPd: true`: full phone and texts, the proposal token). null when not found.
  */
 export async function loadVinRequestForStaff(
@@ -473,7 +474,7 @@ export async function loadVinRequestForStaff(
   if (!row) return null;
   const r = row.request;
   const reveal = options.revealPd === true;
-  const mask = (text: string) => (reveal ? text : maskDigits(text));
+  const mask = (text: string) => (reveal ? text : maskClientText(text));
   return {
     id: r.id,
     status: r.status,

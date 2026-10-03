@@ -17,6 +17,7 @@ import {
   claims,
   clientApprovals,
   eq,
+  isNull,
   orderEvents,
   orderItems,
   orders,
@@ -77,6 +78,7 @@ import {
 import { loadOrderSettings } from './settings';
 import { isUuid, loadOrderSnapshot } from './snapshot';
 import type {
+  ActorRef,
   AppliedTransition,
   ApplyInput,
   ApplyResult,
@@ -359,6 +361,40 @@ function refundTargetFor(
     return { scope: 'item', paymentId, itemIds: [itemId] };
   }
   return { scope: 'order', paymentId };
+}
+
+/** Order statuses where nothing is left to answer by a claim: the money goes back or never was. */
+const CLAIMS_SUPERSEDED_IN: readonly OrderStatus[] = ['refund_pending', 'cancelled'];
+
+/**
+ * The order goes to a refund or a cancellation by another path (the client's refusal on
+ * /o/<token>, a whole-order claim refund with item claims open, a no-show): its other open
+ * claims are closed with a journal claim_closed (reason superseded), so that no answer deadline
+ * reminder, «Отказать» button or «ответ готов» message outlives the refund. `keep`: the claim
+ * being decided by this very transition (decideClaim closes it itself).
+ */
+async function closeSupersededClaims(
+  tx: Tx,
+  snapshot: OrderSnapshot,
+  input: { from: OrderStatus; to: OrderStatus; actor: ActorRef; at: Date; keep: string | null },
+): Promise<void> {
+  if (input.to === input.from || !CLAIMS_SUPERSEDED_IN.includes(input.to)) return;
+  const open = snapshot.claims.filter(
+    (claim) => claim.closedAt === null && claim.id !== input.keep,
+  );
+  for (const claim of open) {
+    await tx
+      .update(claims)
+      .set({ closedAt: input.at, updatedAt: input.at })
+      .where(and(eq(claims.id, claim.id), isNull(claims.closedAt)));
+    await recordJournalEvent(tx, {
+      orderId: snapshot.order.id,
+      type: 'claim_closed',
+      actor: input.actor,
+      payload: { claimId: claim.id, reason: 'superseded', status: input.to },
+      at: input.at,
+    });
+  }
 }
 
 /** Writes item changes; returns ids of inserted replacement items. */
@@ -791,6 +827,7 @@ async function persistDecision(
     payload: { ...payload, rule: rule.label, ...(effects.length > 0 ? { effects } : {}) },
     createdAt: at,
   });
+  await closeSupersededClaims(tx, snapshot, { to, from, actor, at, keep: facts.claimId ?? null });
   for (const spec of rule.notify) {
     // Decision С17: the client's «arrived» waits a little, so that a packaging photo sent right
     // after «Приехало» goes out with it. Only a messenger carries the photo: an SMS client

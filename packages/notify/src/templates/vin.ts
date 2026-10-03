@@ -2,10 +2,10 @@
  * VIN request templates (docs/phase-1c-implementation.md decision С20, section 7.1 item 2):
  * - vin_received — the request reached the master (messenger only: not in the SMS allowlist);
  * - vin_proposal — the proposal link /p/<token> (SMS allowlisted, PLAN section 4).
- * No PD: the request number, the link and the master's comment with digit runs masked (the
- * master may paste a phone or a document number by mistake, decision С2).
+ * No PD: the request number, the link and the master's comment with digit runs, plates and
+ * e-mails masked (the master may paste a phone or a plate by mistake, decision С2).
  */
-import { maskDigits, type VinNotifyTemplate } from '@detaly/domain';
+import { maskClientText, type VinNotifyTemplate } from '@detaly/domain';
 import { lines } from '../format';
 import type { MessageButton, RenderedMessage, VinTemplateData } from '../types';
 
@@ -14,7 +14,7 @@ type Render = (d: VinTemplateData) => RenderedMessage;
 const head = (d: VinTemplateData): string => `${d.brandName} · заявка VIN № ${d.requestNumber}`;
 const comment = (d: VinTemplateData): string | null => {
   const text = d.comment?.trim();
-  return text ? `Комментарий мастера: ${maskDigits(text)}` : null;
+  return text ? `Комментарий мастера: ${maskClientText(text)}` : null;
 };
 const proposalButton = (d: VinTemplateData): MessageButton[] =>
   d.proposalUrl ? [{ kind: 'url', text: 'Открыть подборку', url: d.proposalUrl }] : [];

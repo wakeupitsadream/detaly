@@ -213,7 +213,11 @@ describe('texts against PLAN section 3', () => {
     );
     expect(text).toContain('2. Мастер примет деталь и сфотографирует её.');
     expect(text).toContain('3. Ответим до 20 октября.');
-    expect(text).toContain('в течение 10 дней после решения');
+    // Art. 22: 10 days from the claim (claims.deadline_at), not from the decision.
+    expect(text).toContain(
+      '4. Если решение — возврат, деньги вернём на ту же карту не позже 20 октября.',
+    );
+    expect(text).not.toContain('после решения');
     const delay = renderTemplate(
       'claim_received',
       data({ claim: { kind: 'delay', decision: null, deadlineDate: '2026-10-21' } }),
@@ -221,8 +225,33 @@ describe('texts against PLAN section 3', () => {
     expect(delay).toContain('Претензия о просрочке принята.');
     expect(delay).toContain('Ответим до 21 октября.');
     expect(delay).not.toContain('Принесите');
+    expect(delay).toContain('деньги вернём на ту же карту не позже 21 октября');
+    expect(delay).toContain('Если заказ уже получен — рассчитаем неустойку за просрочку.');
     const noDate = renderTemplate('claim_received', data({ claim: null, deadlineDate: null }));
     expect(noDate.text).toContain('Ответим в течение 10 дней.');
+    expect(noDate.text).toContain('в течение 10 дней со дня претензии');
+  });
+
+  it('claim_refund_started: a claim refund of one handed item, money by the claim deadline', () => {
+    const message = renderTemplate('claim_refund_started', data());
+    expect(message.text).toBe(
+      [
+        'Тестовый бренд · заказ DT-000123',
+        'Возврат по претензии: MANN W 914/2.',
+        'Деньги за деталь вернём на ту же карту не позже 20 октября.',
+      ].join('\n'),
+    );
+    expect(message.text).not.toContain('отменена');
+    expect(message.text).not.toContain('оплата при получении');
+    expect(message.buttons).toEqual([
+      [{ kind: 'url', text: 'Открыть заказ', url: `${ORDER_URL}#claim` }],
+    ]);
+    const cod = renderTemplate(
+      'claim_refund_started',
+      data({ scheme: 'pay_on_handover', claim: null, deadlineDate: null }),
+    ).text;
+    expect(cod).toContain('в течение 10 дней со дня претензии');
+    expect(cod).not.toContain('оплата при получении');
   });
 
   it('claim_decided: no decision text, only «ответ готов» and the link (С2)', () => {

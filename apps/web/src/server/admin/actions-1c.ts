@@ -1,7 +1,8 @@
 /**
  * Phase 1C forms of the admin order card (docs/phase-1c-implementation.md decisions С7–С9, С17,
  * С26): claims («Принял возврат» with a mandatory photo, the decision with a mandatory answer
- * text, the owner's refund without the return with a reason, «Замена выдана», compensation for
+ * text, the owner's refund without the return with a reason, «Замена заказана» with the Rossko
+ * numbers of the replacement, «Замена выдана», compensation for
  * a delay, opening a claim on the client's behalf), installation bookings and the packaging
  * photo. The admin acts as the owner (decision Б19: staff id null, via admin).
  *
@@ -19,6 +20,7 @@ import {
 import { newFileKey, type FileStore } from '@detaly/files';
 import {
   openClaim,
+  orderClaimReplacement,
   performStaffAction,
   recordClaimCompensation,
   type EngineDeps,
@@ -27,7 +29,7 @@ import {
   type StaffRef,
 } from '@detaly/orders';
 import { isUuid } from './queries';
-import { formField, parseRubToKop } from './form-fields';
+import { formField, parseRubToKop, splitIds } from './form-fields';
 
 /** Engine buttons of 1C (availableStaffActions1C) and the admin-only claim forms. */
 export const ADMIN_ACTION_CODES_1C = [
@@ -43,7 +45,8 @@ export const ADMIN_ACTION_CODES_1C = [
   'pphoto',
   'claim_open',
   'claim_comp',
-] as const satisfies readonly (StaffActionCode1C | 'claim_open' | 'claim_comp')[];
+  'claim_reorder',
+] as const satisfies readonly (StaffActionCode1C | 'claim_open' | 'claim_comp' | 'claim_reorder')[];
 export type AdminAction1C = (typeof ADMIN_ACTION_CODES_1C)[number];
 
 export function isAdminAction1C(value: string): value is AdminAction1C {
@@ -63,6 +66,7 @@ const CLAIM_TARGET: ReadonlySet<AdminAction1C> = new Set([
   'crej',
   'cclose',
   'claim_comp',
+  'claim_reorder',
 ]);
 const BOOKING_TARGET: ReadonlySet<AdminAction1C> = new Set(['bconf', 'bdecl', 'bdone', 'bnoshow']);
 
@@ -139,6 +143,17 @@ export async function performAdmin1CAction(
     const result = await recordClaimCompensation(ctx.engine, {
       claimId: targetId,
       amountKop,
+      staff: ADMIN_STAFF,
+    });
+    return result.ok ? { ok: true, message: result.message } : refused(409, result.message);
+  }
+  if (action === 'claim_reorder') {
+    // «Замена заказана»: the Rossko numbers of the replacement bought in the Rossko account.
+    const ids = splitIds(formField(ctx.form, 'rosskoOrderIds', 500));
+    if (ids.length === 0) return refused(422, 'Укажите номера заказов Rossko');
+    const result = await orderClaimReplacement(ctx.engine, {
+      claimId: targetId,
+      rosskoOrderIds: ids,
       staff: ADMIN_STAFF,
     });
     return result.ok ? { ok: true, message: result.message } : refused(409, result.message);

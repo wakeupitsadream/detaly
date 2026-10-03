@@ -584,4 +584,22 @@ describe.skipIf(!DB_URL)('VIN request workflow', () => {
     expect(await loadVinRequestForStaff(db, uuidv7())).toBeNull();
     expect(await loadVinRequestForStaff(db, 'nope')).toBeNull();
   });
+
+  it('loadVinRequestForStaff: registration plates and e-mails are masked for the bot', async () => {
+    const id = newVinRequestId();
+    await createVinRequest(
+      db,
+      formInput({
+        id,
+        phone: randomPhone(),
+        carText: 'Гранта А123ВС56',
+        needText: 'Колодки, машина а 123 вс 156, пишите ivan@example.ru',
+      }),
+    );
+    const bot = await loadVinRequestForStaff(db, id);
+    expect(bot?.carText).toBe('Гранта •••');
+    expect(bot?.needText).toBe('Колодки, машина •••, пишите •••');
+    const admin = await loadVinRequestForStaff(db, id, { revealPd: true });
+    expect(admin?.carText).toBe('Гранта А123ВС56');
+  });
 });

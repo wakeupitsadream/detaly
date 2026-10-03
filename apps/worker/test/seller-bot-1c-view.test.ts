@@ -19,6 +19,8 @@ import {
   hasUnsentPreview,
   previewLineText,
   renderVinCardText,
+  VIN_CAR_FRAGMENT_MAX,
+  VIN_NEED_FRAGMENT_MAX,
   vinKeyboard,
   type VinCardData,
 } from '../src/bots/seller/vin-view';
@@ -229,6 +231,21 @@ describe('VIN card', () => {
         expect(parseCallbackData(button.callback_data)?.orderId).toBe(VIN_ID);
       }
     }
+  });
+
+  it('the free texts: a short masked fragment, the whole text only in the admin (PD minimisation)', () => {
+    const long = `Колодки и диски на Гранту, ${'спереди и сзади, '.repeat(20)}живу на ул. Ленина 5`;
+    const text = renderVinCardText(
+      vinData({ needText: long, carText: 'Лада Гранта лифтбек 2019, белая, двигатель 1.6' }),
+    );
+    const need = text.split('\n').find((line) => line.startsWith('Нужно:'))!;
+    expect(need).toContain('(полный текст — в админке)');
+    expect(need).not.toContain('Ленина');
+    expect(need.length).toBeLessThan(VIN_NEED_FRAGMENT_MAX + 40);
+    const car = text.split('\n').find((line) => line.startsWith('Авто:'))!;
+    expect(car.length).toBeLessThanOrEqual('Авто: '.length + VIN_CAR_FRAGMENT_MAX);
+    // A short text goes as is, without the note.
+    expect(renderVinCardText(vinData())).toContain('Нужно: «Фильтр, звоните •••»\n');
   });
 
   it('preview lines: ✓ with the sum, the date and the local badge; ✗ with the reason', () => {

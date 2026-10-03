@@ -221,6 +221,7 @@ export async function loadTemplateData(
 const CLAIM_TEMPLATES: readonly OrderNotifyTemplate[] = [
   'claim_received',
   'claim_decided',
+  'claim_refund_started',
   'staff_claim_opened',
   'staff_claim_deadline',
 ];
@@ -312,7 +313,12 @@ async function addPhase1cData(
   if (CLAIM_TEMPLATES.includes(template)) {
     const claimId = payloadId(eventPayload, 'claimId', 'claim');
     const [claim] = await db
-      .select({ kind: claims.kind, decision: claims.decision, deadlineAt: claims.deadlineAt })
+      .select({
+        kind: claims.kind,
+        decision: claims.decision,
+        deadlineAt: claims.deadlineAt,
+        orderItemId: claims.orderItemId,
+      })
       .from(claims)
       .where(
         claimId === null
@@ -331,6 +337,14 @@ async function addPhase1cData(
       data.claim = { kind: claim.kind, decision: claim.decision, deadlineDate };
       if (template === 'staff_claim_deadline' || template === 'staff_claim_opened') {
         data.deadlineDate ??= deadlineDate;
+      }
+      if (template === 'claim_refund_started' && claim.orderItemId !== null) {
+        // The refunded item itself, not the rest of the order that stays with the client.
+        const [item] = await db
+          .select({ brand: orderItems.brand, article: orderItems.article })
+          .from(orderItems)
+          .where(and(eq(orderItems.orderId, order.id), eq(orderItems.id, claim.orderItemId)));
+        if (item) data.items = [item];
       }
     } else {
       data.claim = null;

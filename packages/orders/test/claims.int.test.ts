@@ -11,6 +11,8 @@ import {
   receipts,
   refunds,
   sql,
+  supplierOrderItems,
+  supplierOrders,
   supplierReturns,
   type Db,
 } from '@detaly/db';
@@ -24,12 +26,15 @@ import {
   bindMessenger,
   closeClaim,
   decideClaim,
+  DELAY_WHOLE_ORDER_ONLY,
   loadClaimsView,
   loadOrderPhotos,
   loadStaffActions1C,
   openClaim,
+  orderClaimReplacement,
   performStaffAction,
   recordClaimCompensation,
+  REPLACEMENT_NOT_ORDERED,
   type ActorRef,
   type EngineDeps,
   type StaffRef,
@@ -433,14 +438,31 @@ describe.skipIf(!DB_URL)('claims', () => {
           'claim_return_accepted',
           'refund_created',
           'claim_refund_approved',
+          'supplier_return_created',
           'claim_decided',
         ].sort(),
       );
       expect(JSON.stringify(events)).not.toContain('Брак подтверждён');
-      const templates = (await outboxOf(db, seeded.orderId))
-        .filter((r) => r.queue === 'notify')
-        .map((r) => (r.data as { template: string }).template);
-      expect(templates.slice(-2)).toEqual(['refund_started', 'claim_decided']);
+      const notifies = (await outboxOf(db, seeded.orderId)).filter((r) => r.queue === 'notify');
+      const templates = notifies.map((r) => (r.data as { template: string }).template);
+      expect(templates.slice(-3)).toEqual([
+        'refund_started',
+        'claim_decided',
+        'staff_claim_opened',
+      ]);
+      // The accepted part lies at the point: a claim to Rossko per item (a defect) and the
+      // sellers' task; the reminder before supplier_return_deadline_at picks the rows up.
+      const returnsToRossko = await db
+        .select()
+        .from(supplierReturns)
+        .where(sql`${supplierReturns.note} = ${`claim:${opened.claimId}`}`);
+      expect(returnsToRossko.map((r) => [r.kind, r.status]).sort()).toEqual([
+        ['claim', 'requested'],
+        ['claim', 'requested'],
+      ]);
+      expect((notifies.at(-1)?.data as { note?: string }).note).toMatch(
+        /^Возврат по претензии: деталь у вас — вернуть Rossko/,
+      );
 
       // The provider confirms: refunded, the refund receipt succeeded.
       const out = await succeedRefund(seeded, refund!.id, seeded.totalKop);
@@ -488,6 +510,12 @@ describe.skipIf(!DB_URL)('claims', () => {
         decidedBy: null,
         decidedVia: 'admin',
       });
+      // No part at the point: nothing to return to Rossko.
+      const rows = await db
+        .select()
+        .from(supplierReturns)
+        .where(sql`${supplierReturns.note} = ${`claim:${opened.claimId}`}`);
+      expect(rows).toEqual([]);
     });
 
     it('a claim on one item: a partial refund, the order stays handed', async () => {
@@ -509,6 +537,23 @@ describe.skipIf(!DB_URL)('claims', () => {
       expect((await orderRow(db, seeded.orderId)).status).toBe('handed');
       const [refund] = await refundsOf(seeded.orderId);
       expect(refund).toMatchObject({ scope: 'item', reason: 'not_fit', amountKop: 128_000 });
+      // The client hears of a claim refund of that item, not of a cancelled position.
+      const clientTemplates = (await outboxOf(db, seeded.orderId))
+        .filter(
+          (r) => r.queue === 'notify' && (r.data as { audience: string }).audience === 'client',
+        )
+        .map((r) => (r.data as { template: string }).template);
+      expect(clientTemplates).toContain('claim_refund_started');
+      expect(clientTemplates).not.toContain('item_cancelled');
+      const [toRossko] = await db
+        .select()
+        .from(supplierReturns)
+        .where(eq(supplierReturns.orderItemId, itemId));
+      expect(toRossko).toMatchObject({
+        kind: 'return',
+        status: 'requested',
+        note: `claim:${opened.claimId}`,
+      });
       expect((await itemRows(db, seeded.orderId)).map((i) => i.state)).toEqual([
         'refund_pending',
         'handed',
@@ -575,8 +620,82 @@ describe.skipIf(!DB_URL)('claims', () => {
           })
         ).ok,
       ).toBe(false);
+      expect((task?.data as { note: string }).note).not.toContain('Заказано вручную');
+      // «Замена выдана» waits for the replacement purchase («Замена заказана», admin).
       const actions = await loadStaffActions1C(deps, seeded.orderId, 'seller');
-      expect(actions?.filter((a) => a.claimId).map((a) => a.code)).toEqual(['cclose']);
+      expect(actions?.filter((a) => a.claimId)).toEqual([
+        expect.objectContaining({
+          code: 'cclose',
+          enabled: false,
+          disabledReason: REPLACEMENT_NOT_ORDERED,
+        }),
+      ]);
+      expect(
+        await performStaffAction(deps, {
+          staff: seller,
+          action: 'cclose',
+          targetId: opened.claimId,
+          input: { note: 'выдали новый' },
+        }),
+      ).toMatchObject({ ok: false });
+      expect(
+        await orderClaimReplacement(deps, {
+          claimId: opened.claimId,
+          rosskoOrderIds: [' '],
+          staff: owner,
+        }),
+      ).toMatchObject({ ok: false, message: 'Укажите номера заказов Rossko' });
+      clock.advance(HOUR);
+      expect(
+        await orderClaimReplacement(deps, {
+          claimId: opened.claimId,
+          rosskoOrderIds: ['R-777', 'R-777'],
+          staff: owner,
+        }),
+      ).toMatchObject({ ok: true });
+      expect(
+        await orderClaimReplacement(deps, {
+          claimId: opened.claimId,
+          rosskoOrderIds: ['R-778'],
+          staff: owner,
+        }),
+      ).toMatchObject({ ok: false, message: 'Замена уже заказана' });
+      // A new order item replaces the claimed one; the purchase is a supplier order.
+      const afterOrder = await itemRows(db, seeded.orderId);
+      const old = afterOrder.find((i) => i.id === itemId)!;
+      expect(old.state).toBe('replaced');
+      const fresh = afterOrder.find((i) => i.id === old.replacedByItemId)!;
+      expect(fresh).toMatchObject({
+        state: 'ordered',
+        brand: old.brand,
+        article: old.article,
+        priceClientKop: old.priceClientKop,
+        priceSupplierAtOrderKop: old.priceSupplierAtOrderKop,
+        refundedAmountKop: 0,
+      });
+      const ordered = await claimRow(opened.claimId);
+      expect(ordered.replacementOrderedAt?.getTime()).toBe(clock.now.getTime());
+      const [purchase] = await db
+        .select()
+        .from(supplierOrders)
+        .where(eq(supplierOrders.id, ordered.replacementSupplierOrderId!));
+      expect(purchase).toMatchObject({
+        orderId: seeded.orderId,
+        status: 'created',
+        rosskoOrderIds: ['R-777'],
+      });
+      const links = await db
+        .select()
+        .from(supplierOrderItems)
+        .where(eq(supplierOrderItems.supplierOrderId, purchase!.id));
+      expect(links.map((l) => l.orderItemId)).toEqual([fresh.id]);
+      // The order total is untouched: the old line is replaced, the new one has its price.
+      expect((await orderRow(db, seeded.orderId)).totalKop).toBe(seeded.totalKop);
+      expect((await orderRow(db, seeded.orderId)).status).toBe('handed');
+      const enabled = await loadStaffActions1C(deps, seeded.orderId, 'seller');
+      expect(enabled?.filter((a) => a.claimId).map((a) => [a.code, a.enabled])).toEqual([
+        ['cclose', true],
+      ]);
 
       expect(
         await performStaffAction(deps, {
@@ -587,6 +706,8 @@ describe.skipIf(!DB_URL)('claims', () => {
         }),
       ).toMatchObject({ ok: true });
       expect(await claimRow(opened.claimId)).toMatchObject({ replacementNote: 'выдали новый' });
+      const handedNow = (await itemRows(db, seeded.orderId)).find((i) => i.id === fresh.id);
+      expect(handedNow?.state).toBe('handed');
       expect(
         await applyTransition(deps, {
           orderId: seeded.orderId,
@@ -594,13 +715,25 @@ describe.skipIf(!DB_URL)('claims', () => {
           actor: { type: 'system', id: null },
         }),
       ).toMatchObject({ ok: true, to: 'completed' });
-      expect((await eventsOf(db, seeded.orderId)).map((e) => e.type)).toEqual([
+      const journal = await eventsOf(db, seeded.orderId);
+      expect(journal.map((e) => e.type)).toEqual([
         'claim_opened',
         'supplier_return_created',
         'claim_decided',
+        'claim_replacement_ordered',
         'claim_closed',
         'completion_timeout',
       ]);
+      expect(journal.find((e) => e.type === 'claim_replacement_ordered')?.payload).toMatchObject({
+        claimId: opened.claimId,
+        supplierOrderId: purchase!.id,
+        rosskoOrderIds: ['R-777'],
+        itemIds: [itemId],
+        newItemIds: [fresh.id],
+      });
+      // A claim on the replacement is possible once it is handed.
+      const second = await open(seeded, { itemId: fresh.id });
+      expect(second.ok).toBe(true);
     });
 
     it('reject needs the text and closes the claim; the client gets only «ответ готов»', async () => {
@@ -760,6 +893,180 @@ describe.skipIf(!DB_URL)('claims', () => {
           staff: owner,
         }),
       ).toMatchObject({ ok: false, message: 'Компенсация — только по претензии о просрочке' });
+    });
+  });
+
+  describe('delay: audit of phase 1C', () => {
+    it('after the handover a delay is compensated, never refunded: no «Вернуть деньги», decideClaim refuses', async () => {
+      const late = await handedOrder();
+      await setHanded(db, late.orderId, T0, '2026-10-03');
+      const opened = await open(late, { kind: 'delay', photoKeys: [] });
+      for (const role of ['seller', 'owner'] as const) {
+        const codes = (await loadStaffActions1C(deps, late.orderId, role))
+          ?.filter((a) => a.claimId === opened.claimId)
+          .map((a) => a.code);
+        expect(codes).toEqual(['crej']);
+      }
+      for (const staff of [seller, owner]) {
+        expect(
+          await decideClaim(deps, {
+            claimId: opened.claimId,
+            decision: 'refund',
+            text: 'Возвращаем деньги',
+            staff,
+            ...(staff.role === 'owner' ? { overrideReason: 'просрочка' } : {}),
+          }),
+        ).toMatchObject({
+          ok: false,
+          message: 'По просрочке после получения — компенсация (неустойка), не возврат денег',
+        });
+      }
+      // «Принял возврат» does not open the refund either.
+      await acceptClaimReturn(deps, {
+        claimId: opened.claimId,
+        photoKey: fileKey('order', late.orderId),
+        staff: seller,
+      });
+      expect(
+        await decideClaim(deps, {
+          claimId: opened.claimId,
+          decision: 'refund',
+          text: 'Возвращаем деньги',
+          staff: seller,
+        }),
+      ).toMatchObject({ ok: false });
+      expect(await refundsOf(late.orderId)).toEqual([]);
+      expect((await orderRow(db, late.orderId)).status).toBe('handed');
+      // The owner answers with the compensation (art. 23.1) and closes the claim.
+      expect(
+        await decideClaim(deps, {
+          claimId: opened.claimId,
+          decision: 'reject',
+          text: 'Неустойка 0,5% в день, перечислим на карту',
+          staff: owner,
+          compensationKop: 1_500,
+        }),
+      ).toMatchObject({ ok: true });
+      expect(await claimRow(opened.claimId)).toMatchObject({
+        decision: 'reject',
+        compensationAmountKop: 1_500,
+      });
+    });
+
+    it('before the handover a delay is claimed for the whole order only', async () => {
+      const seeded = await seedOrder(db, { status: 'ordered_at_supplier' });
+      await db
+        .update(orders)
+        .set({ promisedDate: '2026-10-03' })
+        .where(eq(orders.id, seeded.orderId));
+      const result = await openClaim(deps, {
+        orderId: seeded.orderId,
+        itemId: seeded.itemIds[0]!,
+        kind: 'delay',
+        via: 'web',
+        requestKey: uuidv7(),
+        actor: clientOf(seeded),
+      });
+      expect(result).toMatchObject({
+        ok: false,
+        reason: 'bad_input',
+        message: DELAY_WHOLE_ORDER_ONLY,
+      });
+      const [none] = await db.select().from(claims).where(eq(claims.orderId, seeded.orderId));
+      expect(none).toBeUndefined();
+
+      // A legacy item delay claim (opened before the fix) gets no refund of the whole order.
+      const legacy = await open(seeded, { kind: 'delay', photoKeys: [] });
+      await db
+        .update(claims)
+        .set({ orderItemId: seeded.itemIds[0]! })
+        .where(eq(claims.id, legacy.claimId));
+      const codes = (await loadStaffActions1C(deps, seeded.orderId, 'owner'))
+        ?.filter((a) => a.claimId === legacy.claimId)
+        .map((a) => a.code);
+      expect(codes).toEqual(['crej']);
+      expect(
+        await decideClaim(deps, {
+          claimId: legacy.claimId,
+          decision: 'refund',
+          text: 'Возвращаем',
+          staff: owner,
+        }),
+      ).toMatchObject({ ok: false, message: 'Возврат по претензии в этом статусе недоступен' });
+      expect((await orderRow(db, seeded.orderId)).status).toBe('ordered_at_supplier');
+    });
+  });
+
+  describe('open claims superseded by a refund or a cancellation', () => {
+    it('the client refuses on the order page with a delay claim open: the claim closes', async () => {
+      const seeded = await seedOrder(db, { status: 'ordered_at_supplier' });
+      await db
+        .update(orders)
+        .set({ promisedDate: '2026-10-03' })
+        .where(eq(orders.id, seeded.orderId));
+      const opened = await open(seeded, { kind: 'delay', photoKeys: [] });
+      clock.advance(HOUR);
+      const refused = await applyTransition(deps, {
+        orderId: seeded.orderId,
+        event: 'client_refused',
+        actor: clientOf(seeded),
+      });
+      expect(refused).toMatchObject({ ok: true, to: 'refund_pending' });
+      const claim = await claimRow(opened.claimId);
+      expect(claim.closedAt?.getTime()).toBe(clock.now.getTime());
+      expect(claim.decision).toBeNull();
+      const closed = (await eventsOf(db, seeded.orderId)).find((e) => e.type === 'claim_closed');
+      expect(closed?.payload).toMatchObject({
+        claimId: opened.claimId,
+        reason: 'superseded',
+        status: 'refund_pending',
+      });
+      // No «Отказать» left, no answer deadline reminder target.
+      expect(
+        (await loadStaffActions1C(deps, seeded.orderId, 'owner'))?.filter((a) => a.claimId),
+      ).toEqual([]);
+      expect(
+        await decideClaim(deps, {
+          claimId: opened.claimId,
+          decision: 'reject',
+          text: 'нет',
+          staff: owner,
+        }),
+      ).toMatchObject({ ok: false, message: 'Решение по претензии уже принято' });
+    });
+
+    it('a whole-order claim refund closes the open item claims, not the decided one', async () => {
+      const seeded = await handedOrder();
+      const itemClaim = await open(seeded, { itemId: seeded.itemIds[0]! });
+      const whole = await open(seeded, { kind: 'not_fit' });
+      await acceptClaimReturn(deps, {
+        claimId: whole.claimId,
+        photoKey: fileKey('order', seeded.orderId),
+        staff: seller,
+      });
+      clock.advance(HOUR);
+      expect(
+        await decideClaim(deps, {
+          claimId: whole.claimId,
+          decision: 'refund',
+          text: 'Возвращаем за весь заказ',
+          staff: seller,
+        }),
+      ).toMatchObject({ ok: true });
+      expect((await orderRow(db, seeded.orderId)).status).toBe('refund_pending');
+      expect(await claimRow(whole.claimId)).toMatchObject({ decision: 'refund' });
+      const superseded = await claimRow(itemClaim.claimId);
+      expect(superseded.decision).toBeNull();
+      expect(superseded.closedAt?.getTime()).toBe(clock.now.getTime());
+      const closed = (await eventsOf(db, seeded.orderId)).filter((e) => e.type === 'claim_closed');
+      expect(closed.map((e) => (e.payload as { claimId: string }).claimId)).toEqual([
+        itemClaim.claimId,
+      ]);
+      // The client hears «ответ готов» once — for the decided claim only.
+      const decided = (await outboxOf(db, seeded.orderId)).filter(
+        (r) => (r.data as { template?: string }).template === 'claim_decided',
+      );
+      expect(decided).toHaveLength(1);
     });
   });
 

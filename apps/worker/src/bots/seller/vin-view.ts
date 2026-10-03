@@ -1,8 +1,10 @@
 // Pure rendering of VIN request cards in the sellers chat (docs/phase-1c-implementation.md
 // section 9 item 5, decisions С2, С13): the request as loadVinRequestForStaff gives it without
-// `revealPd` — the full VIN (a VIN alone is not PD), the texts with 7+ digit runs masked, the
-// phone as •••4567, the NUMBER of photos only (the photos stay in the admin: a registration
-// certificate shows the owner's name) — and the preview of the master's answer line by line.
+// `revealPd` — the full VIN (a VIN alone is not PD), the texts with digit runs, plates and
+// e-mails masked (maskClientText) and cut to a short fragment (a name or an address in the free
+// text cannot be recognised: the whole text is in the admin only, PLAN section 4), the phone as
+// •••4567, the NUMBER of photos only (the photos stay in the admin: a registration certificate
+// shows the owner's name) — and the preview of the master's answer line by line.
 //
 // Buttons: «Взять в работу» (vtake), «Ответить строками» (vans), «Отправить клиенту» (vsend, only
 // while the saved preview has no errors and was not sent yet), «Исправить» (vfix), «Закрыть
@@ -23,6 +25,11 @@ import { adminRow, type InlineKeyboard } from './card-view';
 
 /** Telegram refuses longer messages (4096); the card stays well below. */
 export const VIN_CARD_TEXT_MAX = 3900;
+/** «Нужно» in the chat: a masked fragment; the full text is in the admin (PD minimisation). */
+export const VIN_NEED_FRAGMENT_MAX = 200;
+/** «Авто» in the chat: the make and model, not a full description. */
+export const VIN_CAR_FRAGMENT_MAX = 40;
+const FULL_TEXT_IN_ADMIN = 'полный текст — в админке';
 
 export const VIN_STATUS_LABELS: Record<VinRequestStatus, string> = {
   new: 'новая',
@@ -138,8 +145,11 @@ export function renderVinCardText(data: VinCardData): string {
   if (data.note) lines.push(data.note);
   lines.push(`Статус: ${VIN_STATUS_LABELS[request.status]}`);
   if (request.vin) lines.push(`VIN ${request.vin}`);
-  if (request.carText) lines.push(`Авто: ${clip(request.carText, 200)}`);
-  lines.push(`Нужно: «${clip(request.needText, 1000)}»`);
+  if (request.carText) lines.push(`Авто: ${clip(request.carText, VIN_CAR_FRAGMENT_MAX)}`);
+  const cut = request.needText.length > VIN_NEED_FRAGMENT_MAX;
+  lines.push(
+    `Нужно: «${clip(request.needText, VIN_NEED_FRAGMENT_MAX)}»${cut ? ` (${FULL_TEXT_IN_ADMIN})` : ''}`,
+  );
   if (request.photosDeleted) lines.push('Фото: удалены по сроку хранения');
   else if (request.photos.length > 0) lines.push(`Фото: ${request.photos.length} (в админке)`);
   else lines.push('Фото: нет');

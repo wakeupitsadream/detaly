@@ -83,10 +83,14 @@ export {
   acceptClaimReturn,
   closeClaim,
   decideClaim,
+  DELAY_WHOLE_ORDER_ONLY,
   isOrderFileKey,
   loadClaimsView,
   openClaim,
+  orderClaimReplacement,
   recordClaimCompensation,
+  REPLACEMENT_NOT_ORDERED,
   REPLACEMENT_TASK_NOTE,
+  supplierReturnTaskNote,
 } from './claims';
 export { addOrderPhoto, loadOrderPhotos } from './photos';

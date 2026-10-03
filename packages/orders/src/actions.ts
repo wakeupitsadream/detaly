@@ -44,7 +44,7 @@ import {
   refundablePayment,
   settlementReceiptSucceededOf,
 } from './context';
-import { acceptClaimReturn, closeClaim, decideClaim } from './claims';
+import { acceptClaimReturn, closeClaim, decideClaim, REPLACEMENT_NOT_ORDERED } from './claims';
 import { applyTransition, applyTransitionInTx, clock, nudge } from './engine';
 import { bookingSlot, decideInstall } from './install';
 import { addOrderPhoto } from './photos';
@@ -127,6 +127,7 @@ const GUARD_MESSAGES: Record<string, string> = {
   receipt_codes_missing: 'Не заданы коды НДС и системы налогообложения',
   receipt_total_mismatch: 'Сумма позиций не равна сумме заказа',
   claim_refund_allowed: 'Сначала «Принял возврат»',
+  claim_refundable_kind: 'По просрочке после получения — компенсация, не возврат',
   money_held: 'Нет оплаты, которую можно вернуть',
 };
 
@@ -392,9 +393,10 @@ function staffCheck(
 /**
  * Phase 1C buttons (section 5.2) for the bot card and the admin page, after those of
  * availableStaffActions: per open claim «Принял возврат» (cret), «Вернуть деньги» (cref, disabled
- * for a seller until the return is accepted, enabled with needsReason for the owner), «Замена»
- * (crepl), «Отказать» (crej), «Замена выдана» (cclose); per active booking bconf / bdecl / bdone /
- * bnoshow; «Фото упаковки» (pphoto) while the part is on its way or at the point.
+ * for a seller until the return is accepted, enabled with needsReason for the owner; none for a
+ * delay after the handover — compensation, art. 23.1), «Замена» (crepl), «Отказать» (crej),
+ * «Замена выдана» (cclose, after «Замена заказана» in the admin); per active booking bconf /
+ * bdecl / bdone / bnoshow; «Фото упаковки» (pphoto) while the part is on its way or at the point.
  */
 export function availableStaffActions1C(
   snapshot: OrderSnapshot,
@@ -411,7 +413,15 @@ export function availableStaffActions1C(
     const about = openClaims.length > 1 ? ` · ${claimTitle(snapshot, claim)}` : '';
     const target = { claimId: claim.id };
     if (claim.decision === 'replace') {
-      add({ code: 'cclose', label: `Замена выдана${about}`, ...target, enabled: true });
+      // The replacement purchase is recorded first («Замена заказана», admin).
+      const ordered = claim.replacementOrderedAt !== null;
+      add({
+        code: 'cclose',
+        label: `Замена выдана${about}`,
+        ...target,
+        enabled: ordered,
+        disabledReason: ordered ? null : REPLACEMENT_NOT_ORDERED,
+      });
       continue;
     }
     if (claim.decision !== null) continue;
@@ -495,10 +505,12 @@ function claimRefundCheck(
   let event: OrderEvent;
   let itemId: string | null = null;
   if (AFTER_HANDOVER.includes(status)) {
+    // A delay after the handover is compensated (art. 23.1), never refunded: no button.
+    if (claim.kind === 'delay') return null;
     event = 'claim_refund_approved';
     itemId = claim.orderItemId;
     facts.scope = itemId === null ? 'order' : 'item';
-  } else if (claim.kind === 'delay' && REFUSABLE.includes(status)) {
+  } else if (claim.kind === 'delay' && claim.orderItemId === null && REFUSABLE.includes(status)) {
     event = 'client_refused';
     facts.scope = 'order';
   } else {

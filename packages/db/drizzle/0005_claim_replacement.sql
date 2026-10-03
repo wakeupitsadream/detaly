@@ -1,0 +1,4 @@
+ALTER TABLE "claims" ADD COLUMN "replacement_ordered_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "claims" ADD COLUMN "replacement_supplier_order_id" uuid;--> statement-breakpoint
+ALTER TABLE "claims" ADD CONSTRAINT "claims_replacement_supplier_order_id_supplier_orders_id_fk" FOREIGN KEY ("replacement_supplier_order_id") REFERENCES "public"."supplier_orders"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "claims" ADD CONSTRAINT "claims_replacement_ordered_check" CHECK ("claims"."replacement_ordered_at" is null or ("claims"."decision" = 'replace' and "claims"."replacement_supplier_order_id" is not null));

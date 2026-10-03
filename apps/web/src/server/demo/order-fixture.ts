@@ -243,6 +243,7 @@ export function buildDemoOrderServices(input: DemoServicesInput): OrderServicesV
             compensationAmountKop: null,
             refundId: null,
             closedAt: null,
+            replacementOrderedAt: null,
             photoCount: 0,
             photos: [],
             returnPhotos: [],

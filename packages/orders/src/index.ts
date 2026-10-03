@@ -25,7 +25,7 @@ export {
   settlementReceiptSucceededOf,
 } from './context';
 export { applyTransition, persistTransition } from './engine';
-export { canReachClient, enqueueOutbox, recordJournalEvent } from './journal';
+export { canReachClient, enqueueNotify, enqueueOutbox, recordJournalEvent } from './journal';
 export {
   createRefund,
   createRefundTask,
@@ -49,10 +49,44 @@ export {
 } from './payments';
 export {
   availableStaffActions,
+  availableStaffActions1C,
   ETA_MENU_DAYS,
   failureMessage,
   loadStaffActions,
+  loadStaffActions1C,
   ORDER_STATUS_LABELS,
   performClientAction,
   performStaffAction,
 } from './actions';
+// phase 1C (docs/phase-1c-implementation.md section 5.1)
+export {
+  bindMessenger,
+  consumeLinkToken,
+  createLinkToken,
+  findBindingUser,
+  isLinkToken,
+  messengerStatus,
+  setMessengerBlocked,
+} from './links';
+export {
+  bookingSlot,
+  bookInstall,
+  cancelInstall,
+  decideInstall,
+  INSTALL_OPTIONS,
+  installSlotsForOrder,
+  loadBookingsView,
+  loadInstallLoad,
+  snapshotFromBookings,
+} from './install';
+export {
+  acceptClaimReturn,
+  closeClaim,
+  decideClaim,
+  isOrderFileKey,
+  loadClaimsView,
+  openClaim,
+  recordClaimCompensation,
+  REPLACEMENT_TASK_NOTE,
+} from './claims';
+export { addOrderPhoto, loadOrderPhotos } from './photos';

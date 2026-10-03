@@ -4,10 +4,13 @@
  */
 import type { Env } from '@detaly/config';
 import type {
+  claims,
   clientApprovals,
   Database,
   Executor,
+  installBookings,
   orderItems,
+  orderPhotos,
   orders,
   payments,
   receipts,
@@ -17,13 +20,21 @@ import type {
 import type {
   ActorType,
   ApprovalProposal,
+  ClaimDecidedVia,
+  ClaimDecision,
+  ClaimKind,
+  ClaimOpenedVia,
   EtaSettings,
+  InstallBookingStatus,
+  InstallCreatedVia,
+  InstallSlot,
   IsoDate,
   Kop,
   MarkupRule,
   OrderEvent,
   OrderItemState,
   OrderStatus,
+  PhotoKind,
   RecheckAlternative,
   StaffRole,
   TransitionContext,
@@ -63,6 +74,39 @@ export type ReceiptRow = typeof receipts.$inferSelect;
 export type RefundRow = typeof refunds.$inferSelect;
 export type SupplierOrderRow = typeof supplierOrders.$inferSelect;
 export type ClientApprovalRow = typeof clientApprovals.$inferSelect;
+export type ClaimRow = typeof claims.$inferSelect;
+export type InstallBookingRow = typeof installBookings.$inferSelect;
+export type OrderPhotoRow = typeof orderPhotos.$inferSelect;
+
+/**
+ * A claim as the engine sees it (OrderSnapshot.claims): ids, kind, dates and decision, never the
+ * client's text, the answer or the owner's reason (they may hold PD).
+ */
+export interface ClaimSummary {
+  id: string;
+  orderItemId: string | null;
+  kind: ClaimKind;
+  openedAt: Date;
+  deadlineAt: Date;
+  decision: ClaimDecision | null;
+  decidedAt: Date | null;
+  returnAcceptedAt: Date | null;
+  compensationAmountKop: Kop | null;
+  refundId: string | null;
+  closedAt: Date | null;
+  /** Photos the client attached (the keys stay in the read models). */
+  photoCount: number;
+}
+
+/** An installation booking as the engine sees it (OrderSnapshot.bookings). No price anywhere. */
+export interface BookingSummary {
+  id: string;
+  slotAt: Date;
+  status: InstallBookingStatus;
+  createdVia: string | null;
+  confirmedAt: Date | null;
+  cancelledAt: Date | null;
+}
 
 /** A supplier order attempt with the order items it covers (supplier_order_items). */
 export interface SupplierOrderView extends SupplierOrderRow {
@@ -85,6 +129,10 @@ export interface OrderSnapshot {
   openApproval: ClientApprovalRow | null;
   /** users.no_show_count of the client. */
   noShowCount: number;
+  /** Claims of the order, open and closed, oldest first (phase 1C; no texts). */
+  claims: ClaimSummary[];
+  /** Installation bookings of the order, oldest first (phase 1C). */
+  bookings: BookingSummary[];
 }
 
 /** Settings the engine uses: `settings` rows over env defaults (settingsDefaultsFromEnv). */
@@ -158,7 +206,31 @@ export type TransitionFacts = Partial<Omit<TransitionContext, 'actor' | 'staffRo
   proposal?: ApprovalProposal;
   /** item_problem: the seller's reason (attention_reason `item_problem:<problem>`). */
   problem?: ItemProblem;
+  /**
+   * The claim a refund decision is about (claim_refund_approved, client_refused of a delay
+   * claim): create_refund takes the reason from claimKind, requested_at from claimOpenedAt and
+   * writes claims.refund_id.
+   */
+  claimId?: string | null;
+  /** claims.opened_at (ISO): the 10 days of art. 22 run from the client's request. */
+  claimOpenedAt?: string | null;
+  /** claim_opened: the claims row the effect open_claim inserts (never journaled: PD). */
+  claim?: ClaimDraft;
 };
+
+/** What effect open_claim writes into claims (decision С7). */
+export interface ClaimDraft {
+  /** Pre-generated claims.id (uuid v7). */
+  id: string;
+  kind: ClaimKind;
+  orderItemId: string | null;
+  /** The client's description (≤ CLAIM_TEXT_MAX); may contain PD, never journaled. */
+  clientText: string | null;
+  /** FileStore keys claim/<order id>/<uuid>.jpg (≤ CLAIM_PHOTOS_MAX). */
+  photos: string[];
+  openedVia: ClaimOpenedVia;
+  requestKey: string;
+}
 
 /** How one event changes the order items (section 5.3). */
 export type ItemChange =
@@ -248,16 +320,49 @@ export type StaffActionCode =
   | 'refund_payment'
   | 'retry_refund';
 
+/**
+ * Phase 1C buttons (docs/phase-1c-implementation.md section 5.2): claims, bookings, the packaging
+ * photo. A separate union: the 1B exhaustive switches of the bot and the admin keep compiling
+ * until they handle these (availableStaffActions1C lists them; performStaffAction takes both).
+ */
+export type StaffActionCode1C = ClaimStaffActionCode | BookingStaffActionCode | 'pphoto';
+
+/** Every staff action code performStaffAction accepts. */
+export type AnyStaffActionCode = StaffActionCode | StaffActionCode1C;
+
+/**
+ * Claim buttons; the target id is claims.id: «Принял возврат» (cret, with a photo), the decision
+ * refund / replace / reject (cref, crepl, crej, with the answer text) and «Замена выдана» (cclose).
+ */
+export type ClaimStaffActionCode = 'cret' | 'cref' | 'crepl' | 'crej' | 'cclose';
+
+/** Booking buttons; the target id is install_bookings.id. */
+export type BookingStaffActionCode = 'bconf' | 'bdecl' | 'bdone' | 'bnoshow';
+
 /** A button for the bot card or the admin page. */
 export interface StaffActionView {
   code: StaffActionCode;
   label: string;
   /** Set for item actions (ialt, ieta, icancel, iprob, iarr). */
   itemId?: string;
+  /** Set for claim actions (cret, cref, crepl, crej, cclose). */
+  claimId?: string;
+  /** Set for booking actions (bconf, bdecl, bdone, bnoshow). */
+  bookingId?: string;
   enabled: boolean;
   /** «Ждём чек», «Сначала „Клиент пришёл“» ... */
   disabledReason?: string | null;
+  /**
+   * cref of the owner without «Принял возврат»: the press must ask for the override reason
+   * first (StaffActionInput.reason), then for the answer text.
+   */
+  needsReason?: boolean;
 }
+
+/** A phase 1C button (availableStaffActions1C): a claim, a booking or the packaging photo. */
+export type StaffActionView1C = Omit<StaffActionView, 'code'> & { code: StaffActionCode1C };
+
+export type AnyStaffActionView = StaffActionView | StaffActionView1C;
 
 export interface StaffActionInput {
   /** ialt: the chosen alternative (from recheck_result). */
@@ -283,6 +388,12 @@ export interface StaffActionInput {
   refundId?: string;
   /** Free text without PD. */
   note?: string;
+  /** cref / crepl / crej: the answer to the client (1..2000 characters, shown on /o only). */
+  text?: string;
+  /** cret / pphoto: the FileStore key of the uploaded photo (order/<order id>/<uuid>.jpg). */
+  photoKey?: string;
+  /** pphoto: packaging (default) or handover. */
+  photoKind?: 'packaging' | 'handover';
 }
 
 export interface StaffActionResult {
@@ -337,3 +448,117 @@ export type ProviderPaymentLike = Omit<
   receiptRegistration?: ProviderPayment['receiptRegistration'];
   refundedAmountKop?: ProviderPayment['refundedAmountKop'];
 };
+
+// ---------------------------------------------------------------------------------------------
+// Phase 1C: messenger links, installation bookings, claims, photos (section 5.1)
+// ---------------------------------------------------------------------------------------------
+
+/** What /o/<token> shows next to «Статусы в Telegram» (MAX bindings come in phase 2). */
+export interface MessengerStatus {
+  telegram: 'none' | 'active' | 'blocked';
+  max: 'none';
+}
+
+/** Why installSlotsForOrder has no slots. */
+export type InstallSlotsReason =
+  /** The order status does not allow a booking (INSTALL_BOOKABLE_STATUSES). */
+  | 'status'
+  /** The part has no pickup date yet (orders.promised_date). */
+  | 'no_date'
+  /** PICKUP_HOURS was not understood. */
+  | 'no_hours'
+  /** The order already has an active booking. */
+  | 'booked'
+  /** Every lift is taken within the horizon. */
+  | 'full';
+
+export interface InstallSlotsResult {
+  slots: InstallSlot[];
+  reason?: InstallSlotsReason;
+}
+
+export type BookInstallResult =
+  | { ok: true; bookingId: string; slot: InstallSlot; duplicate: boolean }
+  | { ok: false; reason: 'slot_taken' | 'not_allowed' | 'already_booked' | 'bad_slot' };
+
+export type CancelInstallResult =
+  | { ok: true; bookingId: string; orderId: string }
+  | { ok: false; reason: 'not_found' | 'not_allowed' | 'too_late' | 'closed'; message: string };
+
+export type InstallDecision = 'confirm' | 'decline' | 'done' | 'no_show';
+
+/** A staff member acting through the bot or the admin (admin: id null, role owner). */
+export interface StaffRef {
+  id: string | null;
+  role: StaffRole;
+  via: 'bot' | 'admin';
+}
+
+export type OpenClaimResult =
+  | { ok: true; claimId: string; orderId: string; deadlineAt: Date; duplicate: boolean }
+  | {
+      ok: false;
+      reason:
+        | 'not_found'
+        | 'bad_input'
+        | 'kind_unavailable'
+        | 'already_open'
+        | 'not_allowed'
+        | 'guard_failed';
+      /** Russian text for the form / the admin flash message. */
+      message: string;
+      /** claimKindsAvailable now (kind_unavailable). */
+      kinds?: ClaimKind[];
+    };
+
+/** Result of the claim, booking and photo services (the shape of performStaffAction). */
+export type ServiceResult = StaffActionResult & {
+  /** order_photos.id written by the action (cret, pphoto). */
+  photoId?: string;
+};
+
+/** A claim for the admin, /o/<token> and the bot card (loadClaimsView). */
+export interface ClaimView extends ClaimSummary {
+  orderId: string;
+  /** Brand and article of the claimed item; null for the whole order. */
+  item: { id: string; brand: string; article: string } | null;
+  openedVia: ClaimOpenedVia | null;
+  decidedVia: ClaimDecidedVia | null;
+  /** Photos of the client (FileStore keys): the admin shows them, the bot only their number. */
+  photos: string[];
+  /** order_photos of the returned part (kind return). */
+  returnPhotos: { id: string; key: string; createdAt: Date }[];
+  /**
+   * The client's text, the answer, the owner's reason and the replacement note: filled only
+   * with `{ texts: true }` (admin, /o/<token>); null otherwise (bot cards, Telegram).
+   */
+  clientText: string | null;
+  decisionText: string | null;
+  overrideReason: string | null;
+  replacementNote: string | null;
+  /** closed_at is null. */
+  open: boolean;
+}
+
+/** A booking for the admin, /o/<token> and the bot (loadBookingsView). No price. */
+export interface BookingView extends BookingSummary {
+  orderId: string;
+  slot: InstallSlot;
+  staffNote: string | null;
+  createdAt: Date;
+  /** requested or confirmed: it holds a lift. */
+  active: boolean;
+  /** The client may cancel it by themselves until this instant (slot - 2 h). */
+  clientCancelUntil: Date;
+}
+
+export interface OrderPhotoView {
+  id: string;
+  kind: PhotoKind;
+  key: string;
+  claimId: string | null;
+  orderItemId: string | null;
+  createdAt: Date;
+}
+
+export type { InstallCreatedVia };

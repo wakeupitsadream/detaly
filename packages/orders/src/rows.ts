@@ -318,7 +318,13 @@ export async function createRefund(
     paymentId: string;
     reason: RefundReason;
     itemIds?: string[];
+    /** When the client asked for the money: refunds.requested_at and the 10-day deadline. */
     requestedAt: Date;
+    /**
+     * When the refund is created (journal `refund_created`); default requestedAt. A claim refund
+     * is requested at claims.opened_at but created when the decision is made.
+     */
+    at?: Date;
     /** Who caused it (journal `refund_created`); default system. */
     actor?: ActorRef;
     /** Receipt codes; default: those of the payment's own receipt, then `env`. */
@@ -416,7 +422,7 @@ export async function createRefund(
       ...(input.note ? { note: input.note } : {}),
       ...(retryOf ? { retryOf: retryOf.id } : {}),
     },
-    at: input.requestedAt,
+    at: input.at ?? input.requestedAt,
   });
   return { refundId, receiptId, amountKop: plan.amountKop };
 }

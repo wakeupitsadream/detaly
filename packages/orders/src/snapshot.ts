@@ -6,9 +6,11 @@
 import {
   and,
   asc,
+  claims,
   clientApprovals,
   eq,
   inArray,
+  installBookings,
   isNull,
   orderItems,
   orders,
@@ -39,40 +41,80 @@ export async function loadOrderSnapshot(
   const [order] = options.lock ? await query.for('update') : await query;
   if (!order) return null;
 
-  const [items, paymentRows, receiptRows, refundRows, supplierRows, approvals, userRows] =
-    await Promise.all([
-      tx
-        .select()
-        .from(orderItems)
-        .where(eq(orderItems.orderId, orderId))
-        .orderBy(asc(orderItems.createdAt), asc(orderItems.id)),
-      tx
-        .select()
-        .from(payments)
-        .where(eq(payments.orderId, orderId))
-        .orderBy(asc(payments.createdAt), asc(payments.id)),
-      tx
-        .select()
-        .from(receipts)
-        .where(eq(receipts.orderId, orderId))
-        .orderBy(asc(receipts.createdAt), asc(receipts.id)),
-      tx
-        .select()
-        .from(refunds)
-        .where(eq(refunds.orderId, orderId))
-        .orderBy(asc(refunds.createdAt), asc(refunds.id)),
-      tx
-        .select()
-        .from(supplierOrders)
-        .where(eq(supplierOrders.orderId, orderId))
-        .orderBy(asc(supplierOrders.attemptNo)),
-      tx
-        .select()
-        .from(clientApprovals)
-        .where(and(eq(clientApprovals.orderId, orderId), isNull(clientApprovals.decidedAt)))
-        .limit(1),
-      tx.select({ noShowCount: users.noShowCount }).from(users).where(eq(users.id, order.userId)),
-    ]);
+  const [
+    items,
+    paymentRows,
+    receiptRows,
+    refundRows,
+    supplierRows,
+    approvals,
+    userRows,
+    claimRows,
+    bookingRows,
+  ] = await Promise.all([
+    tx
+      .select()
+      .from(orderItems)
+      .where(eq(orderItems.orderId, orderId))
+      .orderBy(asc(orderItems.createdAt), asc(orderItems.id)),
+    tx
+      .select()
+      .from(payments)
+      .where(eq(payments.orderId, orderId))
+      .orderBy(asc(payments.createdAt), asc(payments.id)),
+    tx
+      .select()
+      .from(receipts)
+      .where(eq(receipts.orderId, orderId))
+      .orderBy(asc(receipts.createdAt), asc(receipts.id)),
+    tx
+      .select()
+      .from(refunds)
+      .where(eq(refunds.orderId, orderId))
+      .orderBy(asc(refunds.createdAt), asc(refunds.id)),
+    tx
+      .select()
+      .from(supplierOrders)
+      .where(eq(supplierOrders.orderId, orderId))
+      .orderBy(asc(supplierOrders.attemptNo)),
+    tx
+      .select()
+      .from(clientApprovals)
+      .where(and(eq(clientApprovals.orderId, orderId), isNull(clientApprovals.decidedAt)))
+      .limit(1),
+    tx.select({ noShowCount: users.noShowCount }).from(users).where(eq(users.id, order.userId)),
+    // Claims without their texts (they may hold PD): the engine needs only the facts.
+    tx
+      .select({
+        id: claims.id,
+        orderItemId: claims.orderItemId,
+        kind: claims.kind,
+        openedAt: claims.openedAt,
+        deadlineAt: claims.deadlineAt,
+        decision: claims.decision,
+        decidedAt: claims.decidedAt,
+        returnAcceptedAt: claims.returnAcceptedAt,
+        compensationAmountKop: claims.compensationAmountKop,
+        refundId: claims.refundId,
+        closedAt: claims.closedAt,
+        photos: claims.photos,
+      })
+      .from(claims)
+      .where(eq(claims.orderId, orderId))
+      .orderBy(asc(claims.openedAt), asc(claims.id)),
+    tx
+      .select({
+        id: installBookings.id,
+        slotAt: installBookings.slotAt,
+        status: installBookings.status,
+        createdVia: installBookings.createdVia,
+        confirmedAt: installBookings.confirmedAt,
+        cancelledAt: installBookings.cancelledAt,
+      })
+      .from(installBookings)
+      .where(eq(installBookings.orderId, orderId))
+      .orderBy(asc(installBookings.createdAt), asc(installBookings.id)),
+  ]);
 
   const links =
     supplierRows.length === 0
@@ -100,6 +142,11 @@ export async function loadOrderSnapshot(
     supplierOrders: supplierViews,
     openApproval: approvals[0] ?? null,
     noShowCount: userRows[0]?.noShowCount ?? 0,
+    claims: claimRows.map(({ photos, ...claim }) => ({
+      ...claim,
+      photoCount: Array.isArray(photos) ? photos.length : 0,
+    })),
+    bookings: bookingRows,
   };
 }
 

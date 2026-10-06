@@ -326,7 +326,8 @@ describe('cart components', () => {
     expect(html).toContain('name="q" value="OC90"');
     expect(html).toContain('name="offerId" value="OC90:Knecht:ORB1"');
     expect(html).toContain('name="qty" value="1"');
-    expect(html).toContain('h-11');
+    // A 48 px button (docs/design-v2.md: buttons never under 48 px).
+    expect(html).toContain('min-h-12');
     expect(html).not.toMatch(/name="price/i);
     expect(text(html)).toContain('В корзину');
   });

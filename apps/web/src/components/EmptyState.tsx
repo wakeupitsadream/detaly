@@ -1,48 +1,40 @@
 import { DemoDataBanner } from './DemoDataBanner';
-import { IconArrowRight, IconSearch } from './icons';
-import { ButtonLink } from './ui/Button';
+import { IconSearch, IconSts } from './icons';
+import { EditQueryLink } from './search/EditQueryLink';
+import { buttonClass, ButtonLink } from './ui/Button';
+import { cn } from './ui/cn';
 
-const TIPS = [
-  ['На старой детали', 'выбит или напечатан на корпусе, рядом с логотипом бренда'],
-  ['В заказ-наряде', 'сервис пишет артикул каждой детали, которую ставил'],
-  ['В каталоге производителя', 'по марке, модели и году выпуска'],
-] as const;
-
-/** Nothing found: what to check, where articles are written, and the VIN selection. */
+/**
+ * Nothing found (docs/design-v2.md, «Поиск»): a 64 px magnifier, «Ничего не нашли по „…“», one
+ * line, «Подобрать по VIN» and «Изменить запрос» (the caret into the header search). In the
+ * demo the one-line note with the articles that answer.
+ */
 export function EmptyState({ query, demoData = false }: { query: string; demoData?: boolean }) {
   return (
-    <div
-      className="grid min-w-0 gap-6 rounded border border-line bg-card p-5 md:grid-cols-[auto_minmax(0,1fr)] md:gap-8 md:p-8"
+    <section
+      className="flex min-w-0 flex-col items-center rounded-panel bg-surface px-5 py-10 text-center md:px-10 md:py-14"
+      aria-labelledby="empty-title"
       data-testid="empty-state"
     >
-      <div
-        aria-hidden
-        className="grid size-16 place-items-center rounded bg-graphite-800 bg-tread text-steel-200 md:size-24"
-      >
-        <IconSearch size={32} />
+      <div aria-hidden className="grid size-24 place-items-center rounded-full bg-bg text-brand">
+        <IconSearch size={64} strokeWidth={1.5} />
       </div>
-      <div className="min-w-0">
-        <h2 className="text-h2 text-balance wrap-anywhere">По запросу «{query}» ничего не нашли</h2>
-        <p className="mt-3 max-w-xl text-muted">
-          Проверьте артикул: буквы и цифры с упаковки или из каталога. Если артикула нет, мастер
-          подберёт деталь по VIN бесплатно.
-        </p>
-        <dl className="mt-5 mb-5 grid gap-px overflow-hidden rounded-sm border border-line bg-line sm:grid-cols-3">
-          {TIPS.map(([title, text]) => (
-            <div key={title} className="min-w-0 bg-paper px-4 py-3">
-              <dt className="text-sm font-semibold">{title}</dt>
-              <dd className="mt-0.5 text-sm text-muted">{text}</dd>
-            </div>
-          ))}
-        </dl>
-        {demoData ? <DemoDataBanner /> : null}
-        <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3">
-          <ButtonLink href="/vin">
-            Подобрать по VIN
-            <IconArrowRight size={18} />
-          </ButtonLink>
-        </div>
+      <h1 id="empty-title" className="mt-6 max-w-2xl text-h1 text-balance wrap-anywhere">
+        Ничего не нашли по «{query}»
+      </h1>
+      <p className="mt-3 max-w-xl text-body text-balance text-muted">
+        Проверьте артикул или пришлите VIN — мастер подберёт деталь бесплатно.
+      </p>
+      <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+        <ButtonLink href="/vin" size="lg" icon={<IconSts size={22} />}>
+          Подобрать по VIN
+        </ButtonLink>
+        <EditQueryLink className={cn(buttonClass({ variant: 'secondary', size: 'lg' }), 'bg-bg')}>
+          <IconSearch size={22} />
+          Изменить запрос
+        </EditQueryLink>
       </div>
-    </div>
+      {demoData ? <DemoDataBanner className="mt-8 justify-center" /> : null}
+    </section>
   );
 }

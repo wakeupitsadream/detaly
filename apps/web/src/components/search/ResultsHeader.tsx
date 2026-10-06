@@ -1,4 +1,3 @@
-import type { OfferView } from '@detaly/domain';
 import { plural } from '@/lib/plural';
 
 export function pluralOffers(count: number): string {
@@ -6,31 +5,22 @@ export function pluralOffers(count: number): string {
 }
 
 /**
- * The line over the results: «По запросу «OC90»: 5 предложений» (data-testid results-summary,
- * the wording is kept) and, on the right, how many of them are in Orenburg and to order.
+ * Title of the results (docs/design-v2.md, «Поиск»): the article as the page's h1 and «Найдено
+ * 5 предложений» under it. data-testid results-summary holds both, as the old summary line did.
  */
-export function ResultsHeader({ query, offers }: { query: string; offers: readonly OfferView[] }) {
-  const local = offers.filter((offer) => offer.isLocal && !offer.excluded).length;
-  const toOrder = offers.filter((offer) => !offer.isLocal && !offer.excluded).length;
+export function ResultsHeader({ query, count }: { query: string; count: number }) {
   return (
-    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between">
-      <p className="min-w-0 text-muted wrap-anywhere" data-testid="results-summary">
-        По запросу «<span className="font-mono font-semibold text-ink">{query}</span>»:{' '}
-        <span className="font-semibold text-ink">{offers.length}</span>{' '}
-        {pluralOffers(offers.length)}
+    <div className="min-w-0" data-testid="results-summary">
+      <h1 className="text-h1 wrap-anywhere">
+        <span className="sr-only">Поиск по артикулу </span>
+        {query.toUpperCase()}
+      </h1>
+      <p className="mt-1 text-body text-muted">
+        Найдено{' '}
+        <span className="font-bold text-ink tabular-nums">
+          {count} {pluralOffers(count)}
+        </span>
       </p>
-      {offers.length > 0 ? (
-        <p className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 text-label text-muted">
-          <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="size-1.5 rounded-full bg-ok" />
-            {local} в Оренбурге
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="size-1.5 rounded-full bg-info" />
-            {toOrder} под заказ
-          </span>
-        </p>
-      ) : null}
     </div>
   );
 }

@@ -10,8 +10,6 @@
  */
 @theme {
   --font-sans: 'Manrope Variable', 'Helvetica Neue', Arial, sans-serif;
-  /* Old «Техкарта» name: the same face, so pages not yet restyled stay in one family. */
-  --font-display: 'Manrope Variable', 'Helvetica Neue', Arial, sans-serif;
   /* Only the admin uses mono (VINs, event types). */
   --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
@@ -226,20 +224,6 @@
   @media (width >= 64rem) {
     font-size: var(--price-size-lg, 1.75rem);
   }
-}
-
-/* Old «Техкарта» captions, kept readable until their pages are restyled: no mono, no caps. */
-@utility text-label {
-  font-weight: 600;
-  font-size: 0.875rem;
-  line-height: 1.25rem;
-}
-
-@utility text-article {
-  font-weight: 700;
-  font-size: 1.0625rem;
-  line-height: 1.375rem;
-  font-variant-numeric: tabular-nums;
 }
 
 /* Section rhythm of the home page: 48 / 72 px. */

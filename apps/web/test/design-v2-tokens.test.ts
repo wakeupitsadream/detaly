@@ -1,8 +1,8 @@
 /**
  * Redesign 2 tokens (docs/design-v2.md, section 2): the palette and the old-name aliases in
  * globals.css, Manrope as the only storefront face, the brand colour only through tokens. The
- * last block greps the client paths for «Техкарта» leftovers; it is skipped until the page
- * packages P1-P4 are merged.
+ * last block greps the client paths for «Техкарта» leftovers (docs/design-v2.md, section 8,
+ * item 3).
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -159,11 +159,12 @@ describe('design v2 tokens', () => {
   });
 });
 
-// Turn on after the page packages are merged (docs/design-v2.md, section 8, item 3): until then
-// the not yet restyled pages still use the old names through the aliases above.
-describe.skip('no «Техкарта» leftovers in client paths (включить после слияния страниц)', () => {
+// The admin keeps the old names through the aliases above; the storefront does not use them.
+describe('no «Техкарта» leftovers in client paths', () => {
+  // A class starts after a space, a quote, a variant colon or `!`, never inside a word or a
+  // kebab-case name: data-testid="call-to-order" is not the utility `to-order`.
   const OLD_TOKEN =
-    /\b(?:bg|text|border|outline|decoration|fill|stroke|ring|from|to|via|divide|placeholder|shadow|border-[lrtbxy])-(?:graphite-\d+|steel-\d+|paper(?:-2)?|card|accent(?:-[a-z]+)?|signal|local(?:-soft)?|order(?:-soft)?|warn(?:-soft)?)\b/;
+    /(?<![\w-])(?:bg|text|border|outline|decoration|fill|stroke|ring|from|to|via|divide|placeholder|shadow|border-[lrtbxy])-(?:graphite-\d+|steel-\d+|paper(?:-2)?|card|accent(?:-[a-z]+)?|signal|local(?:-soft)?|order(?:-soft)?|warn(?:-soft)?)\b/;
   const OLD_FACE = /\bfont-(?:display|mono)\b|Unbounded|JetBrains|Onest/;
   const OLD_PART = /\b(?:HazardBand|CornerMarks|Eyebrow|BrandMark)\b/;
   const OLD_CLASS =

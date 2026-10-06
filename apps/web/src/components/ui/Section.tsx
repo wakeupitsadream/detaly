@@ -2,26 +2,20 @@ import type { HTMLAttributes, ReactNode } from 'react';
 import { cn } from './cn';
 import { Container } from './Container';
 
-export type SectionTone = 'bg' | 'surface' | 'dark' | 'paper' | 'sunken' | 'darker';
+export type SectionTone = 'bg' | 'surface' | 'dark';
 
 const TONE: Record<SectionTone, string> = {
   bg: 'bg-bg text-ink',
   surface: 'bg-surface text-ink',
   dark: 'bg-dark text-on-brand',
-  // Old «Техкарта» names.
-  paper: 'bg-bg text-ink',
-  sunken: 'bg-surface text-ink',
-  darker: 'bg-dark text-on-brand',
 };
 
 /**
  * A full-width band of a bleed page: tone, the 48 / 72 px rhythm and the site column inside.
  * `contained={false}` leaves the column to the caller; `spaced={false}` drops the rhythm.
- * `blueprint` is the old drafting grid and draws nothing now.
  */
 export function Section({
   tone = 'bg',
-  blueprint: _blueprint = false,
   contained = true,
   spaced = true,
   className,
@@ -30,8 +24,6 @@ export function Section({
   ...rest
 }: {
   tone?: SectionTone;
-  /** @deprecated «Техкарта» drafting grid; ignored. */
-  blueprint?: boolean;
   contained?: boolean;
   spaced?: boolean;
   innerClassName?: string;

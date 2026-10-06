@@ -47,12 +47,12 @@ function icon(paths: ReactNode, displayName: string): IconComponent {
 
 /* ---- Part categories ------------------------------------------------------------------- */
 
-/** Oil filter: a can with ribs and a threaded cap. */
+/** Oil filter: a domed spin-on can with a ribbed grip band (not a bin: the cart has one). */
 export const IconFilter = icon(
   <>
-    <path d="M9 6V4.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1V6" />
-    <rect x="5.5" y="6" width="13" height="15" rx="2" />
-    <path d="M9 10v7M12 10v7M15 10v7" />
+    <path d="M7.5 7.5c0-2.3 2-3.8 4.5-3.8s4.5 1.5 4.5 3.8" />
+    <rect x="6.5" y="7.5" width="11" height="13.5" rx="2" />
+    <path d="M6.5 11h11M6.5 17.5h11M9 17.5l1.4-6.5M11.8 17.5l1.4-6.5M14.6 17.5l1.4-6.5" />
   </>,
   'IconFilter',
 );

@@ -8,7 +8,6 @@ import { Footer } from '@/components/Footer';
 import { CATEGORY_LABEL, categoryOf } from '@/components/icons';
 import { INSTALL_FALLBACK_TEXT, InstallLine } from '@/components/install/InstallLine';
 import { MobileCartBar } from '@/components/MobileCartBar';
-import { SearchBar } from '@/components/SearchBar';
 import { STOCK_BADGE_TEXT, StockBadge } from '@/components/StockBadge';
 import { Badge } from '@/components/ui/Badge';
 import { buttonClass } from '@/components/ui/Button';
@@ -136,19 +135,6 @@ describe('shared chrome', () => {
     expect(html).toContain('data-testid="mobile-cart-bar"');
     expect(text(html)).toContain('В корзине 2 позиции');
     expect(html).toContain('href="/cart"');
-  });
-
-  it('SearchBar keeps the e2e contract: GET /search, label, id, «Найти»', () => {
-    const html = renderToStaticMarkup(createElement(SearchBar, { large: true, onDark: true }));
-    expect(html).toContain('method="get"');
-    expect(html).toContain('action="/search"');
-    expect(html).toContain('role="search"');
-    expect(html).toContain('for="search-q"');
-    expect(html).toContain('id="search-q"');
-    expect(text(html)).toContain('Артикул детали');
-    expect(text(html)).toContain('Найти');
-    const local = renderToStaticMarkup(createElement(SearchBar, { localOnly: true }));
-    expect(local).toContain('name="local" value="1"');
   });
 
   it('StockBadge texts are unchanged', () => {

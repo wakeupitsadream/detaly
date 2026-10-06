@@ -58,6 +58,8 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   outputFileTracingRoot: repoRoot,
   turbopack: { root: repoRoot },
+  // next dev would write AGENTS.md and CLAUDE.md into apps/web on every start.
+  agentRules: false,
   // Workspace packages ship TypeScript sources (exports -> ./src/index.ts).
   transpilePackages: [
     '@detaly/config',

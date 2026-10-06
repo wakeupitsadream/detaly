@@ -5,20 +5,16 @@ type CardTag = 'div' | 'section' | 'article' | 'aside' | 'li';
 
 /**
  * A white card: 1px `line` border, `rounded-tile`, no shadow. `tone="surface"` for a grey card
- * on white, `tone="dark"` for a tile on the dark panel. `corners` is the old «Техкарта» prop and
- * draws nothing now.
+ * on white, `tone="dark"` for a tile on the dark panel.
  */
 export function Card({
   as: Tag = 'div',
-  corners: _corners = false,
   tone = 'light',
   padded = true,
   className,
   ...rest
 }: {
   as?: CardTag;
-  /** @deprecated «Техкарта» corner marks; ignored. */
-  corners?: boolean;
   tone?: 'light' | 'surface' | 'dark';
   padded?: boolean;
 } & HTMLAttributes<HTMLElement>) {

@@ -4,7 +4,9 @@
 //   PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers DEMO_URL=http://127.0.0.1:3101 \
 //     node apps/web/scripts/demo-screens.mjs [outDir]
 // The flow: home -> search OC90 -> cart (OC90, GDB1330) -> checkout (the form filled with an
-// example) -> «Оформить» opens /o/demo -> documents, about, VIN, returns.
+// example) -> «Оформить» opens /o/demo -> documents, about, VIN, returns. Also shot: the empty
+// cart (before the first «В корзину»), «nothing found» and the sample proposal /p/demo; then every
+// page is checked for horizontal scroll at 360 and 1440 as well.
 // Default outDir: apps/web/test-results/design-final. Exits 1 on the first failed step.
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -81,7 +83,12 @@ async function walk(browser, vp) {
     if (msg.type() === 'error') errors.push(msg.text());
   });
 
-  // Home -> search from the hero form.
+  // The empty cart, before anything is added.
+  await page.goto('/cart');
+  check(await page.getByTestId('cart-empty').isVisible(), 'cart: empty state');
+  await shot(page, vp, '00-cart-empty');
+
+  // Home -> search from the header form.
   await page.goto('/');
   check((await page.getByLabel('Артикул детали').count()) === 1, 'home: one search field');
   await shot(page, vp, '01-home');
@@ -134,25 +141,62 @@ async function walk(browser, vp) {
     ['08-about', '/about'],
     ['09-vin', '/vin'],
     ['10-returns', '/returns'],
+    ['11-proposal-demo', '/p/demo'],
   ]) {
     const response = await page.goto(url);
     check(response?.status() === 200, `${url}: ${response?.status()}`);
     await shot(page, vp, name);
   }
 
-  // No horizontal scroll at this width on the key pages.
-  for (const url of ['/', '/search?q=OC90', '/cart', '/o/demo']) {
+  await checkOverflow(page, vp.name);
+
+  await context.close();
+  return errors;
+}
+
+const OVERFLOW_PAGES = [
+  '/',
+  '/search?q=OC90',
+  '/search?q=NOTFOUND',
+  '/cart',
+  '/checkout',
+  '/o/demo',
+  '/p/demo',
+  '/vin',
+  '/about',
+  '/returns',
+  '/docs/offer',
+];
+
+/** No horizontal scroll at this width on any storefront page (the cart is filled by then). */
+async function checkOverflow(page, width) {
+  for (const url of OVERFLOW_PAGES) {
     await page.goto(url);
     // Runs in the browser: `globalThis.document`, since this file is linted as Node code.
     const overflow = await page.evaluate(() => {
       const root = globalThis.document.documentElement;
       return root.scrollWidth - root.clientWidth;
     });
-    check(overflow <= 0, `${url}: horizontal overflow ${overflow}px at ${vp.name}`);
+    check(overflow <= 0, `${url}: horizontal overflow ${overflow}px at ${width}`);
   }
+}
 
+/** The edges of the range (docs/design-v2.md, section 5): overflow only, no screenshots. */
+async function checkEdges(browser, width) {
+  const context = await browser.newContext({
+    baseURL,
+    viewport: { width, height: 800 },
+    isMobile: width < 1024,
+    hasTouch: width < 1024,
+    locale: 'ru-RU',
+    timezoneId: 'Asia/Yekaterinburg',
+    reducedMotion: 'reduce',
+    extraHTTPHeaders: { 'X-Real-IP': `198.18.200.${width === 360 ? 3 : 4}` },
+  });
+  const page = await context.newPage();
+  await addToCart(page, 'OC90');
+  await checkOverflow(page, String(width));
   await context.close();
-  return errors;
 }
 
 await mkdir(outDir, { recursive: true });
@@ -167,6 +211,15 @@ for (const vp of VIEWPORTS) {
   } catch (error) {
     failed = true;
     console.error(`[demo-screens] ${vp.name}: ${error instanceof Error ? error.message : error}`);
+  }
+}
+for (const width of [360, 1440]) {
+  try {
+    await checkEdges(browser, width);
+    console.log(`[demo-screens] ${width}: no horizontal scroll`);
+  } catch (error) {
+    failed = true;
+    console.error(`[demo-screens] ${width}: ${error instanceof Error ? error.message : error}`);
   }
 }
 await browser.close();

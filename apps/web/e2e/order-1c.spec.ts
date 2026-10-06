@@ -216,6 +216,8 @@ test.describe('order page 1C', () => {
     expect(memo.status()).toBe(200);
     expect(memo.headers()['content-type']).toContain('application/pdf');
     await expect(claims.getByTestId('claim-kind-delay')).toHaveCount(0);
+    // The form is folded under «Оформить претензию» (docs/design-v2.md, «Заказ»).
+    await claims.getByTestId('claim-open').click();
     await claims.getByTestId('claim-target').nth(1).check();
     await claims.getByTestId('claim-kind-defect').check();
     await claims.getByTestId('claim-text').fill('Колодка скрипит после первой поездки');
@@ -254,6 +256,8 @@ test.describe('the sample order /o/demo', () => {
     const response = await page.goto(`${base}/o/demo`);
     expect(response?.status()).toBe(200);
     await expect(page.getByTestId('order-install-booking')).toBeVisible();
+    await expect(page.getByTestId('claim-form')).toBeHidden();
+    await page.getByTestId('claim-open').click();
     await expect(page.getByTestId('claim-form')).toBeVisible();
     await expect(page.getByTestId('order-photo-stub')).toBeVisible();
     await expectNoHorizontalScroll(page, '/o/demo');
@@ -263,6 +267,7 @@ test.describe('the sample order /o/demo', () => {
     await page.getByTestId('install-submit').click();
     await expect(page).toHaveURL(/\/o\/demo\?demo=install/);
     await expect(page.getByTestId('install-booking')).toBeVisible();
+    await page.getByTestId('claim-open').click();
     await page.getByTestId('claim-kind-defect').check();
     await page.getByTestId('claim-submit').click();
     await expect(page).toHaveURL(/\/o\/demo\?demo=claim/);

@@ -1,16 +1,15 @@
 /**
  * «Запись на установку» of /o/<token> (docs/phase-1c-implementation.md section 10.2, decision
- * С6). A plain form without JavaScript: up to six free starts as radio chips, «Записаться» posts
+ * С6). A plain form without JavaScript: up to six free starts as round chips, «Записаться» posts
  * `{slotAt, requestKey}` to /api/orders/<token>/install and comes back with a flash message.
  * With a booking: the slot, whether the master confirmed it, and «Отменить запись» until two
  * hours before. No price anywhere: the installation is the partner's service, paid at the
- * service by its own receipt (PLAN risk 11).
+ * service by its own receipt (PLAN risk 11). `lead` is the «Машина готова …» line on top.
  */
 import type { ReactNode } from 'react';
-import { IconLift } from '@/components/icons';
+import { IconCheck, IconClock, IconLift } from '@/components/icons';
 import { Badge } from '@/components/ui/Badge';
 import { buttonClass } from '@/components/ui/Button';
-import { chipClass } from '@/components/ui/Chip';
 import { cn } from '@/components/ui/cn';
 import type { InstallBlockView } from '@/server/orders/order-services';
 import { Card } from '@/components/order/OrderSections';
@@ -33,32 +32,52 @@ export function InstallBookingBlock({
   token,
   install,
   notice,
+  lead,
 }: {
   token: string;
   install: InstallBlockView;
   notice?: ReactNode;
+  /** The «Машина готова …» line (InstallLine) over the slots. */
+  lead?: ReactNode;
 }) {
   const { booking, slots } = install;
   return (
-    <Card title="Запись на установку" testId="order-install-booking" id="install">
+    <Card
+      title="Запись на установку"
+      icon={<IconLift size={26} />}
+      testId="order-install-booking"
+      id="install"
+    >
       {notice}
+      {lead ? <div className="mb-4">{lead}</div> : null}
       {booking ? (
         <div className="space-y-3" data-testid="install-booking" data-status={booking.status}>
-          <p className="flex min-w-0 items-start gap-2 text-[1.0625rem]">
-            <IconLift size={20} className="mt-0.5 shrink-0" />
-            <span className="min-w-0">
+          <div className="flex min-w-0 items-start gap-3 rounded-tile bg-surface p-4">
+            <span
+              className={cn(
+                'grid size-10 shrink-0 place-items-center rounded-full',
+                booking.status === 'confirmed' ? 'bg-ok text-on-brand' : 'bg-wait-soft text-wait',
+              )}
+            >
+              {booking.status === 'confirmed' ? (
+                <IconCheck size={22} strokeWidth={2.5} />
+              ) : (
+                <IconClock size={22} />
+              )}
+            </span>
+            <p className="min-w-0 text-body">
               Вы записаны на{' '}
-              <time dateTime={booking.slot.startAt} className="font-semibold whitespace-nowrap">
+              <time dateTime={booking.slot.startAt} className="font-bold whitespace-nowrap">
                 {booking.slot.dayText} · {booking.slot.timeText}
               </time>
               {' — '}
               {booking.status === 'confirmed'
                 ? 'мастер подтвердил запись.'
                 : 'ждём подтверждения мастера.'}
-            </span>
-          </p>
+            </p>
+          </div>
           {install.demo ? (
-            <p className="text-sm text-muted">
+            <p className="text-small font-normal text-muted">
               Пока мастер не подтвердил время, запись можно отменить здесь же.
             </p>
           ) : booking.canCancel ? (
@@ -66,17 +85,17 @@ export function InstallBookingBlock({
               <input type="hidden" name="bookingId" value={booking.id} />
               <button
                 type="submit"
-                className={buttonClass({ variant: 'ghost' })}
+                className={buttonClass({ variant: 'secondary' })}
                 data-testid="install-cancel"
               >
                 Отменить запись
               </button>
-              <p className="mt-1 text-sm text-muted">
+              <p className="mt-2 text-small font-normal text-muted">
                 Отменить здесь можно до {booking.cancelUntilText}, позже — по телефону сервиса.
               </p>
             </form>
           ) : (
-            <p className="text-sm text-muted">
+            <p className="text-small font-normal text-muted">
               До установки меньше 2 часов: отменить запись можно по телефону сервиса.
             </p>
           )}
@@ -94,10 +113,10 @@ export function InstallBookingBlock({
             <input type="hidden" name="requestKey" value={install.requestKey} />
           )}
           <fieldset className="min-w-0">
-            <legend className="mb-2 text-sm font-medium">Выберите время приезда</legend>
-            <div className="flex flex-wrap gap-2">
+            <legend className="mb-3 text-[0.9375rem] font-semibold">Когда приедете</legend>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
               {slots.map((slot, index) => (
-                <label key={slot.startAt} className="relative cursor-pointer">
+                <label key={slot.startAt} className="relative min-w-0 cursor-pointer">
                   <input
                     type="radio"
                     name="slotAt"
@@ -109,10 +128,9 @@ export function InstallBookingBlock({
                   />
                   <span
                     className={cn(
-                      chipClass(false),
-                      'h-11 font-mono tabular-nums',
-                      'peer-checked:border-ink peer-checked:bg-ink peer-checked:text-paper',
-                      'peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent',
+                      'flex h-12 w-full items-center justify-center rounded-full bg-surface px-3 text-base font-semibold whitespace-nowrap text-ink tabular-nums transition-colors duration-150 hover:bg-surface-2 sm:px-5',
+                      'peer-checked:bg-brand peer-checked:text-on-brand peer-checked:hover:bg-brand-hover',
+                      'peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand',
                     )}
                   >
                     {slot.dayText} · {slot.timeText}
@@ -123,18 +141,18 @@ export function InstallBookingBlock({
           </fieldset>
           <button
             type="submit"
-            className={cn(buttonClass({ variant: 'primary' }), 'w-full sm:w-auto')}
+            className={cn(buttonClass({ variant: 'primary', size: 'lg' }), 'w-full sm:w-auto')}
             data-testid="install-submit"
           >
             Записаться
           </button>
         </form>
       ) : (
-        <p className="text-muted" data-testid="install-empty">
+        <p className="text-body text-muted" data-testid="install-empty">
           {EMPTY_TEXT[install.emptyReason ?? 'full'] ?? EMPTY_TEXT.full}
         </p>
       )}
-      <p className="mt-4 text-sm text-muted" data-testid="install-partner">
+      <p className="mt-4 text-small font-normal text-muted" data-testid="install-partner">
         {installPaymentText(install.partner)} Время подтверждает мастер.
       </p>
       {install.demo ? (

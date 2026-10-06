@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { cache } from 'react';
 import { OrderDetails } from '@/components/order/OrderDetails';
+import { pickupRoutes } from '@/components/PickupRouteLinks';
 import { getBrand } from '@/server/brand';
 import { readCartToken } from '@/server/cart-store';
 import { getDb } from '@/server/db';
@@ -115,6 +116,8 @@ export default async function OrderPage({
       services={services}
       flash={flash}
       pickup={brand.pickup}
+      routes={pickupRoutes(brand)}
+      pickupLogo={brand.pickupLogo?.color ?? null}
       contactPhone={brand.contactPhone}
       cartReminder={cartReminder}
       notice={notice}

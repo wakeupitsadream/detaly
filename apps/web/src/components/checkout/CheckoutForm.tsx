@@ -11,10 +11,18 @@ import {
   type ReactNode,
 } from 'react';
 import { DiffBanner } from '@/components/DiffBanner';
-import { IconAlert, IconArrowRight, IconCheck } from '@/components/icons';
+import {
+  IconAlert,
+  IconArrowRight,
+  IconCheck,
+  IconMax,
+  IconMessage,
+  IconTelegram,
+  type IconComponent,
+} from '@/components/icons';
 import { Notice } from '@/components/page/Notice';
 import { SheetTitle } from '@/components/page/SheetTitle';
-import { buttonClass } from '@/components/ui/Button';
+import { buttonClass, Spinner } from '@/components/ui/Button';
 import { cn } from '@/components/ui/cn';
 import { inputClass } from '@/components/ui/Input';
 import { PAYMENT_SCHEME_TITLE } from './scheme-text';
@@ -46,16 +54,22 @@ export interface CheckoutFormProps {
    * sample order (`href`); POST /api/checkout stays closed (403) in the demo anyway.
    */
   demo?: { href: string };
+  /** Step «Получение»: the pickup point card (server-rendered, refreshed with the page). */
+  receive?: ReactNode;
+  /** Step «Оплата»: the payment scheme card. */
+  payment?: ReactNode;
+  /** The order's lines and total, shown before the consents. */
+  summary?: ReactNode;
 }
 
 /** Example values of the demo form: obviously not a person. */
 export const DEMO_FORM_EXAMPLE = { phone: '+7 999 123-45-67', name: 'Алексей' } as const;
 
-const CHANNELS = [
-  { value: 'max', label: 'MAX' },
-  { value: 'telegram', label: 'Telegram' },
-  { value: 'sms', label: 'SMS' },
-] as const;
+const CHANNELS: readonly { value: string; label: string; Icon: IconComponent }[] = [
+  { value: 'max', label: 'MAX', Icon: IconMax },
+  { value: 'telegram', label: 'Telegram', Icon: IconTelegram },
+  { value: 'sms', label: 'SMS', Icon: IconMessage },
+];
 
 const GENERIC_ERROR = 'Не удалось оформить заказ — попробуйте ещё раз';
 
@@ -76,30 +90,38 @@ interface ApiBody {
 function FieldError({ id, message }: { id: string; message: string | undefined }) {
   if (!message) return null;
   return (
-    <p id={id} className="mt-1.5 flex items-start gap-1.5 text-sm text-danger" role="alert">
-      <IconAlert size={16} className="mt-0.5 shrink-0" />
+    <p
+      id={id}
+      className="mt-2 flex items-start gap-1.5 text-small font-medium text-danger"
+      role="alert"
+    >
+      <IconAlert size={18} className="mt-0.5 shrink-0" />
       <span className="min-w-0">{message}</span>
     </p>
   );
 }
 
-const LABEL = 'mb-1.5 block text-sm font-medium text-ink';
+const LABEL = 'mb-2 block text-[0.9375rem] leading-snug font-semibold text-ink';
 const DOC_LINK =
-  'font-medium text-accent-ink underline decoration-1 underline-offset-4 hover:decoration-2';
+  'font-semibold text-brand underline decoration-1 underline-offset-4 hover:text-brand-hover hover:decoration-2';
 
-/** A sheet of the form: card on paper, 1px line, no shadow. */
-function Sheet({ className, children }: { className?: string; children: ReactNode }) {
+/**
+ * A step of the form: the step number in a brand circle and the title, the content right under
+ * it on the page (no box of its own: the content is cards and fields already).
+ */
+function Step({ index, title, children }: { index?: string; title: string; children: ReactNode }) {
   return (
-    <section className={cn('min-w-0 rounded border border-line bg-card p-5 md:p-6', className)}>
+    <section className="min-w-0 pt-2">
+      <SheetTitle index={index}>{title}</SheetTitle>
       {children}
     </section>
   );
 }
 
 /**
- * A consent checkbox: a 22px square, signal-orange fill with an ink tick when checked. The
- * native input stays in place (keyboard, form data, the label as its name), only its look
- * changes.
+ * A consent checkbox: a 24 px rounded square, brand fill with a white tick when checked, the
+ * whole row (48 px at least) is the label. The native input stays in place (keyboard, form
+ * data, the label as its name), only its look changes.
  */
 function Consent({
   name,
@@ -121,22 +143,22 @@ function Consent({
       }
     : {};
   return (
-    <label className="flex cursor-pointer items-start gap-3 leading-snug">
-      <span className="relative grid size-[22px] shrink-0 place-items-center">
+    <label className="flex min-h-12 cursor-pointer items-start gap-3 py-1.5 text-body leading-snug">
+      <span className="relative grid size-6 shrink-0 place-items-center">
         <input
           type="checkbox"
           name={name}
-          className="peer size-[22px] cursor-pointer appearance-none rounded-sm border-[1.5px] border-line-strong bg-card transition-colors hover:border-muted checked:border-ink checked:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          className="peer size-6 cursor-pointer appearance-none rounded-[7px] border-2 border-line-strong bg-bg transition-colors hover:border-muted checked:border-brand checked:bg-brand focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-brand"
           aria-describedby={describedBy}
           {...controlled}
         />
         <IconCheck
-          size={16}
-          strokeWidth={2.5}
-          className="pointer-events-none absolute hidden text-ink peer-checked:block"
+          size={18}
+          strokeWidth={2.75}
+          className="pointer-events-none absolute hidden text-on-brand peer-checked:block"
         />
       </span>
-      <span className="min-w-0 pt-px">{children}</span>
+      <span className="min-w-0">{children}</span>
     </label>
   );
 }
@@ -271,7 +293,7 @@ export function CheckoutForm(props: CheckoutFormProps) {
 
   return (
     <form
-      className="min-w-0 space-y-6"
+      className="min-w-0 space-y-6 md:space-y-8"
       onSubmit={(e) => void onSubmit(e)}
       data-testid="checkout-form"
     >
@@ -302,7 +324,7 @@ export function CheckoutForm(props: CheckoutFormProps) {
               ))}
             </Notice>
           ) : null}
-          <p className="text-sm text-muted">
+          <p className="text-small font-normal text-muted">
             {schemeNotice !== null && changes === null
               ? 'Заказ не оформлен. Проверьте способ оплаты и отправьте форму ещё раз.'
               : 'Заказ не оформлен. Мы обновили данные заказа — проверьте их и отправьте форму ещё раз.'}
@@ -310,9 +332,8 @@ export function CheckoutForm(props: CheckoutFormProps) {
         </div>
       ) : null}
 
-      <Sheet>
-        <SheetTitle index="01">Контакты</SheetTitle>
-        <div className="grid min-w-0 gap-5 sm:grid-cols-2">
+      <Step index="01" title="Контакты">
+        <div className="grid min-w-0 gap-5">
           <div className="min-w-0">
             <label htmlFor="checkout-phone" className={LABEL}>
               Телефон
@@ -331,8 +352,8 @@ export function CheckoutForm(props: CheckoutFormProps) {
               aria-describedby="checkout-phone-hint checkout-phone-error"
               className={inputClass({ className: 'tabular-nums' })}
             />
-            <p id="checkout-phone-hint" className="mt-1.5 text-sm text-muted">
-              Мобильный номер: +7 или 8 и 10 цифр. По нему вы получите заказ.
+            <p id="checkout-phone-hint" className="mt-2 text-small font-normal text-muted">
+              Мобильный: по нему выдадим заказ.
             </p>
             <FieldError id="checkout-phone-error" message={fieldErrors.phone} />
           </div>
@@ -355,44 +376,57 @@ export function CheckoutForm(props: CheckoutFormProps) {
             />
             <FieldError id="checkout-name-error" message={fieldErrors.name} />
           </div>
+          <fieldset className="min-w-0">
+            <legend className={LABEL}>Куда присылать статусы заказа</legend>
+            <div className="grid grid-cols-3 gap-2">
+              {CHANNELS.map(({ value, label, Icon }) => (
+                <label
+                  key={value}
+                  className={cn(
+                    'relative flex min-h-20 min-w-0 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-control border-[1.5px] border-line-strong bg-bg px-2 pt-3 pb-2.5 font-semibold transition-colors',
+                    'hover:border-muted has-[:checked]:border-brand has-[:checked]:bg-brand-soft',
+                    'has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-brand',
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="channel"
+                    value={value}
+                    defaultChecked={demo !== null && value === 'telegram'}
+                    required
+                    className="absolute top-2 right-2 size-5 shrink-0 cursor-pointer appearance-none rounded-full border-2 border-line-strong bg-bg transition-[border-width,border-color] checked:border-[6px] checked:border-brand focus-visible:outline-none"
+                  />
+                  <Icon size={26} className="text-brand" />
+                  <span className="whitespace-nowrap">{label}</span>
+                </label>
+              ))}
+            </div>
+            <p className="mt-2 text-small font-normal text-muted">
+              Подключить уведомления можно будет на странице заказа.
+            </p>
+            <FieldError id="checkout-channel-error" message={fieldErrors.channel} />
+          </fieldset>
         </div>
-      </Sheet>
+      </Step>
 
-      <Sheet>
-        <fieldset className="min-w-0">
-          <legend className="sr-only">Куда присылать статусы заказа</legend>
-          <SheetTitle index="02">Куда присылать статусы заказа</SheetTitle>
-          <div className="flex flex-wrap gap-2 sm:grid sm:grid-cols-3">
-            {CHANNELS.map((channel) => (
-              <label
-                key={channel.value}
-                className={cn(
-                  'flex h-12 min-w-0 grow cursor-pointer items-center gap-2 rounded border-[1.5px] border-line bg-card px-3 font-medium transition-colors sm:gap-2.5 sm:px-4',
-                  'hover:border-muted has-[:checked]:border-ink has-[:checked]:bg-paper',
-                  'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent',
-                )}
-              >
-                <input
-                  type="radio"
-                  name="channel"
-                  value={channel.value}
-                  defaultChecked={demo !== null && channel.value === 'telegram'}
-                  required
-                  className="size-4.5 shrink-0 cursor-pointer appearance-none rounded-full border-[1.5px] border-line-strong bg-card transition-[border-width,border-color] checked:border-[5px] checked:border-ink focus-visible:outline-none"
-                />
-                <span className="whitespace-nowrap">{channel.label}</span>
-              </label>
-            ))}
-          </div>
-          <p className="mt-3 text-sm text-muted">
-            Это предпочтение: подключить уведомления можно будет на странице заказа.
-          </p>
-          <FieldError id="checkout-channel-error" message={fieldErrors.channel} />
-        </fieldset>
-      </Sheet>
+      {props.receive ? (
+        <Step index="02" title="Получение">
+          {props.receive}
+        </Step>
+      ) : null}
 
-      <Sheet className="space-y-4">
-        <SheetTitle index="03">Согласия</SheetTitle>
+      {props.payment ? (
+        <Step index={props.receive ? '03' : '02'} title="Оплата">
+          {props.payment}
+        </Step>
+      ) : null}
+
+      {props.summary}
+
+      <section
+        className="min-w-0 space-y-1 rounded-tile bg-surface p-4 md:px-6"
+        aria-label="Согласия"
+      >
         <Consent
           name="acceptOffer"
           checked={acceptOffer}
@@ -419,14 +453,14 @@ export function CheckoutForm(props: CheckoutFormProps) {
         <FieldError id="checkout-pd-error" message={fieldErrors.consentPd} />
         {props.marketingAvailable ? (
           <Consent name="consentMarketing">
-            Хочу получать предложения и скидки (
+            Хочу получать скидки (
             <a className={DOC_LINK} href="/docs/consent-marketing" target="_blank" rel="noopener">
               согласие
             </a>
             , необязательно)
           </Consent>
         ) : null}
-      </Sheet>
+      </section>
 
       {/* Honeypot: off screen, skipped by keyboard and screen readers; people never fill it. */}
       <div aria-hidden="true" className="absolute -left-[10000px] h-px w-px overflow-hidden">
@@ -455,39 +489,35 @@ export function CheckoutForm(props: CheckoutFormProps) {
       ) : null}
 
       {demo !== null ? (
-        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+        <div className="min-w-0 space-y-3">
           <a
             href={demo.href}
-            className={cn(
-              buttonClass({ variant: 'primary', size: 'lg' }),
-              'w-full shrink-0 sm:w-auto',
-            )}
+            className={buttonClass({ variant: 'primary', size: 'lg', block: true })}
             data-testid="demo-checkout-submit"
           >
-            Оформить — покажем пример заказа
-            <IconArrowRight size={18} />
+            Оформить заказ
+            <IconArrowRight size={20} />
           </a>
-          <p className="min-w-0 text-sm text-muted">
-            Демо: заказ не создаётся и никуда не уходит, данные в полях — пример.
+          <p className="text-small font-normal text-muted">
+            Демо: заказ не создаётся, покажем пример страницы заказа.
           </p>
         </div>
       ) : (
-        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+        <div className="min-w-0 space-y-3">
           <button
             type="submit"
             disabled={!canSubmit}
-            className={cn(
-              buttonClass({ variant: 'primary', size: 'lg' }),
-              'w-full shrink-0 sm:w-auto',
-            )}
+            aria-busy={pending || done || undefined}
+            className={buttonClass({ variant: 'primary', size: 'lg', block: true })}
           >
+            {pending || done ? <Spinner /> : null}
             {done ? 'Открываем заказ…' : pending ? 'Проверяем цены…' : 'Оформить заказ'}
-            {!done && !pending ? <IconArrowRight size={18} /> : null}
+            {!done && !pending ? <IconArrowRight size={20} /> : null}
           </button>
-          <p className="min-w-0 text-sm text-muted">
+          <p className="text-small font-normal text-muted">
             {!acceptOffer || !consentPd
-              ? 'Кнопка станет активной, когда вы примете оферту и дадите согласие на обработку данных.'
-              : 'Перед созданием заказа ещё раз сверим цену и наличие у поставщика.'}
+              ? 'Кнопка включится, когда вы отметите оба согласия.'
+              : 'Перед заказом ещё раз сверим цену и наличие.'}
           </p>
         </div>
       )}

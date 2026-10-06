@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Up to N photos for a form posted as multipart/form-data («Техкарта», docs/design.md;
+ * Up to N photos for a form posted as multipart/form-data (docs/design-v2.md;
  * docs/phase-1c-implementation.md decision С19). It is a real <input type="file" name=…>: without
  * JavaScript the browser sends the originals, and the server (server/uploads.ts) checks and
  * re-encodes them. With JavaScript every chosen photo is downscaled in the browser
@@ -9,7 +9,8 @@
  * DataTransfer so the form posts exactly the photos on screen.
  */
 import { useEffect, useId, useRef, useState, type ChangeEvent } from 'react';
-import { IconAlert, IconClose } from '@/components/icons';
+import { IconAlert, IconClose, IconPlus } from '@/components/icons';
+import { buttonClass } from '@/components/ui/Button';
 import { cn } from '@/components/ui/cn';
 import { fieldDescribedBy } from '@/components/ui/Field';
 import { downscaleImage } from '@/lib/downscale';
@@ -135,7 +136,10 @@ export function PhotoInput({
 
   return (
     <div className={cn('min-w-0', className)}>
-      <span id={`${id}-label`} className="mb-1.5 block text-sm font-medium text-ink">
+      <span
+        id={`${id}-label`}
+        className="mb-2 block text-[0.9375rem] leading-snug font-semibold text-ink"
+      >
         {label}
       </span>
 
@@ -144,7 +148,7 @@ export function PhotoInput({
           {picked.map((item, index) => (
             <li
               key={item.key}
-              className="relative aspect-square overflow-hidden rounded border-[1.5px] border-line-strong bg-paper-2"
+              className="relative aspect-square overflow-hidden rounded-control border border-line bg-surface"
             >
               {/* eslint-disable-next-line @next/next/no-img-element -- a local blob: preview */}
               <img
@@ -157,9 +161,9 @@ export function PhotoInput({
                 onClick={() => remove(item.key)}
                 disabled={disabled}
                 aria-label={`Удалить фото ${index + 1}`}
-                className="absolute top-1 right-1 inline-flex size-8 items-center justify-center rounded bg-ink/80 text-paper hover:bg-ink focus-visible:outline-2 focus-visible:outline-accent"
+                className="absolute top-1 right-1 inline-flex size-11 items-center justify-center rounded-full bg-ink/75 text-on-brand hover:bg-ink focus-visible:outline-3 focus-visible:outline-brand"
               >
-                <IconClose size={16} />
+                <IconClose size={20} />
               </button>
             </li>
           ))}
@@ -183,41 +187,43 @@ export function PhotoInput({
           className={cn(
             enhanced
               ? 'peer sr-only'
-              : 'block w-full text-sm text-ink file:mr-3 file:min-h-11 file:rounded file:border-[1.5px] file:border-ink file:bg-transparent file:px-4 file:font-semibold file:text-ink',
+              : 'block w-full text-small text-ink file:mr-3 file:min-h-12 file:rounded-control file:border-[1.5px] file:border-line-strong file:bg-bg file:px-4 file:font-semibold file:text-ink',
           )}
         />
         {enhanced ? (
           <label
             htmlFor={id}
             className={cn(
-              'inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded border-[1.5px] border-ink px-5 text-[0.9375rem] font-semibold text-ink',
-              'transition-colors duration-150 hover:bg-ink hover:text-paper',
-              'peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent',
-              (disabled || full) && 'pointer-events-none border-line text-faint',
+              buttonClass({ variant: 'secondary' }),
+              'cursor-pointer peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand',
+              (disabled || full) && 'pointer-events-none opacity-50',
             )}
           >
-            <span aria-hidden="true">+</span>
+            <IconPlus size={20} className="text-brand" />
             {full ? 'Больше нельзя' : picked.length === 0 ? 'Добавить фото' : 'Добавить ещё'}
           </label>
         ) : null}
         {enhanced ? (
-          <span className="font-mono text-sm text-muted" aria-live="polite">
+          <span className="text-small text-muted tabular-nums" aria-live="polite">
             {busy ? 'Уменьшаем…' : `${picked.length} из ${max}`}
           </span>
         ) : null}
       </div>
 
-      <p id={`${id}-hint`} className="mt-1.5 text-sm text-muted">
+      <p id={`${id}-hint`} className="mt-2 text-small font-normal text-muted">
         {hintText}
       </p>
       {notice ? (
-        <p className="mt-1.5 text-sm text-muted" role="status">
+        <p className="mt-2 text-small font-normal text-muted" role="status">
           {notice}
         </p>
       ) : null}
       {error ? (
-        <p id={`${id}-error`} className="mt-1.5 flex items-start gap-1.5 text-sm text-danger">
-          <IconAlert size={16} className="mt-0.5 shrink-0" />
+        <p
+          id={`${id}-error`}
+          className="mt-2 flex items-start gap-1.5 text-small font-medium text-danger"
+        >
+          <IconAlert size={18} className="mt-0.5 shrink-0" />
           <span className="min-w-0">{error}</span>
         </p>
       ) : null}

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { OrderDetails } from '@/components/order/OrderDetails';
+import { pickupRoutes } from '@/components/PickupRouteLinks';
 import { FullBleed } from '@/components/ui/Section';
 import { getBrand } from '@/server/brand';
 import { buildDemoOrderServices, buildDemoOrderView } from '@/server/demo/order-fixture';
@@ -68,6 +69,8 @@ export default async function DemoOrderPage({ searchParams }: { searchParams?: S
         services={services}
         flash={flash}
         pickup={brand.pickup}
+        routes={pickupRoutes(brand)}
+        pickupLogo={brand.pickupLogo?.color ?? null}
         contactPhone={brand.contactPhone}
         cartReminder={null}
         demo

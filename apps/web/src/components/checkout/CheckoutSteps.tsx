@@ -4,13 +4,14 @@ import { cn } from '@/components/ui/cn';
 const STEPS = ['Корзина', 'Оформление', 'Заказ'] as const;
 
 /**
- * Where the client is on the way to an order, in the band of /cart and /checkout (graphite):
- * «01 Корзина — 02 Оформление — 03 Заказ». Done steps get a tick, the current one the signal
- * square. Only a hint: nothing here is a link.
+ * Where the client is on the way to an order, next to the title of /cart and /checkout:
+ * «1 Корзина — 2 Оформление — 3 Заказ» in circles. A done step is a green tick, the current one
+ * a brand circle with its number, the rest grey. Only a hint: nothing here is a link. On phones
+ * only the current step keeps its label.
  */
 export function CheckoutSteps({ current }: { current: 0 | 1 | 2 }) {
   return (
-    <ol className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 font-mono text-xs font-semibold tracking-[0.08em] uppercase">
+    <ol className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2 text-small">
       {STEPS.map((label, index) => {
         const done = index < current;
         const active = index === current;
@@ -19,26 +20,26 @@ export function CheckoutSteps({ current }: { current: 0 | 1 | 2 }) {
             key={label}
             className={cn(
               'flex items-center gap-2',
-              active ? 'text-paper' : done ? 'text-steel-200' : 'text-steel-400/70',
+              active ? 'font-bold text-ink' : done ? 'text-ink' : 'text-muted',
             )}
             aria-current={active ? 'step' : undefined}
           >
             <span
               aria-hidden
               className={cn(
-                'grid size-5 place-items-center rounded-sm border text-[0.625rem]',
+                'grid size-8 shrink-0 place-items-center rounded-full text-base font-extrabold tabular-nums',
                 active
-                  ? 'border-accent bg-accent text-ink'
+                  ? 'bg-brand text-on-brand'
                   : done
-                    ? 'border-steel-400 text-paper'
-                    : 'border-graphite-700',
+                    ? 'bg-ok-soft text-ok'
+                    : 'bg-surface text-muted',
               )}
             >
-              {done ? <IconCheck size={12} strokeWidth={2.5} /> : `0${index + 1}`}
+              {done ? <IconCheck size={18} strokeWidth={2.5} /> : index + 1}
             </span>
             <span className={active ? undefined : 'sr-only sm:not-sr-only'}>{label}</span>
             {index < STEPS.length - 1 ? (
-              <span aria-hidden className="ml-1 h-px w-4 bg-graphite-700 md:w-8" />
+              <span aria-hidden className="mx-1 h-0.5 w-5 rounded-full bg-line-strong md:w-8" />
             ) : null}
           </li>
         );

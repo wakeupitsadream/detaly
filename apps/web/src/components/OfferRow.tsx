@@ -1,7 +1,7 @@
 import type { OfferView } from '@detaly/domain';
 import type { InstallPlanView } from '@/server/install/types';
 import { AddToCartForm } from './AddToCartForm';
-import { IconClock } from './icons';
+import { IconCalendar } from './icons';
 import { InstallLine } from './install/InstallLine';
 import { StockBadge } from './StockBadge';
 import { Badge } from './ui/Badge';
@@ -23,10 +23,12 @@ export function stockCountText(offer: Pick<OfferView, 'isLocal' | 'available'>):
 }
 
 /**
- * One offer. Desktop: a row of four columns (tile | brand, article, name | stock, date, lift
- * slot | price and "В корзину"). Phones: tile beside the article, the dates under it and the
- * price with the button as the last line. Supplier price and markup never reach this component
- * (OfferView carries the client price only). Excluded (marked) goods get no "В корзину" button.
+ * One offer as a card (docs/design-v2.md, OfferCard): a 72 px tile with the category glyph,
+ * brand and article, the name, the stock badge, the arrival date, one line of «Машина готова…»
+ * when a lift window is planned, the price and «В корзину». Phones stack it with the button
+ * across the card; from lg it is one row of four columns. Supplier price and markup never reach
+ * this component (OfferView carries the client price only). Excluded (marked) goods get no
+ * «В корзину» button.
  */
 export function OfferRow({
   offer,
@@ -43,7 +45,7 @@ export function OfferRow({
    * cart that cannot be checked out is a dead end, the page offers the phone instead.
    */
   orderingOpen?: boolean;
-  /** Nearest lift slot for this offer; undefined: the page does not plan installs. */
+  /** Nearest lift slot for this offer; undefined or null: no install line. */
   install?: InstallPlanView | null;
   /** «Быстрее всего» / «Дешевле всего» (OfferGroup decides). */
   marks?: readonly OfferMark[];
@@ -53,16 +55,14 @@ export function OfferRow({
   return (
     <li
       className={cn(
-        'group/offer grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] gap-x-4 gap-y-4 rounded border bg-card p-4',
-        'transition-[border-color,transform] duration-150 hover:-translate-y-px hover:border-ink',
-        // The article column is as wide as its text (up to 20rem): the stock and the dates sit
-        // right next to it instead of across a dead gap.
-        'md:grid-cols-[4.5rem_fit-content(20rem)_minmax(0,1fr)_auto] md:items-center md:gap-x-8 md:p-5',
-        offer.excluded ? 'border-line border-dashed' : 'border-line',
+        'grid min-w-0 grid-cols-[4.5rem_minmax(0,1fr)] gap-x-4 gap-y-4 rounded-tile border bg-bg p-4',
+        'transition-colors duration-150 hover:border-line-strong md:p-5',
+        'lg:grid-cols-[4.5rem_minmax(0,1.1fr)_minmax(0,1fr)_13.5rem] lg:items-center lg:gap-x-8',
+        offer.excluded ? 'border-dashed border-line-strong' : 'border-line',
       )}
       data-testid="offer-row"
     >
-      <PartTile name={offer.name} size="sm" className="md:size-18" />
+      <PartTile name={offer.name} size="md" className="self-start lg:self-center" />
 
       <div className="min-w-0 self-center">
         {marks && marks.length > 0 ? (
@@ -70,8 +70,7 @@ export function OfferRow({
             {marks.map((mark) => (
               <Badge
                 key={mark}
-                tone={mark === 'fastest' ? 'ok' : 'neutral'}
-                className="font-semibold"
+                tone={mark === 'fastest' ? 'ok' : 'brand'}
                 data-testid={`offer-mark-${mark}`}
               >
                 {MARK_TEXT[mark]}
@@ -79,50 +78,54 @@ export function OfferRow({
             ))}
           </p>
         ) : null}
-        <p className="text-label text-muted wrap-anywhere">{offer.brand}</p>
-        <p className="mt-1 font-mono text-lg leading-tight font-semibold tracking-wide wrap-anywhere md:text-xl">
-          {offer.article}
+        <p className="text-[1.0625rem] leading-snug font-bold wrap-anywhere lg:text-[1.25rem]">
+          {offer.brand} <span className="tabular-nums">{offer.article}</span>
         </p>
-        <p className="mt-1 text-[0.9375rem] leading-snug wrap-anywhere">{offer.name}</p>
+        <p className="mt-0.5 line-clamp-2 text-small font-normal text-muted wrap-anywhere">
+          {offer.name}
+        </p>
         {offer.multiplicity > 1 ? (
-          <p className="mt-1 text-sm text-muted">Продаётся по {offer.multiplicity} шт.</p>
+          <p className="mt-1 text-small text-ink">Продаётся по {offer.multiplicity} шт.</p>
         ) : null}
       </div>
 
-      <div className="col-span-2 flex min-w-0 flex-col items-start gap-2 border-t border-dashed border-line pt-3 md:col-span-1 md:border-0 md:pt-0">
+      <div className="col-span-2 flex min-w-0 flex-col items-start gap-2.5 lg:col-span-1">
         {offer.excluded ? (
           <>
             <Badge tone="danger">Не продаём онлайн</Badge>
-            <p className="text-sm text-muted">
-              {offer.excludedReason ?? 'Маркируемый товар'}. Спросите в сервисе
+            <p className="text-small font-normal text-muted">
+              {offer.excludedReason ?? 'Маркируемый товар'} — спросите в сервисе
             </p>
           </>
         ) : (
           <>
             <StockBadge isLocal={offer.isLocal} />
-            <p className="flex min-w-0 items-start gap-1.5 text-sm text-muted">
-              <IconClock size={16} className="mt-0.5 shrink-0 text-ink" />
+            <p className="flex min-w-0 items-start gap-2 text-small font-normal">
+              <IconCalendar size={20} className="shrink-0 text-brand" />
               <span className="min-w-0">
-                Получение <span className="font-semibold text-ink">{offer.promiseText}</span>
+                Привезём <span className="font-bold whitespace-nowrap">{offer.promiseText}</span>
               </span>
             </p>
-            {install !== undefined ? <InstallLine plan={install} /> : null}
+            {install ? <InstallLine plan={install} /> : null}
           </>
         )}
       </div>
 
-      <div className="col-span-2 flex min-w-0 items-center gap-4 md:col-span-1 md:w-44 md:flex-col md:items-stretch md:gap-3 md:text-right">
+      <div
+        className={cn(
+          'col-span-2 flex min-w-0 flex-col gap-3 border-t border-line pt-4',
+          'md:flex-row md:items-center md:justify-between',
+          'lg:col-span-1 lg:flex-col lg:items-stretch lg:border-0 lg:pt-0',
+        )}
+      >
         {offer.excluded ? (
-          <p className="text-sm text-muted">Цена в сервисе</p>
+          <p className="text-small text-muted">Цена — в сервисе</p>
         ) : (
-          <div className="shrink-0">
-            <Price
-              data-testid="offer-price"
-              className="[--price-size:1.5rem] md:[--price-size:1.75rem]"
-            >
-              {offer.priceText}
-            </Price>
-            <p className="mt-1.5 font-mono text-xs text-muted">{stockCountText(offer)}</p>
+          <div className="flex min-w-0 items-baseline justify-between gap-3 lg:flex-col lg:items-start lg:gap-1">
+            <Price data-testid="offer-price">{offer.priceText}</Price>
+            <span className="text-caption text-muted tabular-nums" title={stockCountText(offer)}>
+              Есть {offer.available} шт.
+            </span>
           </div>
         )}
         {canAdd ? (
@@ -131,7 +134,7 @@ export function OfferRow({
             offerId={offer.id}
             qty={offer.multiplicity}
             title={title}
-            className="flex-1 md:flex-none"
+            className="w-full md:w-auto md:min-w-52 lg:w-full"
           />
         ) : null}
       </div>

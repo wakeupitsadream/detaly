@@ -1,5 +1,6 @@
 import type { OfferView } from '@detaly/domain';
 import { OfferRow, type OfferMark } from '@/components/OfferRow';
+import { SectionHeading } from '@/components/ui/Section';
 import type { InstallPlanView } from '@/server/install/types';
 
 /**
@@ -45,38 +46,20 @@ export function offerMarks(
   return marks;
 }
 
-/** One line under the title when the same part sits both in Orenburg and at the supplier. */
-function stocksNote(offers: readonly OfferView[]): string | null {
-  const sellable = offers.filter((offer) => !offer.excluded);
-  const local = sellable.filter((offer) => offer.isLocal);
-  const order = sellable.filter((offer) => !offer.isLocal);
-  if (local.length === 0 || order.length === 0) return null;
-  const min = (list: OfferView[]) => Math.min(...list.map((offer) => offer.priceClientKop));
-  return min(order) < min(local)
-    ? 'Одна деталь — разные склады: под заказ дешевле, из Оренбурга быстрее'
-    : 'Одна деталь — разные склады: из Оренбурга и быстрее, и не дороже';
-}
-
 /**
- * A group of offers («Запрошенный артикул», «Аналоги»): h3-sized title with the count in a mono
- * plate, a short note, a mono line on the stocks when the choice is price against time, and
- * the rows in the order a person chooses in.
+ * A group of offers («Точное совпадение», «Аналоги»; docs/design-v2.md, «Поиск»): the section
+ * marker with the title and the count, then the offer cards in the order a person chooses in.
  */
 export function OfferGroup({
   id,
   title,
-  note,
   offers,
   searchArticleNorm,
   orderingOpen,
   plans,
-  explainStocks = false,
 }: {
-  /** The requested article: one part on different stocks, so say what the choice is. */
-  explainStocks?: boolean;
   id: string;
   title: string;
-  note?: string;
   offers: readonly OfferView[];
   searchArticleNorm: string;
   orderingOpen: boolean;
@@ -86,22 +69,12 @@ export function OfferGroup({
   if (offers.length === 0) return null;
   const sorted = sortOffersForChoice(offers);
   const marks = offerMarks(sorted, plans);
-  const stocks = explainStocks ? stocksNote(sorted) : null;
   return (
     <section aria-labelledby={id} className="min-w-0">
-      <div className="mb-4 border-b border-line pb-3">
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 id={id} className="text-h3 md:text-xl">
-            {title}
-          </h2>
-          <span className="inline-flex h-6 min-w-6 items-center justify-center self-center rounded-sm bg-ink px-1.5 font-mono text-xs font-semibold text-paper tabular-nums">
-            {offers.length}
-          </span>
-          {note ? <p className="w-full text-sm text-muted sm:ml-auto sm:w-auto">{note}</p> : null}
-        </div>
-        {stocks ? <p className="mt-2 text-label text-accent-ink">{stocks}</p> : null}
-      </div>
-      <ul className="space-y-3">
+      <SectionHeading id={id}>
+        {title} <span className="font-bold text-muted tabular-nums">{offers.length}</span>
+      </SectionHeading>
+      <ul className="mt-5 space-y-3 md:mt-6 md:space-y-4">
         {sorted.map((offer) => (
           <OfferRow
             key={offer.id}

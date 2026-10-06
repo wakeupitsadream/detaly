@@ -3,9 +3,9 @@ import { buttonClass } from './ui/Button';
 import { cn } from './ui/cn';
 
 /**
- * "В корзину" on a search row: a plain form POST to /api/cart/items (works without
- * JavaScript, answers 303 → /cart). The client sends the query article, the offer id and the
- * quantity step — never a price.
+ * «В корзину» on an offer card: a 48 px brand button across its column. A plain form POST to
+ * /api/cart/items (works without JavaScript, answers 303 → /cart). The client sends the query
+ * article, the offer id and the quantity step — never a price.
  */
 export function AddToCartForm({
   q,
@@ -36,10 +36,13 @@ export function AddToCartForm({
       <input type="hidden" name="qty" value={qty} />
       <button
         type="submit"
-        className={cn(buttonClass({ variant: 'primary', block: true }), 'h-11 whitespace-nowrap')}
+        className={cn(
+          buttonClass({ variant: 'primary', size: 'md', block: true }),
+          'whitespace-nowrap',
+        )}
         aria-label={`В корзину: ${title}`}
       >
-        <IconCart size={19} strokeWidth={2} />В корзину
+        <IconCart size={22} />В корзину
       </button>
     </form>
   );

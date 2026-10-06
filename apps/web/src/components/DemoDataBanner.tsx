@@ -1,12 +1,12 @@
 import { DEMO_ARTICLES, DEMO_EXAMPLES } from '@/lib/demo-articles';
+import { IconInfo } from './icons';
 import { cn } from './ui/cn';
-import { Badge } from './ui/Badge';
 
 export { DEMO_ARTICLES, DEMO_EXAMPLES };
 
 /**
- * The demo articles as plain links with what the part is: «Масляный фильтр · OC 90». Plain
- * anchors, no prefetch, so they never spend the search limit.
+ * The demo articles as round chips with what the part is: «Масляный фильтр OC 90». Plain
+ * anchors, no prefetch, so they never spend the search limit. `onDark` for the brand header.
  */
 export function DemoExamples({
   onDark = false,
@@ -22,18 +22,15 @@ export function DemoExamples({
           <a
             href={`/search?q=${example.q}`}
             className={cn(
-              'group inline-flex min-h-9 max-w-full items-center gap-2 rounded-sm border px-3 text-sm transition-colors duration-150',
+              'inline-flex min-h-11 max-w-full items-center gap-2 rounded-full px-4 text-small transition-colors duration-150',
               onDark
-                ? 'border-graphite-700 text-steel-200 hover:border-steel-400 hover:text-paper'
-                : 'border-line bg-card text-ink hover:border-ink',
+                ? 'bg-on-brand/15 text-on-brand hover:bg-on-brand/25'
+                : 'bg-surface text-ink hover:bg-surface-2',
             )}
           >
             <span className="truncate max-sm:hidden">{example.what}</span>
             <span className="truncate sm:hidden">{example.short}</span>
-            <span aria-hidden className={onDark ? 'text-graphite-700' : 'text-line-strong'}>
-              ·
-            </span>
-            <span className="font-mono font-semibold whitespace-nowrap">{example.article}</span>
+            <span className="font-bold whitespace-nowrap tabular-nums">{example.article}</span>
           </a>
         </li>
       ))}
@@ -42,26 +39,36 @@ export function DemoExamples({
 }
 
 /**
- * The full demo note for an empty search (ROSSKO_MODE=fixtures): only these articles answer,
- * so a visitor who typed something else gets them as the way forward. The thin strip above the
- * header (DemoStrip) says the rest on every page.
+ * The demo note of the search (ROSSKO_MODE=fixtures; docs/design-v2.md, «Поиск»): one thin
+ * `wait-soft` line naming the articles that answer, as plain links. The strip above the header
+ * (DemoStrip) says the rest on every page.
  */
-export function DemoDataBanner() {
+export function DemoDataBanner({ className }: { className?: string }) {
   return (
     <div
-      className="flex min-w-0 flex-col gap-3 rounded border border-dashed border-line-strong bg-paper p-4"
+      className={cn(
+        'flex min-w-0 flex-wrap items-center gap-x-2.5 rounded-control sm:w-fit bg-wait-soft px-3 py-0.5 text-caption text-ink sm:gap-x-3 sm:px-4 sm:text-small',
+        className,
+      )}
       role="note"
       data-testid="demo-banner"
     >
-      <p className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
-        <Badge tone="demo" className="font-semibold">
-          Демо
-        </Badge>
-        <span className="min-w-0 text-muted">
-          В демо-витрине отвечают эти артикулы — попробуйте любой:
+      <span className="inline-flex min-h-11 items-center gap-2 font-semibold">
+        <IconInfo size={20} className="shrink-0 text-wait max-sm:hidden" />
+        <span className="max-sm:sr-only">В демо работают:</span>
+        <span aria-hidden className="sm:hidden">
+          Попробуйте:
         </span>
-      </p>
-      <DemoExamples />
+      </span>
+      {DEMO_EXAMPLES.map((example) => (
+        <a
+          key={example.q}
+          href={`/search?q=${example.q}`}
+          className="inline-flex min-h-11 items-center font-bold whitespace-nowrap tabular-nums underline decoration-1 underline-offset-4 hover:decoration-2"
+        >
+          {example.article}
+        </a>
+      ))}
     </div>
   );
 }

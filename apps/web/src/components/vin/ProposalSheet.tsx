@@ -1,19 +1,26 @@
 /**
- * /p/<token>: the master's proposal in «Техкарта» (docs/phase-1c-implementation.md section 11
- * item 2): the comment, the lines (tile, brand, article, name, quantity, price, date, stock
- * badge), the total, the rule «подобрали мы и не подошло — вернём деньги» and «Оформить и
- * оплатить», a plain form post (no JavaScript needed). Phones get the sum and the button in a
- * bar fixed at the bottom. An expired proposal is read-only.
+ * /p/<token>: the master's proposal (docs/phase-1c-implementation.md section 11 item 2; look:
+ * docs/design-v2.md, /p/[token]): the master's comment on a `surface` card with the master's
+ * icon, the lines as offer cards (tile, brand and article, name, stock badge, date, price), the
+ * total with «Оформить и оплатить» — a plain form post (no JavaScript needed) — and the rule
+ * «подобрали мы и не подошло — вернём деньги». Phones get the sum and the button in a white bar
+ * fixed at the bottom. An expired proposal is read-only.
  */
-import { IconArrowRight, IconClock, IconPhone, IconShield } from '@/components/icons';
+import {
+  IconArrowRight,
+  IconCalendar,
+  IconPhone,
+  IconShield,
+  IconWrench,
+} from '@/components/icons';
 import { Notice } from '@/components/page/Notice';
-import { SheetTitle } from '@/components/page/SheetTitle';
 import { StockBadge } from '@/components/StockBadge';
 import { Badge } from '@/components/ui/Badge';
 import { buttonClass } from '@/components/ui/Button';
 import { cn } from '@/components/ui/cn';
 import { PartTile } from '@/components/ui/PartTile';
 import { Price } from '@/components/ui/Price';
+import { SectionHeading } from '@/components/ui/Section';
 import { telHref } from '@/server/brand';
 import type { ProposalLineView, ProposalPageView } from '@/server/vin/proposal-page';
 
@@ -30,50 +37,52 @@ const STATUS_TEXT: Record<Exclude<ProposalLineView['status'], 'ok'>, string> = {
   excluded: 'Не продаём онлайн — спросите в сервисе',
 };
 
+/** One line as an offer card: tile | brand, article, name, badge, date | price. */
 function ProposalLine({ line }: { line: ProposalLineView }) {
   const off = line.status !== 'ok';
   return (
     <li
       className={cn(
-        'grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] gap-x-4 gap-y-3 rounded border border-line bg-card p-4 md:grid-cols-[4.5rem_minmax(0,1fr)_auto] md:gap-x-6 md:p-5',
-        off && 'bg-paper-2',
+        'grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] gap-x-4 gap-y-4 rounded-tile border border-line p-4',
+        'md:grid-cols-[4.5rem_minmax(0,1fr)_auto] md:items-center md:gap-x-6 md:p-5',
+        off ? 'bg-surface' : 'bg-bg',
       )}
       data-testid="proposal-line"
       data-status={line.status}
     >
-      <PartTile name={line.name} size="sm" className="md:size-18" />
+      <PartTile name={line.name} size="sm" className="md:size-18 md:rounded-tile" />
       <div className="min-w-0">
-        <p className="text-label text-muted wrap-anywhere">{line.brand}</p>
-        <p className="mt-1 font-mono text-lg leading-tight font-semibold tracking-wide wrap-anywhere">
-          {line.article}
+        <p className="text-[1.0625rem] leading-snug font-bold wrap-anywhere">
+          {line.brand} <span className="tabular-nums">{line.article}</span>
         </p>
-        <p className="mt-1 text-[0.9375rem] leading-snug wrap-anywhere">{line.name}</p>
+        <p className="mt-1 line-clamp-2 text-small font-normal text-muted wrap-anywhere">
+          {line.name}
+        </p>
         {line.status !== 'ok' ? (
-          <p className="mt-3 text-sm text-danger">{STATUS_TEXT[line.status]}</p>
+          <p className="mt-3 text-small font-semibold text-danger">{STATUS_TEXT[line.status]}</p>
         ) : (
           <div className="mt-3 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
             <StockBadge isLocal={line.isLocal} />
             {line.promiseText ? (
               <span
-                className="inline-flex min-w-0 items-center gap-1.5 text-sm text-muted"
+                className="inline-flex min-w-0 items-center gap-1.5 text-small"
                 data-testid="proposal-line-promise"
               >
-                <IconClock size={15} className="shrink-0 text-ink" />
+                <IconCalendar size={20} className="shrink-0 text-brand" />
                 <span>
-                  Получение <span className="font-semibold text-ink">{line.promiseText}</span>
+                  Получение <span className="font-bold">{line.promiseText}</span>
                 </span>
               </span>
             ) : null}
           </div>
         )}
       </div>
-      <div className="col-span-2 flex min-w-0 items-baseline justify-between gap-4 border-t border-dashed border-line pt-3 md:col-span-1 md:flex-col md:items-end md:justify-start md:gap-0 md:border-0 md:pt-0 md:text-right">
-        <p className="font-mono text-xs text-muted md:order-2 md:mt-1.5">
+      <div className="col-span-2 flex min-w-0 items-center justify-between gap-4 border-t border-line pt-3 md:col-span-1 md:flex-col md:items-end md:justify-start md:gap-1 md:border-0 md:pt-0 md:text-right">
+        <p className="text-small font-normal text-muted tabular-nums md:order-2">
           {line.qty} шт. × <span className="whitespace-nowrap">{line.priceText}</span>
         </p>
         <Price
-          size="sm"
-          className={cn('md:order-1 md:[--price-size:1.5rem]', off && 'text-faint line-through')}
+          className={cn('md:order-1', off && 'text-muted line-through')}
           data-testid="proposal-line-total"
         >
           {line.lineTotalText}
@@ -86,13 +95,11 @@ function ProposalLine({ line }: { line: ProposalLineView }) {
 function TakeButton({
   mode,
   block = false,
-  onDark = false,
   compact = false,
   testId,
 }: {
   mode: ProposalMode;
   block?: boolean;
-  onDark?: boolean;
   /** The phone bar: a shorter label and the regular height. */
   compact?: boolean;
   testId: string;
@@ -103,11 +110,11 @@ function TakeButton({
     return (
       <a
         href="/vin"
-        className={cn(buttonClass({ variant: 'primary', size, block, onDark }), 'shrink-0')}
+        className={cn(buttonClass({ variant: 'primary', size, block }), 'shrink-0')}
         data-testid={testId}
       >
         {compact ? 'Прислать VIN' : 'Прислать свой VIN'}
-        <IconArrowRight size={18} />
+        <IconArrowRight size={20} />
       </a>
     );
   }
@@ -115,11 +122,11 @@ function TakeButton({
     <form method="post" action={mode.action} className={cn('min-w-0', block && 'w-full')}>
       <button
         type="submit"
-        className={cn(buttonClass({ variant: 'primary', size, block, onDark }), 'shrink-0')}
+        className={cn(buttonClass({ variant: 'primary', size, block }), 'shrink-0')}
         data-testid={testId}
       >
         {compact ? 'Оформить' : 'Оформить и оплатить'}
-        <IconArrowRight size={18} />
+        <IconArrowRight size={20} />
       </button>
     </form>
   );
@@ -137,21 +144,24 @@ export function ProposalSheet({
   const sellable = view.lines.length > view.unavailable;
   const canTake = mode.kind !== 'expired' && sellable;
   return (
-    <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-12">
+    <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-10">
       <div className="min-w-0 space-y-6">
         {mode.kind === 'sample' ? (
           <Notice tone="info" title="Это пример подборки" data-testid="proposal-sample">
-            Так выглядит ответ мастера на заявку по VIN. Пришлите свой VIN — подберём бесплатно.
+            Пришлите свой VIN — подберём бесплатно.
           </Notice>
         ) : null}
         {mode.kind === 'expired' ? (
           <Notice tone="wait" title="Подборка больше не действует" data-testid="proposal-expired">
-            Срок подборки истёк или мастер прислал новую. Попросите мастера обновить подборку
+            Попросите мастера обновить подборку
             {contactPhone ? (
               <>
                 {' '}
                 —{' '}
-                <a href={telHref(contactPhone)} className="font-semibold underline">
+                <a
+                  href={telHref(contactPhone)}
+                  className="font-semibold whitespace-nowrap underline"
+                >
                   {contactPhone}
                 </a>
               </>
@@ -161,30 +171,34 @@ export function ProposalSheet({
         ) : null}
         {view.changed && mode.kind !== 'expired' ? (
           <Notice tone="info" data-testid="proposal-changed">
-            Цены или наличие изменились с момента подборки — показываем актуальные.
+            Цены или наличие изменились — показываем актуальные.
           </Notice>
         ) : null}
 
         {view.comment ? (
           <section
-            className="min-w-0 rounded border border-line border-l-[3px] border-l-accent bg-card p-5 md:p-6"
+            className="flex min-w-0 items-start gap-4 rounded-panel bg-surface p-5 md:p-6"
             aria-labelledby="proposal-comment"
             data-testid="proposal-comment"
           >
-            <h2 id="proposal-comment" className="text-label text-muted">
-              Комментарий мастера
-            </h2>
-            <p className="mt-2 text-[0.9375rem] leading-relaxed whitespace-pre-line wrap-anywhere">
-              {view.comment}
-            </p>
+            <span
+              aria-hidden
+              className="grid size-14 shrink-0 place-items-center rounded-full bg-brand text-on-brand"
+            >
+              <IconWrench size={28} />
+            </span>
+            <div className="min-w-0">
+              <h2 id="proposal-comment" className="text-h3">
+                Комментарий мастера
+              </h2>
+              <p className="mt-2 text-body whitespace-pre-line wrap-anywhere">{view.comment}</p>
+            </div>
           </section>
         ) : null}
 
         <section aria-labelledby="proposal-lines" className="min-w-0">
-          <SheetTitle index="01" id="proposal-lines" tight>
-            Что подобрал мастер
-          </SheetTitle>
-          <ul className="mt-4 flex min-w-0 flex-col gap-3" data-testid="proposal-lines">
+          <SectionHeading id="proposal-lines">Что подобрал мастер</SectionHeading>
+          <ul className="mt-5 flex min-w-0 flex-col gap-3" data-testid="proposal-lines">
             {view.lines.map((line) => (
               <ProposalLine key={line.id} line={line} />
             ))}
@@ -192,29 +206,29 @@ export function ProposalSheet({
         </section>
       </div>
 
-      <aside className="min-w-0 space-y-5" aria-label="Итого">
+      <aside className="min-w-0 space-y-4 lg:pt-1" aria-label="Итого">
         <section
-          className="corner-marks min-w-0 rounded border border-ink bg-card p-5 md:p-6"
+          className="min-w-0 rounded-panel bg-surface p-6 md:p-7"
           data-testid="proposal-summary"
         >
-          <p className="text-label text-muted">Итого, {view.itemsCount} шт.</p>
-          <Price size="lg" className="mt-3 block" data-testid="proposal-total">
+          <p className="text-body font-semibold text-muted">Итого, {view.itemsCount} шт.</p>
+          <Price size="lg" className="mt-1 block" data-testid="proposal-total">
             {view.totalText}
           </Price>
           {view.promiseText ? (
-            <p className="mt-4 flex items-start gap-2 border-t border-dashed border-line pt-4 text-sm text-muted">
-              <IconClock size={16} className="mt-0.5 shrink-0 text-ink" />
+            <p className="mt-4 flex items-start gap-2 text-body">
+              <IconCalendar size={22} className="mt-0.5 shrink-0 text-brand" />
               <span>
-                Получение заказа <span className="font-semibold text-ink">{view.promiseText}</span>
+                Получение <span className="font-bold">{view.promiseText}</span>
               </span>
             </p>
           ) : null}
-          <p className="mt-2 text-sm text-muted">
+          <p className="mt-2 text-small font-normal text-muted">
             {mode.kind === 'expired' ? 'Действовала' : 'Действует'} {view.expiresText}
           </p>
           {view.stale && mode.kind === 'live' ? (
-            <p className="mt-2 text-sm text-muted">
-              Цены и наличие ещё раз сверим у поставщика при оформлении.
+            <p className="mt-1 text-small font-normal text-muted">
+              При оформлении сверим цены ещё раз.
             </p>
           ) : null}
           <div className="mt-5">
@@ -225,45 +239,46 @@ export function ProposalSheet({
                 href={telHref(contactPhone)}
                 className={buttonClass({ variant: 'secondary', size: 'lg', block: true })}
               >
-                <IconPhone size={18} />
+                <IconPhone size={20} className="text-brand" />
                 Позвонить мастеру
               </a>
             ) : null}
           </div>
+          {mode.kind === 'sample' ? (
+            <Badge tone="demo" className="mt-4">
+              пример, цены условные
+            </Badge>
+          ) : null}
         </section>
 
-        <section className="min-w-0 rounded border border-line bg-card p-5 md:p-6">
-          <div className="flex items-start gap-3">
-            <IconShield size={24} className="shrink-0 text-ok" />
-            <div className="min-w-0">
-              <h2 className="text-h3">Подобрали мы&nbsp;— отвечаем мы</h2>
-              <p className="mt-2 text-sm text-muted" data-testid="proposal-guarantee">
-                Если деталь из этой подборки не подошла к автомобилю из заявки, вернём деньги
-                полностью.
-              </p>
-            </div>
+        <section className="flex min-w-0 items-start gap-4 rounded-tile border border-line p-5 md:p-6">
+          <IconShield size={40} strokeWidth={1.5} className="shrink-0 text-brand" />
+          <div className="min-w-0">
+            <h2 className="text-h3">Подобрали мы&nbsp;— отвечаем мы</h2>
+            <p className="mt-1 text-small font-normal text-muted" data-testid="proposal-guarantee">
+              Деталь не подошла к автомобилю из заявки — вернём деньги полностью.
+            </p>
           </div>
         </section>
-        {mode.kind === 'sample' ? <Badge tone="demo">пример, цены условные</Badge> : null}
       </aside>
 
       {canTake ? (
         <>
-          <div aria-hidden className="h-[calc(4.5rem+env(safe-area-inset-bottom))] md:hidden" />
+          <div aria-hidden className="h-[calc(5rem+env(safe-area-inset-bottom))] md:hidden" />
           <div
-            className="fixed inset-x-0 bottom-0 z-50 border-t border-graphite-700 bg-graphite-950 pb-[env(safe-area-inset-bottom)] text-paper md:hidden"
+            className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-bg pb-[env(safe-area-inset-bottom)] shadow-float md:hidden"
             data-testid="proposal-bar"
           >
-            <div className="flex h-[4.5rem] items-center justify-between gap-3 px-4">
+            <div className="flex h-20 items-center justify-between gap-3 px-4">
               <p className="min-w-0">
-                <span className="block font-display text-lg leading-none font-semibold whitespace-nowrap tabular-nums">
+                <span className="block text-[1.375rem] leading-none font-extrabold whitespace-nowrap tabular-nums">
                   {view.totalText}
                 </span>
-                <span className="mt-1 block font-mono text-xs text-steel-400">
+                <span className="mt-1 block text-caption text-muted tabular-nums">
                   {view.itemsCount} шт.
                 </span>
               </p>
-              <TakeButton mode={mode} onDark compact testId="proposal-take-bar" />
+              <TakeButton mode={mode} compact testId="proposal-take-bar" />
             </div>
           </div>
         </>

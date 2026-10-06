@@ -97,9 +97,10 @@ export default async function ProposalPage({ params }: { params: Params }) {
   return (
     <InnerPage>
       <PageBand
+        tone="light"
         eyebrow="Подбор по VIN"
         title="Подборка мастера"
-        lead="Мастер подобрал детали под ваш автомобиль. Цены и даты — на сегодня; при оформлении сверим их у поставщика ещё раз."
+        lead="Мастер подобрал под вашу машину. Цены и даты — на сегодня."
         titleTestId="proposal-title"
       />
       <PageBody>

@@ -1,23 +1,46 @@
 import type { Metadata } from 'next';
-import { IconPhone, IconPin, IconShield } from '@/components/icons';
+import type { ReactNode } from 'react';
+import {
+  IconBox,
+  IconChevronDown,
+  IconClock,
+  IconDocument,
+  IconPhone,
+  IconPin,
+  IconShield,
+  IconWallet,
+} from '@/components/icons';
 import { LegalDocumentView } from '@/components/LegalDocumentView';
 import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
 import { buttonClass } from '@/components/ui/Button';
-import { cn } from '@/components/ui/cn';
-import { Eyebrow } from '@/components/ui/Eyebrow';
+import { InfoCard } from '@/components/ui/Card';
+import { SectionHeading } from '@/components/ui/Section';
 import { getBrand, telHref } from '@/server/brand';
 import { loadPublishedDocument, type LegalDocument } from '@/server/documents';
 import { getLogger } from '@/server/logger';
 
 export const metadata: Metadata = { title: 'Возврат и обмен' };
 
-/** The three numbers a client asks about first, set large in the band. */
-const FACTS = [
-  { value: '7 дней', label: 'на возврат исправной детали' },
-  { value: '0 ₽', label: 'удержаний при самовывозе' },
-  { value: '10 дней', label: 'чтобы деньги вернулись' },
-] as const;
+/** The three steps, with icons (docs/design-v2.md, /returns). */
+const STEPS: readonly { icon: ReactNode; title: string; text: string }[] = [
+  {
+    icon: <IconBox size={44} strokeWidth={1.5} className="md:size-14" />,
+    title: 'Принесите деталь',
+    text: 'В течение 7 дней, в упаковке.',
+  },
+  {
+    icon: <IconShield size={44} strokeWidth={1.5} className="md:size-14" />,
+    title: 'Мы проверим',
+    text: 'Без следов установки — примем.',
+  },
+  {
+    icon: <IconWallet size={44} strokeWidth={1.5} className="md:size-14" />,
+    title: 'Деньги за 10 дней',
+    text: 'Тем же способом, с чеком.',
+  },
+];
 
+/** The rules, each under its own disclosure. */
 const RULES = [
   {
     title: '7 дней на возврат исправной детали',
@@ -39,7 +62,7 @@ const RULES = [
     title: 'Подобрали мы — и не подошло',
     text: 'Если деталь подбирал наш мастер по VIN и она не подошла к автомобилю из заявки, вернём деньги полностью.',
   },
-];
+] as const;
 
 async function loadMemo(): Promise<LegalDocument | null> {
   try {
@@ -50,6 +73,35 @@ async function loadMemo(): Promise<LegalDocument | null> {
   }
 }
 
+/** A <details> row: a bold summary with a chevron, the text under it. */
+function Disclosure({
+  title,
+  icon,
+  children,
+}: {
+  title: ReactNode;
+  icon?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <details className="details-plain group min-w-0 border-b border-line">
+      <summary className="flex min-h-16 items-center gap-3 py-4 text-[1.0625rem] leading-snug font-bold hover:text-brand">
+        {icon ? <span className="shrink-0 text-brand">{icon}</span> : null}
+        <span className="min-w-0 flex-1">{title}</span>
+        <IconChevronDown
+          size={24}
+          className="shrink-0 text-muted transition-transform duration-150 group-open:rotate-180"
+        />
+      </summary>
+      <div className="min-w-0 pb-5">{children}</div>
+    </details>
+  );
+}
+
+/**
+ * /returns (docs/design-v2.md, «Инфостраницы»): three steps with icons, where to bring the part,
+ * then the rules and the full memo (the published return_memo document) under disclosures.
+ */
 export default async function ReturnsPage() {
   const brand = getBrand();
   const memo = await loadMemo();
@@ -57,72 +109,82 @@ export default async function ReturnsPage() {
   return (
     <InnerPage>
       <PageBand
-        eyebrow="Гарантии и возврат"
+        tone="light"
         title="Возврат и обмен"
-        lead="Коротко и по-человечески. Полная памятка — ниже."
-      >
-        <dl className="grid min-w-0 grid-cols-1 border-t border-graphite-700 sm:grid-cols-3">
-          {FACTS.map((fact, index) => (
-            <div
-              key={fact.value}
-              className={cn(
-                'flex min-w-0 items-baseline gap-4 border-b border-graphite-700 py-4 sm:flex-col sm:items-start sm:gap-3 sm:border-b-0 sm:py-6',
-                index > 0 && 'sm:border-l sm:pl-6',
-              )}
-            >
-              <dt className="order-2 text-sm text-steel-400 md:text-base">{fact.label}</dt>
-              <dd className="order-1 shrink-0 font-display text-3xl leading-none font-bold text-paper tabular-nums md:text-5xl">
-                {fact.value}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </PageBand>
-
+        lead="7 дней на возврат. Без удержаний при самовывозе."
+      />
       <PageBody className="space-y-12 md:space-y-16">
-        <ol className="grid min-w-0 gap-px overflow-hidden rounded border border-line bg-line md:grid-cols-2">
-          {RULES.map((rule, index) => (
-            <li key={rule.title} className="min-w-0 bg-card p-5 md:p-7">
-              <span className="font-mono text-xs font-semibold text-accent-ink">
-                {String(index + 1).padStart(2, '0')}
-              </span>
-              <h2 className="mt-3 text-h3">{rule.title}</h2>
-              <p className="mt-2 text-muted">{rule.text}</p>
-            </li>
-          ))}
-          <li className="grain-dark min-w-0 bg-graphite-900 p-5 text-steel-200 md:p-7">
-            <span className="inline-flex items-center gap-2 text-label text-steel-400">
-              <IconShield size={16} className="text-accent" />
-              Как вернуть
-            </span>
-            <h2 className="mt-3 text-h3 text-paper">Принесите деталь в пункт выдачи</h2>
-            <p className="mt-2 flex items-start gap-2">
-              <IconPin size={18} className="mt-0.5 shrink-0 text-steel-400" />
-              <span className="min-w-0 wrap-anywhere">
+        <section aria-label="Как вернуть деталь" className="min-w-0">
+          <ol className="grid min-w-0 gap-3 md:grid-cols-3 md:gap-4">
+            {STEPS.map((step, index) => (
+              <li
+                key={step.title}
+                className="flex min-w-0 items-center gap-4 rounded-tile bg-surface p-4 md:flex-col md:items-start md:gap-5 md:p-6"
+              >
+                <span
+                  aria-hidden
+                  className="relative grid size-20 shrink-0 place-items-center rounded-tile bg-bg text-brand md:size-24"
+                >
+                  {step.icon}
+                  <span className="absolute -top-2 -left-2 grid size-8 place-items-center rounded-full bg-brand text-base font-extrabold text-on-brand tabular-nums">
+                    {index + 1}
+                  </span>
+                </span>
+                <div className="min-w-0">
+                  <h2 className="text-h3">{step.title}</h2>
+                  <p className="mt-1 text-small font-normal text-muted">{step.text}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <InfoCard
+          title="Куда принести"
+          titleId="returns-where"
+          aria-labelledby="returns-where"
+          icon={<IconPin size={40} strokeWidth={1.5} />}
+        >
+          <div className="flex min-w-0 flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            <ul className="min-w-0 space-y-2 text-body">
+              <li className="font-semibold wrap-anywhere">
+                {pickup.name ? `${pickup.name}, ` : null}
                 {pickup.address ?? 'Адрес уточните по телефону'}
-                {pickup.hours ? (
-                  <span className="block text-sm text-steel-400">{pickup.hours}</span>
-                ) : null}
-              </span>
-            </p>
+              </li>
+              {pickup.hours ? (
+                <li className="flex items-center gap-2 text-muted">
+                  <IconClock size={22} className="shrink-0 text-brand" />
+                  {pickup.hours}
+                </li>
+              ) : null}
+            </ul>
             {brand.contactPhone ? (
               <a
-                className={cn(buttonClass({ variant: 'secondary', onDark: true }), 'mt-5')}
+                className={buttonClass({ variant: 'primary', size: 'lg' })}
                 href={telHref(brand.contactPhone)}
               >
-                <IconPhone size={17} />
-                Позвонить в пункт выдачи {brand.contactPhone}
+                <IconPhone size={20} />
+                <span className="whitespace-nowrap tabular-nums">{brand.contactPhone}</span>
               </a>
             ) : null}
-          </li>
-        </ol>
+          </div>
+        </InfoCard>
 
-        {memo ? (
-          <section aria-label="Памятка о возврате" className="min-w-0">
-            <Eyebrow className="mb-4">Полная памятка</Eyebrow>
-            <LegalDocumentView doc={memo} sheet />
-          </section>
-        ) : null}
+        <section aria-labelledby="returns-rules" className="min-w-0 max-w-3xl">
+          <SectionHeading id="returns-rules">Подробно</SectionHeading>
+          <div className="mt-4 border-t border-line">
+            {RULES.map((rule) => (
+              <Disclosure key={rule.title} title={rule.title}>
+                <p className="text-body text-muted">{rule.text}</p>
+              </Disclosure>
+            ))}
+            {memo ? (
+              <Disclosure title="Полная памятка о возврате" icon={<IconDocument size={24} />}>
+                <LegalDocumentView doc={memo} embedded />
+              </Disclosure>
+            ) : null}
+          </div>
+        </section>
       </PageBody>
     </InnerPage>
   );

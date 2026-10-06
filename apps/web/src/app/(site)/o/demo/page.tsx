@@ -49,7 +49,10 @@ export default async function DemoOrderPage({ searchParams }: { searchParams?: S
     view,
     screen,
     hours: brand.pickup.hours,
-    partner: installPartner(serverEnv()),
+    // Without INSTALL_PARTNER_NAME the demo names the pickup point (it is the one that installs).
+    partner:
+      installPartner(serverEnv()) ??
+      (brand.pickup.name ? { name: brand.pickup.name, requisites: null } : null),
     now,
   });
   let flash: OrderFlash | null = null;

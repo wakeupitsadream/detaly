@@ -1,6 +1,6 @@
 import { formatRub } from '@detaly/domain';
 import type { ReactNode } from 'react';
-import { IconCalendar, IconCard, IconLift, IconLock, IconWallet } from '@/components/icons';
+import { IconCalendar, IconCard, IconLock, IconWallet, IconWrench } from '@/components/icons';
 import { InstallLine } from '@/components/install/InstallLine';
 import { InstallBookingBlock } from '@/components/install/InstallBookingBlock';
 import { Notice } from '@/components/page/Notice';
@@ -39,14 +39,16 @@ import {
 import { OrderStepper } from './OrderStepper';
 
 /**
- * One column on phones in reading order. From lg two: everything in the left column and the
- * pickup card sticky on the right, spanning all rows (`row-span-30`; the rows the page does not
- * fill are empty and take no room, so the gaps are margins of the items).
+ * One column on phones in reading order. From lg two: everything in the left column, and on the
+ * right, spanning all rows (`row-span-30`; the rows the page does not fill are empty and take
+ * no room, so the gaps are margins of the items), where to collect the order with its code and
+ * the installation booking under it. Not sticky: the two cards together can be taller than the
+ * screen under the sticky search plate, and a stuck column would hide the booking button.
  */
 const GRID =
   'grid min-w-0 gap-y-4 md:gap-y-5 lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-x-8 lg:gap-y-0 lg:[&>*]:col-start-1 lg:[&>*]:mb-5';
 const SIDE =
-  'lg:col-start-2! lg:row-span-30 lg:row-start-1 lg:mb-0! lg:sticky lg:top-6 lg:self-start';
+  'grid min-w-0 gap-4 md:gap-5 lg:col-start-2! lg:row-span-30 lg:row-start-1 lg:mb-0! lg:self-start';
 
 const NO_NOTICE: PayNotice = { paid: false, payError: null, since: null };
 
@@ -89,7 +91,7 @@ function paymentLine(view: OrderView): ReactNode {
  */
 function InstallCard({ plan }: { plan: InstallPlanView | null }) {
   return (
-    <Card title="Установка" icon={<IconLift size={26} />} testId="order-install">
+    <Card title="Установка" icon={<IconWrench size={26} />} testId="order-install">
       <div data-testid="order-car-ready">
         <InstallLine plan={plan} size="md" />
       </div>
@@ -98,7 +100,7 @@ function InstallCard({ plan }: { plan: InstallPlanView | null }) {
       </p>
       {plan?.demo ? (
         <Badge tone="demo" className="mt-3">
-          загрузка демонстрационная
+          Демо: время условное
         </Badge>
       ) : null}
     </Card>
@@ -167,13 +169,9 @@ export function OrderDetails({
           : messenger !== null;
   const installLine =
     showInstall && install !== undefined ? (
+      // The booking card below says «Демо» once for the line and the slots.
       <div data-testid="order-car-ready">
-        <InstallLine plan={install} size="md" />
-        {install?.demo ? (
-          <Badge tone="demo" className="mt-2">
-            загрузка демонстрационная
-          </Badge>
-        ) : null}
+        <InstallLine plan={install} size="md" icon={false} />
       </div>
     ) : undefined;
   const PayIcon = view.scheme === 'prepay' ? IconCard : IconWallet;
@@ -240,30 +238,29 @@ export function OrderDetails({
           <RefundBlock view={view} />
           <PartialArrivalBlock view={view} contactPhone={contactPhone} />
 
-          {view.fulfillment === 'pickup' ? (
-            <PickupBlock
-              className={SIDE}
-              pickup={pickup}
-              code={view.pickupCode}
-              routes={routes}
-              logoSrc={pickupLogo}
-            />
-          ) : view.pickupCode ? (
-            <div className={SIDE}>
+          <div className={SIDE}>
+            {view.fulfillment === 'pickup' ? (
+              <PickupBlock
+                pickup={pickup}
+                code={view.pickupCode}
+                routes={routes}
+                logoSrc={pickupLogo}
+              />
+            ) : view.pickupCode ? (
               <PickupCodeBlock code={view.pickupCode} />
-            </div>
-          ) : null}
+            ) : null}
 
-          {services?.install ? (
-            <InstallBookingBlock
-              token={view.token}
-              install={services.install}
-              notice={flashFor('install')}
-              lead={installLine}
-            />
-          ) : showInstall && install !== undefined ? (
-            <InstallCard plan={install} />
-          ) : null}
+            {services?.install ? (
+              <InstallBookingBlock
+                token={view.token}
+                install={services.install}
+                notice={flashFor('install')}
+                lead={installLine}
+              />
+            ) : showInstall && install !== undefined ? (
+              <InstallCard plan={install} />
+            ) : null}
+          </div>
 
           <ItemsBlock
             items={view.items}
@@ -272,7 +269,7 @@ export function OrderDetails({
             totalKop={view.totalKop}
           />
 
-          {services ? <OrderPhotos photos={services.photos} demo={services.demo} /> : null}
+          {services ? <OrderPhotos photos={services.photos} /> : null}
 
           {services?.claims ? (
             <ClaimBlock

@@ -169,7 +169,8 @@ describe('demo order: phase 1C blocks (decision С21)', () => {
     ]);
     // The packaging photo is a placeholder: no file, no URL.
     expect(services.photos).toEqual([{ id: 'demo-packaging', kind: 'packaging', url: null }]);
-    expect(html).toContain('data-testid="order-photo-stub"');
+    // No file, so no photo block (a grey stub read as a broken picture).
+    expect(html).not.toContain('data-testid="order-photos"');
     expect(html).not.toContain('/api/orders/demo/photos');
     expect(html).toContain('оплачивается в сервисе по его чеку');
     expect(html).not.toMatch(/(^|\D)(\d{10}|\d{12}|\d{15})(\D|$)/);

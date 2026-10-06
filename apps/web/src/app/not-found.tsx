@@ -1,15 +1,26 @@
+import { Suspense } from 'react';
+import { HeaderSearch } from '@/components/HeaderSearch';
 import { IconHome, IconSearch, IconSts } from '@/components/icons';
 import { ButtonLink } from '@/components/ui/Button';
+import { Container } from '@/components/ui/Container';
 
 /**
  * Root 404 (also prerendered at build time): no env, no database, so no brand name either —
- * a brand plate on top stands for the header. docs/design-v2.md, «Инфостраницы»: an icon,
+ * the brand plate on top carries the search pill (HeaderSearch needs no env), so a mistyped
+ * link still leads straight to an article search. docs/design-v2.md, «Инфостраницы»: an icon,
  * «Страница не найдена», «На главную» and «Подбор по VIN».
  */
 export default function NotFound() {
   return (
     <main className="flex min-h-screen min-w-0 flex-col bg-bg text-ink">
-      <div aria-hidden className="h-6 rounded-b-header bg-brand lg:h-8 lg:rounded-b-header-lg" />
+      <div className="site-header rounded-b-header bg-brand text-on-brand lg:rounded-b-header-lg">
+        <Container className="pt-3 pb-4 md:py-4">
+          {/* useSearchParams inside: a prerendered page needs the boundary. */}
+          <Suspense fallback={<div className="h-14 rounded-full bg-bg" />}>
+            <HeaderSearch />
+          </Suspense>
+        </Container>
+      </div>
       <div className="mx-auto flex w-full max-w-site flex-1 flex-col items-center justify-center px-4 py-16 text-center md:px-6 lg:px-8">
         <span
           aria-hidden

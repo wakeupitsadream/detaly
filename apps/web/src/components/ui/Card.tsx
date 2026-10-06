@@ -33,15 +33,18 @@ export function Card({
   );
 }
 
-/** The section marker on top of a block: a thick brand bar, 96 x 6 px. */
+/**
+ * The section marker of a block: a thick rounded brand bar, 96 x 6 px, inside the padding right
+ * over the title (glued to the top edge it looked like a label coming off).
+ */
 export function MarkerBar({ className }: { className?: string }) {
-  return <span aria-hidden className={cn('block h-1.5 w-24 bg-brand', className)} />;
+  return <span aria-hidden className={cn('block h-1.5 w-24 rounded-full bg-brand', className)} />;
 }
 
 /**
  * A light block (docs/design-v2.md, InfoCard): `bg-surface rounded-panel`, the brand marker
- * bar on its top edge over the content, an optional icon and title, then one or two sentences
- * or whatever the page puts in.
+ * bar over the title, an optional icon and title, then one or two sentences or whatever the
+ * page puts in.
  */
 export function InfoCard({
   as: Tag = 'section',
@@ -65,21 +68,19 @@ export function InfoCard({
 } & Omit<HTMLAttributes<HTMLElement>, 'title'>) {
   return (
     <Tag
-      className={cn('relative min-w-0 rounded-panel bg-surface p-6 text-ink md:p-8', className)}
+      className={cn('min-w-0 rounded-panel bg-surface p-6 text-ink md:p-8', className)}
       {...rest}
     >
-      {marker ? <MarkerBar className="absolute top-0 left-6 md:left-8" /> : null}
+      {marker ? <MarkerBar className="mb-4 md:mb-5" /> : null}
       {title ? (
-        <div className={cn('flex min-w-0 items-center gap-3', marker && 'pt-2')}>
+        <div className="flex min-w-0 items-center gap-3">
           {icon ? <span className="shrink-0 text-brand">{icon}</span> : null}
           <Title id={titleId} className="min-w-0 text-h2">
             {title}
           </Title>
         </div>
       ) : null}
-      {children ? (
-        <div className={cn('min-w-0', title ? 'mt-4' : marker && 'pt-2')}>{children}</div>
-      ) : null}
+      {children ? <div className={cn('min-w-0', Boolean(title) && 'mt-4')}>{children}</div> : null}
     </Tag>
   );
 }

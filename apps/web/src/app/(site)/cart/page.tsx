@@ -110,7 +110,7 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
         tone="light"
         title="Корзина"
         lead={summary ? cartCountLabel(summary.lines.length) : undefined}
-        meta={<CheckoutSteps current={0} />}
+        meta={summary ? <CheckoutSteps current={0} /> : undefined}
       />
       <PageBody className="space-y-4">
         {isCartErrorCode(errorCode) ? (
@@ -144,7 +144,8 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
                 </ButtonLink>
               </p>
             </div>
-            <div className="min-w-0 space-y-3 lg:sticky lg:top-6">
+            {/* top-28: clear of the sticky search plate (80 px) with a gap. */}
+            <div className="min-w-0 space-y-3 lg:sticky lg:top-28">
               <CartSummary
                 subtotalText={summary.subtotalText}
                 itemsCount={summary.itemsCount}
@@ -153,13 +154,26 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
                 install={install}
                 payment={paymentMode(summary.payment)}
                 gate={gate.open ? { open: true } : { open: false, message: gate.message, phone }}
+                paymentNotice={
+                  summary.payment.mixed ? undefined : (
+                    <PaymentModeNotice
+                      payment={summary.payment}
+                      checkoutOpen={gate.open && summary.minimums.ok}
+                      hasToOrder={summary.lines.some((line) => !line.isLocal)}
+                      inline
+                    />
+                  )
+                }
               />
-              {/* Below the minimum no part of the cart can be checked out either. */}
-              <PaymentModeNotice
-                payment={summary.payment}
-                checkoutOpen={gate.open && summary.minimums.ok}
-                hasToOrder={summary.lines.some((line) => !line.isLocal)}
-              />
+              {/* A mixed cart needs the decision (one prepaid order or two): its own card.
+                  Below the minimum no part of the cart can be checked out either. */}
+              {summary.payment.mixed ? (
+                <PaymentModeNotice
+                  payment={summary.payment}
+                  checkoutOpen={gate.open && summary.minimums.ok}
+                  hasToOrder={summary.lines.some((line) => !line.isLocal)}
+                />
+              ) : null}
             </div>
           </div>
         ) : (

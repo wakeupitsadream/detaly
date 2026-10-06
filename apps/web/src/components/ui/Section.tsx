@@ -40,18 +40,21 @@ export function Section({
  * Heading of a section (docs/design-v2.md, SectionHeading): the marker — a hairline across the
  * column with a 96 x 6 px brand bar on its left — and a bold `text-h2` title on the left.
  * `center` drops the marker and centres the title («Популярные категории»). `action` sits on
- * the right of the title (a «Все марки» link).
+ * the right of the title (a «Все марки» link). `phoneMarker={false}` drops the marker below md
+ * (the first group of search results right under the filters: the room goes to the offer).
  */
 export function SectionHeading({
   as: Tag = 'h2',
   id,
   center = false,
   onDark = false,
+  phoneMarker = true,
   action,
   className,
   children,
 }: {
   as?: 'h1' | 'h2' | 'h3';
+  phoneMarker?: boolean;
   id?: string;
   center?: boolean;
   /** On the dark panel: white title, no marker line. */
@@ -73,13 +76,17 @@ export function SectionHeading({
   return (
     <div className={cn('min-w-0', className)}>
       {onDark ? null : (
-        <div aria-hidden className="relative h-1.5">
+        <div aria-hidden className={cn('relative h-1.5', !phoneMarker && 'max-md:hidden')}>
           <div className="h-px bg-line" />
           <div className="absolute top-0 left-0 h-1.5 w-24 bg-brand" />
         </div>
       )}
       <div
-        className={cn('flex min-w-0 items-end justify-between gap-4', !onDark && 'mt-5 md:mt-6')}
+        className={cn(
+          'flex min-w-0 items-end justify-between gap-4',
+          !onDark && 'mt-5 md:mt-6',
+          !onDark && !phoneMarker && 'max-md:mt-0',
+        )}
       >
         <Tag id={id} className={cn('min-w-0 text-h2', onDark && 'text-on-brand')}>
           {children}

@@ -103,7 +103,8 @@ export function HomeSearchHint({ className }: { className?: string }) {
       Например,{' '}
       <a
         href={`/search?q=${example.q}`}
-        className="font-semibold text-on-brand underline decoration-on-brand/50 underline-offset-4 hover:decoration-on-brand"
+        // Padding grows the target to 44 px without moving the line (an inline box).
+        className="-mx-1 px-1 py-3.5 font-semibold text-on-brand underline decoration-on-brand/50 underline-offset-4 hover:decoration-on-brand"
       >
         {example.article}
       </a>{' '}

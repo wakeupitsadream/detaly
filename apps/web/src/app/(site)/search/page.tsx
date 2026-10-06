@@ -146,7 +146,7 @@ function Results({
   const exact = offers.filter((offer) => !offer.isCross);
   const crosses = offers.filter((offer) => offer.isCross);
   return (
-    <div className="min-w-0 space-y-10 md:space-y-14">
+    <div className="min-w-0 space-y-7 md:space-y-14">
       <div className="min-w-0 space-y-5">
         <ResultsHeader query={query} count={offers.length} />
         <FilterChips
@@ -173,6 +173,7 @@ function Results({
           <OfferGroup
             id="offers-exact"
             title="Точное совпадение"
+            first
             offers={exact}
             searchArticleNorm={result.articleNorm}
             orderingOpen={orderingOpen}
@@ -181,6 +182,7 @@ function Results({
           <OfferGroup
             id="offers-cross"
             title="Аналоги"
+            first={exact.length === 0}
             offers={crosses}
             searchArticleNorm={result.articleNorm}
             orderingOpen={orderingOpen}

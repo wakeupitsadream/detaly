@@ -192,7 +192,7 @@ describe('base components', () => {
 
   it('InstallLine: the slot or the honest fallback', () => {
     const none = text(renderToStaticMarkup(createElement(InstallLine, { plan: null })));
-    expect(none).toBe(`Установка: ${INSTALL_FALLBACK_TEXT}`);
+    expect(none).toBe(`Установка — ${INSTALL_FALLBACK_TEXT}`);
     const html = renderToStaticMarkup(
       createElement(InstallLine, {
         plan: {
@@ -204,7 +204,7 @@ describe('base components', () => {
         },
       }),
     );
-    expect(text(html)).toBe('Машина готова чт 8 окт к 16:00');
+    expect(text(html)).toBe('С установкой — машина готова чт 8 окт к 16:00');
     expect(html).toContain('dateTime="2026-10-08T14:00:00+05:00"');
     expect(html).toContain('title="Установка: чт 8 окт с 14:00"');
   });

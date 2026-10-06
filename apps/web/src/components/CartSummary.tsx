@@ -1,4 +1,5 @@
 import type { OrderMinimumsResult } from '@detaly/domain';
+import type { ReactNode } from 'react';
 import { telHref } from '@/server/brand';
 import type { InstallPlanView } from '@/server/install/types';
 import { IconArrowRight, IconCalendar, IconCard, IconPhone, IconWallet } from './icons';
@@ -31,6 +32,7 @@ export function CartSummary({
   gate,
   install,
   payment,
+  paymentNotice,
 }: {
   /** The lift slot after the order's date; undefined: not planned (no date or no hours). */
   install?: InstallPlanView | null;
@@ -41,6 +43,8 @@ export function CartSummary({
   gate: { open: true } | { open: false; message: string; phone: string | null };
   /** The payment mode badge; none when not given. */
   payment?: CartPaymentMode;
+  /** «Как это работает» under the badge (PaymentModeNotice `inline`). */
+  paymentNotice?: ReactNode;
 }) {
   const badge = payment ? PAYMENT_BADGE[payment] : null;
   return (
@@ -69,6 +73,7 @@ export function CartSummary({
           {badge.text}
         </Badge>
       ) : null}
+      {paymentNotice}
       {promiseText ? (
         <p className="mt-4 flex items-start gap-2 border-t border-surface-2 pt-4 text-body">
           <IconCalendar size={22} className="shrink-0 text-brand" />
@@ -80,7 +85,7 @@ export function CartSummary({
       {promiseText && install !== undefined ? (
         <div className="mt-2 space-y-2">
           <InstallLine plan={install} size="md" />
-          {install?.demo ? <Badge tone="demo">загрузка демонстрационная</Badge> : null}
+          {install?.demo ? <Badge tone="demo">Демо: время условное</Badge> : null}
         </div>
       ) : null}
       {!minimums.ok ? (
@@ -132,8 +137,8 @@ export function CartSummary({
 
 /**
  * Phones only (below md) on /cart: the sum and «Оформить» on a white floating panel at the
- * bottom, so checkout is one tap away however long the cart is. The spacer keeps the footer
- * reachable above it.
+ * bottom, so checkout is one tap away however long the cart is. The footer makes room for it
+ * (`.mobile-cart-bar` in globals.css).
  */
 export function CartCheckoutBar({
   totalText,
@@ -143,25 +148,22 @@ export function CartCheckoutBar({
   itemsCount: number;
 }) {
   return (
-    <>
-      <div aria-hidden className="h-[calc(5.5rem+env(safe-area-inset-bottom))] md:hidden" />
-      <div
-        className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:hidden"
-        data-testid="cart-checkout-bar"
-      >
-        <div className="flex h-17 items-center justify-between gap-3 rounded-tile border border-line bg-bg pr-2.5 pl-4 text-ink shadow-float">
-          <p className="min-w-0">
-            <span className="block text-[1.25rem] leading-tight font-extrabold whitespace-nowrap tabular-nums">
-              {totalText}
-            </span>
-            <span className="block text-small text-muted">{itemsCount} шт.</span>
-          </p>
-          <a href="/checkout" className={cn(buttonClass({ variant: 'primary' }), 'shrink-0 px-5')}>
-            Оформить
-            <IconArrowRight size={20} />
-          </a>
-        </div>
+    <div
+      className="mobile-cart-bar fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:hidden"
+      data-testid="cart-checkout-bar"
+    >
+      <div className="flex h-17 items-center justify-between gap-3 rounded-tile border border-line bg-bg pr-2.5 pl-4 text-ink shadow-float">
+        <p className="min-w-0">
+          <span className="block text-[1.25rem] leading-tight font-extrabold whitespace-nowrap tabular-nums">
+            {totalText}
+          </span>
+          <span className="block text-small text-muted">{itemsCount} шт.</span>
+        </p>
+        <a href="/checkout" className={cn(buttonClass({ variant: 'primary' }), 'shrink-0 px-5')}>
+          Оформить
+          <IconArrowRight size={20} />
+        </a>
       </div>
-    </>
+    </div>
   );
 }

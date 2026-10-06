@@ -36,8 +36,11 @@ function Count({ value }: { value: number }) {
 
 /**
  * Round filter chips over the results (docs/design-v2.md, «Поиск»): «Все», «В Оренбурге»,
- * «Под заказ» with their counts (an empty one is left out) and, with more than one brand, a
- * second row of brands. Chips are plain links; the active one carries aria-current.
+ * «Под заказ» with their counts (an empty one is left out) and, with more than one brand, the
+ * brands after a divider, all in one row (it scrolls on phones, wraps from md), so the first
+ * offer is not pushed under a second row. Only the stock chip is filled with the brand red; the
+ * brand chip in use is the quiet soft one, so the red stays with «В корзину». Chips are plain
+ * links; the active one carries aria-current.
  */
 export function FilterChips({
   query,
@@ -61,8 +64,8 @@ export function FilterChips({
   ];
   const brandActive = (name: string) => brand?.toLowerCase() === name.toLowerCase();
   return (
-    <div className="min-w-0 space-y-2" aria-label="Фильтры" role="group">
-      <ChipRow aria-label="Наличие">
+    <ChipRow aria-label="Фильтры" role="group" className="items-center">
+      <div role="group" aria-label="Наличие" className="contents">
         {/* A chip that would show nothing is left out, unless it is the active one. */}
         {chips
           .filter((chip) => chip.count > 0 || chip.key === 'all' || chip.key === stock)
@@ -76,10 +79,11 @@ export function FilterChips({
               <Count value={chip.count} />
             </Chip>
           ))}
-      </ChipRow>
+      </div>
       {brands.length > 1 ? (
-        <ChipRow aria-label="Бренд">
-          <Chip href={searchHref(query, { stock })} active={!brand}>
+        <div role="group" aria-label="Бренд" className="contents">
+          <span aria-hidden className="mx-1 h-7 w-px shrink-0 bg-line-strong" />
+          <Chip href={searchHref(query, { stock })} active={!brand} tone="soft">
             Все бренды
           </Chip>
           {brands.map((name) => (
@@ -87,12 +91,13 @@ export function FilterChips({
               key={name}
               href={searchHref(query, { brand: name, stock })}
               active={brandActive(name)}
+              tone="soft"
             >
               {name}
             </Chip>
           ))}
-        </ChipRow>
+        </div>
       ) : null}
-    </div>
+    </ChipRow>
   );
 }

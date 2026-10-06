@@ -54,6 +54,8 @@ export interface VinFormProps {
   formError: string | null;
   demo: boolean;
   initial?: VinFormInitial;
+  /** Under the VIN field: «Где найти VIN?» folded (phones; the page aside shows it from lg). */
+  vinHelp?: ReactNode;
 }
 
 const LABEL = 'mb-2 block text-[0.9375rem] leading-snug font-semibold text-ink';
@@ -63,7 +65,7 @@ const DOC_LINK =
   'font-semibold text-brand underline decoration-1 underline-offset-4 hover:text-brand-hover hover:decoration-2';
 const TEXTAREA = cn(
   'block min-h-32 w-full min-w-0 resize-y rounded-control border-[1.5px] border-line-strong bg-surface px-4 py-3 text-[1.0625rem] leading-relaxed text-ink',
-  'transition-[border-color,box-shadow,background-color] duration-150 placeholder:text-faint hover:border-muted',
+  'transition-[border-color,box-shadow,background-color] duration-150 placeholder:text-muted hover:border-muted',
   'focus:border-brand focus:bg-bg focus:shadow-[0_0_0_3px_var(--color-brand-soft)] focus-visible:outline-none',
   'aria-invalid:border-danger',
 );
@@ -120,6 +122,7 @@ export function VinForm(props: VinFormProps) {
   const [pending, setPending] = useState(false);
   const [done, setDone] = useState(false);
   const initial = props.initial ?? {};
+  const vinHelp = props.vinHelp ?? null;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -198,7 +201,6 @@ export function VinForm(props: VinFormProps) {
             autoComplete="off"
             autoCapitalize="characters"
             spellCheck={false}
-            placeholder="17 символов из СТС"
             defaultValue={initial.vin}
             aria-invalid={invalid('vin')}
             aria-describedby="vin-vin-hint vin-vin-error"
@@ -210,9 +212,10 @@ export function VinForm(props: VinFormProps) {
             })}
           />
           <p id="vin-vin-hint" className={HINT}>
-            Букв O, I и Q в VIN не бывает — вместо них цифры 0 и 1.
+            17 символов, есть в СТС. Букв O, I и Q в VIN не бывает.
           </p>
           <FieldError id="vin-vin-error" message={err.vin} />
+          {vinHelp}
         </div>
         <div className="min-w-0">
           <label htmlFor="vin-car" className={LABEL}>
@@ -249,18 +252,15 @@ export function VinForm(props: VinFormProps) {
             placeholder="Например: передние колодки и диски"
             defaultValue={initial.need}
             aria-invalid={invalid('need')}
-            aria-describedby="vin-need-hint vin-need-error"
+            aria-describedby="vin-need-error"
             className={TEXTAREA}
           />
-          <p id="vin-need-hint" className={HINT}>
-            Своими словами. Телефон сюда писать не нужно.
-          </p>
           <FieldError id="vin-need-error" message={err.need} />
         </div>
         {props.photos.enabled ? (
           <PhotoInput
             label="Фото (необязательно)"
-            hint={`До ${props.photos.max} фото: табличка с VIN, СТС или старая деталь. Каждое до ${props.photos.maxFileMb} МБ.`}
+            hint={`До ${props.photos.max} фото, каждое до ${props.photos.maxFileMb} МБ`}
             max={props.photos.max}
             maxFileMb={props.photos.maxFileMb}
             error={err.photos}
@@ -284,16 +284,13 @@ export function VinForm(props: VinFormProps) {
             maxLength={24}
             placeholder="+7 900 000-00-00"
             aria-invalid={invalid('phone')}
-            aria-describedby="vin-phone-hint vin-phone-error"
+            aria-describedby="vin-phone-error"
             className={inputClass({ className: 'tabular-nums' })}
           />
-          <p id="vin-phone-hint" className={HINT}>
-            Мобильный. Мастер может позвонить, чтобы уточнить.
-          </p>
           <FieldError id="vin-phone-error" message={err.phone} />
         </div>
-        <fieldset className="min-w-0" aria-describedby="vin-channel-hint vin-channel-error">
-          <legend className={LABEL}>Как прислать ссылку</legend>
+        <fieldset className="min-w-0" aria-describedby="vin-channel-error">
+          <legend className={LABEL}>Куда прислать ответ</legend>
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
             {CHANNELS.map((channel) => {
               const disabled =
@@ -341,11 +338,6 @@ export function VinForm(props: VinFormProps) {
               );
             })}
           </div>
-          <p id="vin-channel-hint" className={HINT}>
-            {props.telegram
-              ? 'В Telegram подключите бота после отправки. Или пришлём SMS.'
-              : 'Пришлём ссылку на подборку в SMS.'}
-          </p>
           <FieldError id="vin-channel-error" message={err.channel} />
         </fieldset>
       </Step>

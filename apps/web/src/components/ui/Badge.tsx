@@ -1,7 +1,7 @@
 import type { HTMLAttributes, ReactNode } from 'react';
 import { cn } from './cn';
 
-export type BadgeTone = 'ok' | 'info' | 'wait' | 'danger' | 'neutral' | 'brand' | 'demo';
+export type BadgeTone = 'ok' | 'info' | 'wait' | 'danger' | 'neutral' | 'plain' | 'brand' | 'demo';
 
 const TONE: Record<BadgeTone, string> = {
   ok: 'bg-ok-soft text-ok',
@@ -9,6 +9,8 @@ const TONE: Record<BadgeTone, string> = {
   wait: 'bg-wait-soft text-wait',
   danger: 'bg-danger-soft text-danger',
   neutral: 'bg-surface text-muted',
+  // A neutral fact in full ink (offer hints «Дешевле всего»): no state colour to misread.
+  plain: 'bg-surface text-ink',
   brand: 'bg-brand-soft text-brand',
   // Synthetic data: the wait tone, never a brand or state colour of its own.
   demo: 'bg-wait-soft text-wait',

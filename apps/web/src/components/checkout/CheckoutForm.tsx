@@ -106,7 +106,7 @@ const DOC_LINK =
   'font-semibold text-brand underline decoration-1 underline-offset-4 hover:text-brand-hover hover:decoration-2';
 
 /**
- * A step of the form: the step number in a brand circle and the title, the content right under
+ * A step of the form: the step number in a neutral circle and the title, the content right under
  * it on the page (no box of its own: the content is cards and fields already).
  */
 function Step({ index, title, children }: { index?: string; title: string; children: ReactNode }) {

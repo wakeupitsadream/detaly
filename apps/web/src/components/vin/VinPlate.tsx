@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { IconSts } from '@/components/icons';
+import { IconChevronDown, IconSts } from '@/components/icons';
 import { MarkerBar } from '@/components/ui/Card';
 import { cn } from '@/components/ui/cn';
 
@@ -13,29 +13,13 @@ const VIN_PARTS = [
 ] as const;
 
 /**
- * «Где найти VIN» (docs/design-v2.md, /vin): the СТС card icon, the two places in one short
- * line each, then the 17 characters as cells of a data plate grouped by what they mean.
+ * What «Где найти VIN» says: the two places in one short line each, then the 17 characters as
+ * cells of a data plate grouped by what they mean. `note` adds the O/0, I/1 line.
  */
-export function VinPlate({ className }: { className?: string }) {
+export function VinPlateBody({ note = true }: { note?: boolean }) {
   return (
-    <section
-      aria-labelledby="vin-where"
-      className={cn('relative min-w-0 rounded-panel bg-surface p-6 md:p-8', className)}
-      data-testid="vin-plate"
-    >
-      <MarkerBar className="absolute top-0 left-6 md:left-8" />
-      <div className="flex min-w-0 items-center gap-4 pt-2">
-        <span
-          aria-hidden
-          className="grid size-16 shrink-0 place-items-center rounded-tile bg-bg text-brand"
-        >
-          <IconSts size={44} strokeWidth={1.5} />
-        </span>
-        <h2 id="vin-where" className="min-w-0 text-h3">
-          Где найти VIN
-        </h2>
-      </div>
-      <ul className="mt-5 space-y-2 text-body">
+    <>
+      <ul className="space-y-2 text-body">
         <li className="flex gap-2">
           <span aria-hidden className="mt-2.5 size-2 shrink-0 rounded-full bg-brand" />
           <span className="min-w-0">
@@ -78,10 +62,67 @@ export function VinPlate({ className }: { className?: string }) {
           </p>
         ))}
       </div>
-      <p className="mt-4 text-small font-normal text-muted">
-        Букв O, I и Q в VIN нет: похожий знак — это 0 или 1.
-      </p>
+      {note ? (
+        <p className="mt-4 text-small font-normal text-muted">
+          Букв O, I и Q в VIN нет: похожий знак — это 0 или 1.
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * «Где найти VIN» (docs/design-v2.md, /vin): the СТС card icon and the title over
+ * VinPlateBody, on a grey panel with the marker.
+ */
+export function VinPlate({ className }: { className?: string }) {
+  return (
+    <section
+      aria-labelledby="vin-where"
+      className={cn('min-w-0 rounded-panel bg-surface p-6 md:p-8', className)}
+      data-testid="vin-plate"
+    >
+      <MarkerBar className="mb-4 md:mb-5" />
+      <div className="flex min-w-0 items-center gap-4">
+        <span
+          aria-hidden
+          className="grid size-16 shrink-0 place-items-center rounded-tile bg-bg text-brand"
+        >
+          <IconSts size={44} strokeWidth={1.5} />
+        </span>
+        <h2 id="vin-where" className="min-w-0 text-h3">
+          Где найти VIN
+        </h2>
+      </div>
+      <div className="mt-5">
+        <VinPlateBody />
+      </div>
     </section>
+  );
+}
+
+/**
+ * Phones (below lg): «Где найти VIN?» folded right under the VIN field, so whoever does not
+ * know the word finds the answer before sending, not after the button.
+ */
+export function VinWhereFold({ className }: { className?: string }) {
+  return (
+    <details
+      className={cn('details-plain group mt-3 min-w-0 rounded-tile bg-surface', className)}
+      data-testid="vin-where-fold"
+    >
+      <summary className="flex min-h-12 items-center gap-2.5 rounded-tile px-4 text-body font-semibold">
+        <IconSts size={24} className="shrink-0 text-brand" />
+        <span className="min-w-0 flex-1">Где найти VIN?</span>
+        <IconChevronDown
+          size={22}
+          className="shrink-0 text-muted transition-transform duration-150 group-open:rotate-180"
+        />
+      </summary>
+      <div className="min-w-0 px-4 pt-1 pb-5">
+        <VinPlateBody note={false} />
+      </div>
+    </details>
   );
 }
 

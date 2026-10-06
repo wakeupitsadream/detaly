@@ -156,7 +156,7 @@ describe('offer card', () => {
     expect(t).toContain('Knecht OC 90');
     expect(t).toContain('Фильтр масляный');
     expect(t).toContain('Привезём к сб 3 октября');
-    expect(t).toContain('Машина готова сб 3 окт к 16:00');
+    expect(t).toContain('С установкой — машина готова сб 3 окт к 16:00');
     expect(t).toContain('528 ₽');
     // No «как мы считаем» and no table.
     expect(html).not.toContain('<table');

@@ -1,7 +1,7 @@
 import type { OfferView } from '@detaly/domain';
 import type { InstallPlanView } from '@/server/install/types';
 import { AddToCartForm } from './AddToCartForm';
-import { IconCalendar } from './icons';
+import { IconCalendar, IconWallet } from './icons';
 import { InstallLine } from './install/InstallLine';
 import { StockBadge } from './StockBadge';
 import { Badge } from './ui/Badge';
@@ -68,9 +68,17 @@ export function OfferRow({
         {marks && marks.length > 0 ? (
           <p className="mb-2 flex flex-wrap gap-1.5">
             {marks.map((mark) => (
+              // Neutral with an icon: red is the brand and the error, green the Orenburg stock.
               <Badge
                 key={mark}
-                tone={mark === 'fastest' ? 'ok' : 'brand'}
+                tone="plain"
+                icon={
+                  mark === 'fastest' ? (
+                    <IconCalendar size={16} className="shrink-0 text-brand" />
+                  ) : (
+                    <IconWallet size={16} className="shrink-0 text-brand" />
+                  )
+                }
                 data-testid={`offer-mark-${mark}`}
               >
                 {MARK_TEXT[mark]}

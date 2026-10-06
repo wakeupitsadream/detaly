@@ -19,7 +19,7 @@
   --color-surface-2: #e8eaed;
   --color-ink: #111317;
   --color-muted: #5b616b;
-  /* Captions >= 15 px and placeholders only (3.9:1 on white). */
+  /* Inactive and decorative things only: 3.7:1 on white, 3.3:1 on surface (placeholders: muted). */
   --color-faint: #80868f;
   --color-line: #e3e5e8;
   --color-line-strong: #c9cdd2;
@@ -127,6 +127,27 @@
   :focus-visible {
     outline: 3px solid var(--color-brand);
     outline-offset: 2px;
+  }
+
+  /* On the brand plate a brand ring is invisible (1:1): white there (6.4:1), and brand again
+     inside the white search pill («Найти»). */
+  .site-header :focus-visible {
+    outline-color: var(--color-on-brand);
+  }
+  .site-header form :focus-visible {
+    outline-color: var(--color-brand);
+  }
+
+  /* A floating bottom bar (MobileCartBar, CartCheckoutBar, the proposal bar; below md only):
+     a focused element is scrolled clear of it, and the footer ends above it, so «©» and the
+     last links are never under the bar. */
+  @media (width < 48rem) {
+    html:has(.mobile-cart-bar) {
+      scroll-padding-bottom: 6.5rem;
+    }
+    html:has(.mobile-cart-bar) .site-footer {
+      padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+    }
   }
 
   ::selection {

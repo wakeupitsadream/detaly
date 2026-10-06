@@ -13,7 +13,7 @@ export function inputClass({
 }: { size?: 'md' | 'lg'; mono?: boolean; className?: string } = {}): string {
   return cn(
     'block w-full min-w-0 rounded-control border-[1.5px] border-line-strong bg-surface px-4 text-ink',
-    'transition-[border-color,box-shadow,background-color] duration-150 placeholder:text-faint hover:border-muted',
+    'transition-[border-color,box-shadow,background-color] duration-150 placeholder:text-muted hover:border-muted',
     'focus:border-brand focus:bg-bg focus:shadow-[0_0_0_3px_var(--color-brand-soft)] focus-visible:outline-none',
     'aria-invalid:border-danger disabled:bg-surface-2 disabled:text-muted',
     size === 'lg' ? 'h-16 text-[1.1875rem]' : 'h-14 text-[1.0625rem]',

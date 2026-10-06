@@ -53,7 +53,8 @@
 | --- | --- |
 | `TRUSTED_IP_HEADER` | `x-real-ip`. Vercel сам выставляет этот заголовок с адресом клиента. Без него все посетители попадают в один счётчик лимитов |
 | `BRAND_NAME` | название витрины (по умолчанию `Детали`) |
-| `PICKUP_POINT_NAME`, `PICKUP_ADDRESS`, `PICKUP_HOURS`, `PICKUP_PHONE` | точка выдачи и установки: автосервис-партнёр. Телефон точки — единственный номер для покупателя во всех кнопках |
+| `PICKUP_POINT_NAME`, `PICKUP_ADDRESS`, `PICKUP_HOURS`, `PICKUP_PHONE` | точка выдачи и установки: автосервис-партнёр (`PICKUP_POINT_NAME=Сервис56`). Телефон точки — единственный номер для покупателя во всех кнопках. **Для показа партнёру задавать обязательно**: без них у витрины нет ни адреса, ни телефона — шапка без кнопки звонка, футер без крупного номера, на главной нет карточки «Точка выдачи» |
+| `PICKUP_LOGO_SRC`, `PICKUP_EMBLEM_WHITE_SRC` | знаки Сервис56: `/images/partner/servis56-logo-color.webp` (цветной — карточки точки выдачи, футер, заказ) и `/images/partner/servis56-emblem-white.webp` (белая эмблема — строка точки в шапке, плитка «Установка в …» на тёмной панели). Без них вместо знака — иконка пина |
 | `PICKUP_MAP_URL_YANDEX`, `PICKUP_MAP_URL_2GIS` | ссылки «Маршрут в Яндекс Картах» и «2ГИС» (https). Без них кнопки ищут адрес точки в картах |
 | `PICKUP_TELEGRAM_URL` | чат точки (https://t.me/…): на `/vin` появляется кнопка «Отправить фото СТС в Telegram» с готовым началом сообщения |
 | `SELLER_REQUISITES_*` | реквизиты в футере, на «О нас» и в документах. Без них везде одна нейтральная строка «Реквизиты продавца появятся к запуску», в документах — пропуски `________` и пометка «Черновик» |
@@ -80,9 +81,18 @@ DEMO_MODE=true ROSSKO_MODE=fixtures pnpm run build   # как Vercel: из apps/
 # standalone, как в Docker-образе; на Vercel этот шаг не нужен
 cp -r .next/static .next/standalone/apps/web/.next/static
 cp -r public .next/standalone/apps/web/public 2>/dev/null || true
+# точка выдачи — как в проекте Vercel; адрес и телефон ниже — заглушки для проверки,
+# в демо для партнёра — настоящие данные Сервис56
+export PICKUP_POINT_NAME='Сервис56' PICKUP_ADDRESS='г. Оренбург, ул. Тестовая, 1' \
+  PICKUP_HOURS='Пн–Сб 9:00–19:00' PICKUP_PHONE='+7 900 000-00-01' \
+  PICKUP_LOGO_SRC=/images/partner/servis56-logo-color.webp \
+  PICKUP_EMBLEM_WHITE_SRC=/images/partner/servis56-emblem-white.webp
 DEMO_MODE=true SESSION_SECRET=$(openssl rand -hex 32) PORT=3101 \
   APP_BASE_URL=http://localhost:3101 node .next/standalone/apps/web/server.js
 ```
+
+Скриншоты снимаются с этими `PICKUP_*`: без них страницы показывают состояние «до запуска»
+(нет карточки точки на главной, «Адрес появится к запуску» на `/about` и `/returns`).
 
 Пройти сценарий и снять скриншоты 375 и 1280 одной командой (из корня репозитория, сервер
 уже запущен):

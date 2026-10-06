@@ -21,8 +21,8 @@ const TITLES: Record<string, string> = {
 /** Short names for the list of documents above the text. */
 const NAV: readonly { slug: string; label: string }[] = [
   { slug: 'offer', label: 'Оферта' },
-  { slug: 'privacy', label: 'Политика ПДн' },
-  { slug: 'consent', label: 'Согласие на обработку ПДн' },
+  { slug: 'privacy', label: 'Персональные данные' },
+  { slug: 'consent', label: 'Согласие на обработку данных' },
   { slug: 'consent-marketing', label: 'Согласие на рекламу' },
   { slug: 'return-memo', label: 'Памятка о возврате' },
 ];

@@ -4,10 +4,11 @@
  * `{slotAt, requestKey}` to /api/orders/<token>/install and comes back with a flash message.
  * With a booking: the slot, whether the master confirmed it, and «Отменить запись» until two
  * hours before. No price anywhere: the installation is the partner's service, paid at the
- * service by its own receipt (PLAN risk 11). `lead` is the «Машина готова …» line on top.
+ * service by its own receipt (PLAN risk 11): that sentence is folded under «Как оплатить
+ * установку», so the card is the «Машина готова …» line (`lead`), the slots and one button.
  */
 import type { ReactNode } from 'react';
-import { IconCheck, IconClock, IconLift } from '@/components/icons';
+import { IconCheck, IconChevronDown, IconClock, IconWrench } from '@/components/icons';
 import { Badge } from '@/components/ui/Badge';
 import { buttonClass } from '@/components/ui/Button';
 import { cn } from '@/components/ui/cn';
@@ -44,7 +45,7 @@ export function InstallBookingBlock({
   return (
     <Card
       title="Запись на установку"
-      icon={<IconLift size={26} />}
+      icon={<IconWrench size={26} />}
       testId="order-install-booking"
       id="install"
     >
@@ -152,12 +153,21 @@ export function InstallBookingBlock({
           {EMPTY_TEXT[install.emptyReason ?? 'full'] ?? EMPTY_TEXT.full}
         </p>
       )}
-      <p className="mt-4 text-small font-normal text-muted" data-testid="install-partner">
-        {installPaymentText(install.partner)} Время подтверждает мастер.
-      </p>
+      <details className="details-plain group mt-4 min-w-0">
+        <summary className="inline-flex min-h-11 items-center gap-1 text-small font-semibold text-ink underline decoration-line-strong underline-offset-4 hover:decoration-brand">
+          Как оплатить установку
+          <IconChevronDown
+            size={18}
+            className="shrink-0 text-muted transition-transform duration-150 group-open:rotate-180"
+          />
+        </summary>
+        <p className="mt-1 text-small font-normal text-muted" data-testid="install-partner">
+          {installPaymentText(install.partner)} Время подтверждает мастер.
+        </p>
+      </details>
       {install.demo ? (
         <Badge tone="demo" className="mt-3">
-          демо: загрузка подъёмников условная, запись не сохраняется
+          Демо: время условное, запись не сохраняется
         </Badge>
       ) : null}
     </Card>

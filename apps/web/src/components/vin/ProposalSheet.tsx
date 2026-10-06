@@ -264,9 +264,9 @@ export function ProposalSheet({
 
       {canTake ? (
         <>
-          <div aria-hidden className="h-[calc(5rem+env(safe-area-inset-bottom))] md:hidden" />
+          {/* The footer makes room for the bar (`.mobile-cart-bar` in globals.css). */}
           <div
-            className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-bg pb-[env(safe-area-inset-bottom)] shadow-float md:hidden"
+            className="mobile-cart-bar fixed inset-x-0 bottom-0 z-50 border-t border-line bg-bg pb-[env(safe-area-inset-bottom)] shadow-float md:hidden"
             data-testid="proposal-bar"
           >
             <div className="flex h-20 items-center justify-between gap-3 px-4">

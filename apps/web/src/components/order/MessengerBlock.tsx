@@ -8,7 +8,14 @@
  */
 import type { NotificationChannel } from '@detaly/domain';
 import type { ReactNode } from 'react';
-import { IconArrowRight, IconCheck, IconMax, IconMessage, IconTelegram } from '@/components/icons';
+import {
+  IconArrowRight,
+  IconCheck,
+  IconChevronDown,
+  IconMax,
+  IconMessage,
+  IconTelegram,
+} from '@/components/icons';
 import { cn } from '@/components/ui/cn';
 import type { MessengerView } from '@/server/orders/order-services';
 import { Card } from './OrderSections';
@@ -159,27 +166,37 @@ export function MessengerBlock({
         )}
         <StubRow channel="max" label="Статусы в MAX" tag="скоро" selected={preferred === 'max'} />
       </div>
-      <div
-        className="mt-3 space-y-1 text-small font-normal text-muted"
-        data-testid="messenger-help"
-      >
+      {/* One line under the buttons; the rest folded (docs/design-v2.md, section 4). */}
+      <div className="mt-3 text-small font-normal text-muted" data-testid="messenger-help">
         {messenger.telegram === 'active' ? <p>Отключить — команда /stop в боте.</p> : null}
         {messenger.telegram === 'blocked' ? (
-          <p data-testid="messenger-blocked">
-            Вы отключили уведомления в Telegram. Подключить снова — кнопкой выше.
-          </p>
+          <p data-testid="messenger-blocked">Вы отключили уведомления в Telegram.</p>
         ) : null}
-        {messenger.telegram !== 'active' && messenger.telegramAvailable ? (
-          <p>Бот попросит подтвердить номер из заказа. Ссылка действует 24 часа.</p>
+        {messenger.telegram === 'none' && messenger.telegramAvailable ? (
+          <p>Бот спросит номер из заказа.</p>
         ) : null}
         {!messenger.telegramAvailable && messenger.telegram !== 'active' ? (
           <p>
             {preferred === 'sms'
-              ? 'Вы выбрали SMS: важное придёт по SMS, остальное — здесь.'
+              ? 'Важное придёт по SMS, остальное — здесь.'
               : 'Пока следите за заказом на этой странице.'}
           </p>
         ) : null}
-        <p>Это подписка на статусы, а не вход в аккаунт.</p>
+        <details className="details-plain group mt-1">
+          <summary className="inline-flex min-h-11 items-center gap-1 font-semibold text-ink underline decoration-line-strong underline-offset-4 hover:decoration-brand">
+            Подробнее
+            <IconChevronDown
+              size={18}
+              className="shrink-0 text-muted transition-transform duration-150 group-open:rotate-180"
+            />
+          </summary>
+          <div className="space-y-1 pt-1">
+            {messenger.telegram !== 'active' && messenger.telegramAvailable ? (
+              <p>Ссылка на бота действует 24 часа.</p>
+            ) : null}
+            <p>Это подписка на статусы, а не вход в аккаунт.</p>
+          </div>
+        </details>
       </div>
       {preview}
     </Card>

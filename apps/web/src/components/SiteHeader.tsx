@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { cartCountLabel } from '@/lib/plural';
+import { HeaderNavChips, HeaderNavLinks, HeaderTail } from './HeaderNav';
 import { HeaderSearch, HomeSearchHint } from './HeaderSearch';
 import { IconCart, IconChevron, IconClock, IconPhone, IconPin } from './icons';
 import { Container } from './ui/Container';
@@ -40,7 +41,7 @@ function Wordmark({ name, className }: { name: string; className?: string }) {
     <Link
       href="/"
       className={cn(
-        'min-w-0 truncate text-[1.375rem] leading-none font-extrabold tracking-[-0.02em] text-on-brand lg:text-[1.625rem]',
+        'min-h-11 min-w-0 items-center truncate text-[1.375rem] leading-none font-extrabold tracking-[-0.02em] text-on-brand lg:text-[1.625rem]',
         className,
       )}
     >
@@ -115,7 +116,8 @@ function PickupLine({
  *    rounded bottom, hidden while the bottom part sits under it in the same red, so once the
  *    page scrolls only this compact plate with the search stays;
  *  - bottom (slides under the sticky part): phones — the home hint and the section chips
- *    («Основное меню»: e2e opens «О нас» from it on 375 px); desktop — the pickup line.
+ *    («Основное меню»: e2e opens «О нас» from it on 375 px), on the home page only (HeaderTail);
+ *    desktop — the pickup line. The current section is marked with aria-current="page".
  */
 export function SiteHeader({
   brandName,
@@ -133,7 +135,7 @@ export function SiteHeader({
         {/* Phones. */}
         <Container className="md:hidden">
           <div className="flex h-14 min-w-0 items-center gap-1">
-            <Wordmark name={brandName} className="mr-auto" />
+            <Wordmark name={brandName} className="mr-auto inline-flex" />
             {callHref ? (
               <a
                 href={callHref}
@@ -165,18 +167,7 @@ export function SiteHeader({
         {/* Desktop. */}
         <Container className="hidden h-12 items-center gap-6 md:flex">
           <nav aria-label="Основное меню" className="min-w-0">
-            <ul className="flex items-center gap-6 text-small whitespace-nowrap">
-              {DESKTOP_NAV.map((item) => (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className="inline-flex min-h-11 items-center underline-offset-4 hover:underline"
-                  >
-                    {item.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <HeaderNavLinks items={DESKTOP_NAV} />
           </nav>
           <div className="ml-auto flex min-w-0 items-center gap-5 text-small whitespace-nowrap">
             {hours ? (
@@ -203,7 +194,7 @@ export function SiteHeader({
         data-testid="header-search-bar"
       >
         <Container className="flex items-center gap-6 pt-2 pb-3 md:py-3">
-          <Wordmark name={brandName} className="hidden shrink-0 md:block" />
+          <Wordmark name={brandName} className="hidden shrink-0 md:inline-flex" />
           <HeaderSearch className="flex-1" />
           <Link
             href="/cart"
@@ -219,30 +210,22 @@ export function SiteHeader({
         </Container>
       </div>
 
-      <div className="site-header relative z-20 -mt-8 rounded-b-header bg-brand pt-10 text-on-brand lg:-mt-10 lg:rounded-b-header-lg lg:pt-12">
+      <HeaderTail className="site-header relative z-20 -mt-8 rounded-b-header bg-brand pt-10 text-on-brand lg:-mt-10 lg:rounded-b-header-lg lg:pt-12">
         <Container className="pb-4 md:hidden">
           <HomeSearchHint className="mb-3" />
-          <nav aria-label="Основное меню" className="-mx-4 min-w-0 overflow-x-auto px-4">
-            <ul className="flex items-center gap-2 whitespace-nowrap">
-              {NAV.map((item, index) => (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className="inline-flex h-11 items-center gap-0.5 rounded-full bg-on-brand/15 px-4 text-[0.9375rem] font-semibold hover:bg-on-brand/25"
-                  >
-                    {item.label}
-                    {index === 0 ? <IconChevron size={18} /> : null}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+          {/* py-1.5: room for the focus ring inside the scrolling row (it clips both axes). */}
+          <nav
+            aria-label="Основное меню"
+            className="-mx-4 -my-1.5 min-w-0 overflow-x-auto px-4 py-1.5"
+          >
+            <HeaderNavChips items={NAV} />
           </nav>
         </Container>
         <Container className="hidden items-center gap-6 pb-3 md:flex lg:pb-4">
           <PickupLine pickupName={pickupName} emblemSrc={emblemSrc} className="min-w-0" />
           <HomeSearchHint className="ml-auto shrink-0" />
         </Container>
-      </div>
+      </HeaderTail>
     </>
   );
 }

@@ -98,16 +98,19 @@ export function LegalDocumentView({
               : 'Действующая редакция'}
           </span>
         )}
+        {/* The blanks are told in the edition row, not in a plate of their own: a draft text
+            opens with the lawyer's note already, and two plates in a row pushed the title off
+            the first screen. */}
+        {blanks ? (
+          <p className="basis-full text-small text-muted" data-testid="legal-blanks">
+            {blanks}
+          </p>
+        ) : null}
       </div>
       {/* The body opens with its own draft note: one notice is enough. */}
       {doc.isDraft && !bodyDraft ? (
         <Notice tone="wait" role="note" className="mb-6 max-w-[68ch]">
           Черновик документа: действующая редакция ещё не опубликована.
-        </Notice>
-      ) : null}
-      {blanks ? (
-        <Notice tone="info" role="note" className="mb-6 max-w-[68ch]" data-testid="legal-blanks">
-          {blanks}
         </Notice>
       ) : null}
       {hasTopHeading(view) ? null : (

@@ -9,17 +9,16 @@ import { vinRequestHref } from '@/lib/vin-link';
 /** Makes shown on phones before «Все марки» (three rows of four). */
 export const PHONE_BRANDS_COUNT = 12;
 
-/** Shorter names for the narrow phone tile; the full name shows from md and goes to the request. */
-const PHONE_NAME: Record<string, string> = { 'mercedes-benz': 'Mercedes' };
-
 /**
- * A soft hyphen in the middle of a single word longer than nine letters («Volks-wagen»), so the
- * 4-column phone grid breaks it there instead of before the last letter.
+ * Shorter names for the narrow phone tile (~72 px inside at 360-375 px); the full name shows
+ * from md and goes to the request. Every other make fits at 14 px in one line: no hyphen inside
+ * a name, which looked cheap («Volks-wagen»).
  */
-export function softHyphenated(name: string): string {
-  if (/[\s-]/.test(name) || name.length <= 9) return name;
-  const middle = Math.ceil(name.length / 2);
-  return `${name.slice(0, middle)}\u00ad${name.slice(middle)}`;
+const PHONE_NAME: Record<string, string> = { 'mercedes-benz': 'Mercedes', volkswagen: 'VW' };
+
+/** The caption of a make on a phone tile. */
+export function phoneBrandName(brand: Pick<CarBrand, 'slug' | 'name'>): string {
+  return PHONE_NAME[brand.slug] ?? brand.name;
 }
 
 const GRID = 'grid min-w-0 grid-cols-4 gap-2 md:grid-cols-6 md:gap-3 lg:grid-cols-8';
@@ -37,7 +36,7 @@ export function BrandTile({
   lazy?: boolean;
   className?: string;
 }) {
-  const phoneName = PHONE_NAME[brand.slug];
+  const phoneName = phoneBrandName(brand);
   return (
     <li className={cn('min-w-0', className)}>
       <Link
@@ -45,7 +44,7 @@ export function BrandTile({
         prefetch={false}
         data-testid={`home-brand-${brand.slug}`}
         className={cn(
-          'flex h-full min-h-24 min-w-0 flex-col items-center justify-center gap-2 rounded-tile border border-line bg-bg px-1 pt-3 pb-2.5 text-center text-ink',
+          'flex h-full min-h-24 min-w-0 flex-col items-center justify-center gap-2 rounded-tile border border-line bg-bg px-0.5 pt-3 pb-2.5 text-center text-ink md:px-1',
           'transition-[border-color,transform] duration-150 hover:-translate-y-0.5 hover:border-line-strong',
           'md:min-h-28 md:gap-2.5 md:pt-4 md:pb-3',
         )}
@@ -61,14 +60,15 @@ export function BrandTile({
           decoding="async"
           className="h-10 w-[4.5rem] max-w-full object-contain md:h-12 md:w-24"
         />
-        <span className="max-w-full text-[0.9375rem] leading-[1.125rem] font-semibold tracking-[-0.01em] wrap-anywhere">
-          {phoneName ? (
+        {/* 14 px on phones, 15 px from md; wrap-anywhere only guards a future longer name. */}
+        <span className="max-w-full text-[0.875rem] leading-[1.125rem] font-semibold tracking-[-0.01em] wrap-anywhere md:text-[0.9375rem]">
+          {phoneName !== brand.name ? (
             <>
               <span className="md:hidden">{phoneName}</span>
               <span className="hidden md:inline">{brand.name}</span>
             </>
           ) : (
-            softHyphenated(brand.name)
+            brand.name
           )}
         </span>
       </Link>

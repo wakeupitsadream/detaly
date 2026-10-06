@@ -11,12 +11,13 @@ import {
   IconWrench,
 } from '@/components/icons';
 import { Notice } from '@/components/page/Notice';
+import { PICKUP_ADDRESS_PENDING } from '@/components/PickupCard';
 import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
 import { buttonClass } from '@/components/ui/Button';
 import { InfoCard } from '@/components/ui/Card';
 import { SectionHeading } from '@/components/ui/Section';
 import { VinForm, type VinFormInitial } from '@/components/vin/VinForm';
-import { VinPlate, VinSteps, type VinStep } from '@/components/vin/VinPlate';
+import { VinPlate, VinSteps, VinWhereFold, type VinStep } from '@/components/vin/VinPlate';
 import { vinFormInitial } from '@/components/vin/vin-query';
 import { getBrand, telHref, type Brand } from '@/server/brand';
 import { currentCheckoutGate } from '@/server/checkout-gate';
@@ -87,7 +88,7 @@ function PickupLines({ brand }: { brand: Brand }) {
         <IconPin size={22} className="mt-0.5 shrink-0 text-brand" />
         <span className="min-w-0 wrap-anywhere">
           {pickup.name ? <span className="font-semibold">{pickup.name}, </span> : null}
-          {pickup.address ?? 'Адрес уточняется'}
+          {pickup.address ?? PICKUP_ADDRESS_PENDING}
         </span>
       </li>
       {pickup.hours ? (
@@ -100,9 +101,9 @@ function PickupLines({ brand }: { brand: Brand }) {
   );
 }
 
-/** The phone in large digits (data-testid="vin-phone") or «уточняется». */
+/** The phone in large digits (data-testid="vin-phone"); nothing without one. */
 function PhoneNumber({ phone }: { phone: string | null }) {
-  if (!phone) return <p className="text-body text-muted">Телефон уточняется</p>;
+  if (!phone) return null;
   return (
     <a
       className="block text-h2 whitespace-nowrap tabular-nums hover:text-brand"
@@ -129,8 +130,9 @@ function Guarantee() {
   );
 }
 
-/** «Удобнее позвонить?» next to the form. */
+/** «Удобнее позвонить?» next to the form; without a phone there is no such card. */
 function CallCard({ brand }: { brand: Brand }) {
+  if (!brand.contactPhone) return null;
   return (
     <section
       aria-labelledby="vin-call"
@@ -245,8 +247,8 @@ export default async function VinPage({ searchParams }: { searchParams: SearchPa
         <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_26rem] lg:gap-10">
           <div className="min-w-0 space-y-4">
             {demo ? (
-              <Notice tone="info" title="Демо: заявка не отправляется" data-testid="vin-demo">
-                После отправки покажем, как выглядит ответ.
+              <Notice tone="info" data-testid="vin-demo">
+                Демо: заявка не уходит мастеру, покажем пример ответа.
               </Notice>
             ) : null}
             <h2 className="sr-only">Заявка на подбор</h2>
@@ -263,10 +265,12 @@ export default async function VinPage({ searchParams }: { searchParams: SearchPa
               formError={form}
               demo={demo}
               initial={initial}
+              vinHelp={<VinWhereFold className="lg:hidden" />}
             />
           </div>
           <aside className="min-w-0 space-y-4" aria-label="Подсказки к заявке">
-            <VinPlate />
+            {/* Phones get the same help folded under the VIN field instead. */}
+            <VinPlate className="max-lg:hidden" />
             <CallCard brand={brand} />
             <Guarantee />
           </aside>

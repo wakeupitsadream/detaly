@@ -57,12 +57,15 @@ export const IconFilter = icon(
   'IconFilter',
 );
 
-/** Brake pads: friction block on a backing plate. */
+/**
+ * Brake pad at the edge of the disc: a solid crescent (outlined arcs alone read as a Wi-Fi
+ * sign or a speaker) hugging the rotor with its hub.
+ */
 export const IconPads = icon(
   <>
-    <path d="M3 10c4.5-4 13.5-4 18 0v3.5c-4.5-3.5-13.5-3.5-18 0z" />
-    <path d="M4.5 17.5c4.2-3.2 10.8-3.2 15 0" />
-    <path d="M7 20.5c3-2 7-2 10 0" />
+    <circle cx="9" cy="12" r="6.5" />
+    <circle cx="9" cy="12" r="2" />
+    <path d="M15.2 5.7a8.5 8.5 0 0 1 0 12.6l2.2 2.2a11.6 11.6 0 0 0 0-17z" fill="currentColor" />
   </>,
   'IconPads',
 );
@@ -80,26 +83,27 @@ export const IconDisc = icon(
   'IconDisc',
 );
 
-/** Spark plug: terminal, insulator, hex, thread and electrode. */
+/** Spark plug: terminal, insulator, a wide hex, thread and electrode. */
 export const IconPlug = icon(
   <>
-    <path d="M12 2.5v2" />
-    <rect x="10" y="4.5" width="4" height="6" rx="1" />
-    <path d="M7.5 10.5h9v3h-9z" />
-    <path d="M10 13.5V18h4v-4.5M10 15.75h4" />
-    <path d="M12 18v2.5h2.5" />
+    <path d="M12 2v2.5" />
+    <rect x="9.25" y="4.5" width="5.5" height="6" rx="1.25" />
+    <path d="M6 10.5h12v3.5H6z" />
+    <path d="M9 14v4.5h6V14M9 16.25h6" />
+    <path d="M12 18.5V21h3" />
   </>,
   'IconPlug',
 );
 
-/** Shock absorber: eyes, body, rod and a spring coil. */
+/** Suspension strut: the rod, the coil spring between two seats, the damper body. */
 export const IconShock = icon(
   <>
-    <circle cx="12" cy="3.5" r="1.5" />
-    <rect x="9" y="5.5" width="6" height="8" rx="1" />
-    <path d="M12 13.5v5" />
-    <circle cx="12" cy="20.5" r="1.5" />
-    <path d="M6.5 8l11 1.5M6.5 11.5l11 1.5" />
+    <path d="M12 2v3" />
+    <path d="M5.5 5h13" />
+    <path d="M18.5 5L5.5 8.5l13 3.5-13 3.5" />
+    <path d="M5.5 15.5h13" />
+    <rect x="9" y="15.5" width="6" height="4" rx="1" />
+    <circle cx="12" cy="21" r="1.25" />
   </>,
   'IconShock',
 );
@@ -131,14 +135,14 @@ export const IconBearing = icon(
   'IconBearing',
 );
 
-/** Wiper: pivot, arm and blade over the glass edge. */
+/** Wiper: the blade on its arm, the pivot on the lower edge of the curved glass. */
 export const IconWiper = icon(
   <>
-    <path d="M2.5 21h19" />
-    <circle cx="17.5" cy="18" r="1.5" />
-    <path d="M16.5 16.8L10 9" />
-    <path d="M11.5 15.5L3.5 5" />
-    <path d="M10.5 10.6l1.6-1.2" />
+    <path d="M2 21.5q10-3.5 20 0" />
+    <circle cx="15" cy="18.75" r="1.5" />
+    <path d="M14.2 17.4L9 8" />
+    <path d="M4.5 3.5l5.5 10" />
+    <path d="M9.6 9.1l-1.5.85" />
   </>,
   'IconWiper',
 );
@@ -292,17 +296,6 @@ export const IconCalendar = icon(
 export const IconWrench = icon(
   <path d="M20 7.6a4.6 4.6 0 0 1-6.2 4.3l-7.1 7.2a1.9 1.9 0 0 1-2.7-2.7l7.2-7.1A4.6 4.6 0 0 1 16.4 3l-2.7 2.7.5 2.6 2.6.5z" />,
   'IconWrench',
-);
-
-/** Two-post car lift: the installation slot. */
-export const IconLift = icon(
-  <>
-    <path d="M3.5 21V4M20.5 21V4" />
-    <path d="M3.5 15h17" />
-    <path d="M6.5 12l1.6-3.5h7.8l1.6 3.5z" />
-    <path d="M2 21h4M18 21h4" />
-  </>,
-  'IconLift',
 );
 
 /** Payment on pickup. */

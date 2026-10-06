@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { BrandGrid, PHONE_BRANDS_COUNT, softHyphenated } from '@/components/home/BrandGrid';
+import { BrandGrid, PHONE_BRANDS_COUNT, phoneBrandName } from '@/components/home/BrandGrid';
 import { CategoryGrid } from '@/components/home/CategoryGrid';
 import { PickupCard } from '@/components/home/PickupCard';
 import { WhyUs } from '@/components/home/WhyUs';
@@ -78,11 +78,12 @@ describe('home: «Выберите марку»', () => {
     });
   });
 
-  it('breaks a long single-word make in the middle, keeps the others whole', () => {
-    expect(softHyphenated('Volkswagen')).toBe('Volks\u00adwagen');
-    expect(softHyphenated('Chevrolet')).toBe('Chevrolet');
-    expect(softHyphenated('Land Rover')).toBe('Land Rover');
-    expect(softHyphenated('Mercedes-Benz')).toBe('Mercedes-Benz');
+  it('never hyphenates a make inside the word; the two longest are shortened on phones', () => {
+    expect(html).not.toContain('\u00ad');
+    expect(phoneBrandName({ slug: 'volkswagen', name: 'Volkswagen' })).toBe('VW');
+    expect(phoneBrandName({ slug: 'mitsubishi', name: 'Mitsubishi' })).toBe('Mitsubishi');
+    expect(phoneBrandName({ slug: 'land-rover', name: 'Land Rover' })).toBe('Land Rover');
+    expect(phoneBrandName({ slug: 'mercedes-benz', name: 'Mercedes-Benz' })).toBe('Mercedes');
   });
 });
 

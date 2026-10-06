@@ -259,7 +259,8 @@ test.describe('the sample order /o/demo', () => {
     await expect(page.getByTestId('claim-form')).toBeHidden();
     await page.getByTestId('claim-open').click();
     await expect(page.getByTestId('claim-form')).toBeVisible();
-    await expect(page.getByTestId('order-photo-stub')).toBeVisible();
+    // The sample has no packaging photo file: the block is not drawn.
+    await expect(page.getByTestId('order-photos')).toHaveCount(0);
     await expectNoHorizontalScroll(page, '/o/demo');
     await screenshot(page, project, 'order-1c-demo');
 

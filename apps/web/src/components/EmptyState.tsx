@@ -23,7 +23,8 @@ export function EmptyState({ query, demoData = false }: { query: string; demoDat
         Ничего не нашли по «{query}»
       </h1>
       <p className="mt-3 max-w-xl text-body text-balance text-muted">
-        Проверьте артикул или пришлите VIN — мастер подберёт деталь бесплатно.
+        {/* No-break space: the dash never starts the second line. */}
+        Проверьте артикул или пришлите VIN{'\u00a0'}— мастер подберёт деталь бесплатно.
       </p>
       <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
         <ButtonLink href="/vin" size="lg" icon={<IconSts size={22} />}>
@@ -34,7 +35,7 @@ export function EmptyState({ query, demoData = false }: { query: string; demoDat
           Изменить запрос
         </EditQueryLink>
       </div>
-      {demoData ? <DemoDataBanner className="mt-8 justify-center" /> : null}
+      {demoData ? <DemoDataBanner stacked className="mt-8" /> : null}
     </section>
   );
 }

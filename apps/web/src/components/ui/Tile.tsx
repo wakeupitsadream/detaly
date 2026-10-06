@@ -9,7 +9,7 @@ export interface TileImage {
 }
 
 /**
- * A link tile (docs/design-v2.md, Tile): `bg-surface rounded-tile`, a square picture area, the
+ * A link tile (docs/design-v2.md, Tile): `bg-surface rounded-tile`, a 4:3 picture area, the
  * caption 16 px 600 centred in at most two lines. The picture is a photo when `image` is set
  * (WebP from public/images/categories/), otherwise the category glyph or the given icon in the
  * brand colour on the same plate, so photos can come later without touching the layout.
@@ -26,7 +26,7 @@ export function Tile({
   href: string;
   title: ReactNode;
   image?: TileImage;
-  /** A PartCategory glyph or any icon element (drawn 56 / 64 px). */
+  /** A PartCategory glyph or any icon element (drawn 72 / 88 px). */
   icon?: PartCategory | ReactNode;
   prefetch?: boolean;
   className?: string;
@@ -43,7 +43,7 @@ export function Tile({
         className,
       )}
     >
-      <span className="grid aspect-square w-full max-w-28 place-items-center text-brand">
+      <span className="grid aspect-[4/3] w-full place-items-center text-brand">
         {image ? (
           // A plain img: the photos are already WebP of the right size (no optimizer needed).
           // eslint-disable-next-line @next/next/no-img-element
@@ -69,12 +69,15 @@ export function Tile({
   );
 }
 
-/** The category glyph at tile size: 56 px on phones, 64 px from lg, stroke 1.5. */
+/**
+ * The category glyph at tile size: 72 px on phones, 88 px from lg, stroke 1.5, so the picture
+ * fills most of the tile as the photos will.
+ */
 export function TileGlyph({ category }: { category: PartCategory }) {
   return (
     <>
-      <CategoryIcon category={category} size={56} strokeWidth={1.5} className="lg:hidden" />
-      <CategoryIcon category={category} size={64} strokeWidth={1.5} className="hidden lg:block" />
+      <CategoryIcon category={category} size={72} strokeWidth={1.5} className="lg:hidden" />
+      <CategoryIcon category={category} size={88} strokeWidth={1.5} className="hidden lg:block" />
     </>
   );
 }

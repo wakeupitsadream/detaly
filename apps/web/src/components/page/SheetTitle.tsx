@@ -7,7 +7,8 @@ function stepNumber(index: string): string {
 }
 
 /**
- * Heading of a card or a checkout step: an optional step number in a 32 px brand circle, the
+ * Heading of a card or a checkout step: an optional step number in a 32 px neutral circle (the
+ * brand red stays for the current step of CheckoutSteps alone, so two red «2» never meet), the
  * title in `text-h3` and an optional `aside` on the right. `as` keeps the outline right (h2 on a
  * page, h3 inside a section).
  */
@@ -34,7 +35,7 @@ export function SheetTitle({
       {index ? (
         <span
           aria-hidden
-          className="grid size-8 shrink-0 place-items-center rounded-full bg-brand text-base font-extrabold text-on-brand tabular-nums"
+          className="grid size-8 shrink-0 place-items-center rounded-full bg-surface text-base font-extrabold text-ink tabular-nums"
         >
           {stepNumber(index)}
         </span>

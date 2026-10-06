@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { Footer } from '@/components/Footer';
 import { headerSearchTarget } from '@/components/HeaderSearch';
 import { CATEGORY_LABEL } from '@/components/icons';
-import { installDayText } from '@/components/install/InstallLine';
+import { installDateText } from '@/components/install/InstallLine';
 import { PageBand } from '@/components/page/PageBand';
 import { SiteHeader } from '@/components/SiteHeader';
 import { InfoCard } from '@/components/ui/Card';
@@ -272,10 +272,10 @@ describe('UI kit v2', () => {
     expect(dark).toContain('bg-dark');
   });
 
-  it('installDayText keeps the day only', () => {
-    expect(installDayText('чт 8 окт с 14:00')).toBe('чт 8 окт');
-    expect(installDayText('завтра с 9:30')).toBe('завтра');
-    expect(installDayText('сегодня')).toBe('сегодня');
+  it('installDateText writes the slot day as a date, never «завтра»', () => {
+    expect(installDateText('2026-10-08T14:00:00+05:00')).toBe('чт 8 окт');
+    expect(installDateText('2026-10-03T09:30:00+05:00')).toBe('сб 3 окт');
+    expect(installDateText('2027-01-01T10:00:00+05:00')).toBe('пт 1 янв');
   });
 });
 

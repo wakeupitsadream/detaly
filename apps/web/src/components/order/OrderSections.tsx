@@ -1,17 +1,10 @@
 import { formatRub } from '@detaly/domain';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import {
-  IconArrowRight,
-  IconChevronDown,
-  IconClock,
-  IconMessage,
-  IconPhone,
-  IconPin,
-  IconRoute,
-} from '@/components/icons';
-import { buttonClass } from '@/components/ui/Button';
-import { MarkerBar } from '@/components/ui/Card';
+import { IconArrowRight, IconChevronDown, IconClock, IconMessage } from '@/components/icons';
+import { PickupCard } from '@/components/PickupCard';
+import type { PickupRoute } from '@/components/PickupRouteLinks';
+import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { cn } from '@/components/ui/cn';
 import { PartTile } from '@/components/ui/PartTile';
 import { Price } from '@/components/ui/Price';
@@ -30,10 +23,7 @@ export interface PickupInfo {
 }
 
 /** A route to the pickup point (components/PickupRouteLinks → pickupRoutes). */
-export interface PickupRoute {
-  label: string;
-  href: string;
-}
+export type { PickupRoute };
 
 const TONE_CLASS: Record<StatusTone, string> = {
   wait: 'bg-wait-soft text-wait',
@@ -140,9 +130,9 @@ export function PickupCodeBlock({ code }: { code: string }) {
 }
 
 /**
- * Where to collect the order (docs/design-v2.md, «Заказ»): a grey panel with the marker bar,
- * the pickup code when there is one, the address with hours and the phone, route buttons and
- * the partner's colour mark (PICKUP_LOGO_SRC) when set.
+ * Where to collect the order (docs/design-v2.md, «Заказ»): the shared PickupCard (the same as on
+ * the home page, /about and /returns) titled «Где забрать», with the pickup code under the title
+ * when there is one, the partner's mark small at the title.
  */
 export function PickupBlock({
   pickup,
@@ -158,92 +148,33 @@ export function PickupBlock({
   routes?: readonly PickupRoute[];
   logoSrc?: string | null;
 }) {
-  const empty = !pickup.name && !pickup.address && !pickup.hours && !pickup.phone;
   return (
-    <section
-      className={cn('relative min-w-0 rounded-panel bg-surface p-4 md:p-6', className)}
-      aria-labelledby="order-pickup-title"
-      data-testid="order-pickup"
+    <PickupCard
+      layout="stack"
+      title="Где забрать"
+      titleId="order-pickup-title"
+      testId="order-pickup"
+      pickup={pickup}
+      routes={routes}
+      logo={logoSrc}
+      fallback={PICKUP_ADDRESS_UNKNOWN}
+      className={className}
     >
-      <MarkerBar className="absolute top-0 left-4 md:left-6" />
-      <div className="flex min-w-0 items-start justify-between gap-4 pt-2">
-        <h2 id="order-pickup-title" className="text-h2">
-          Где забрать
-        </h2>
-        {logoSrc ? (
-          // eslint-disable-next-line @next/next/no-img-element -- a small static mark from env
-          <img
-            src={logoSrc}
-            alt={pickup.name ?? ''}
-            width={72}
-            height={63}
-            className="-mt-1 h-14 w-16 shrink-0 object-contain"
-          />
-        ) : null}
-      </div>
-      {code ? (
-        <div className="mt-4">
-          <PickupCodeBlock code={code} />
-        </div>
-      ) : null}
-      {empty ? (
-        <p className="mt-4 text-body text-muted">{PICKUP_ADDRESS_UNKNOWN}</p>
-      ) : (
-        <address className="mt-4 flex min-w-0 gap-3 not-italic">
-          <IconPin size={26} className="mt-0.5 shrink-0 text-brand" />
-          <div className="min-w-0 space-y-1">
-            {pickup.name ? (
-              <p className="text-body font-bold wrap-anywhere">{pickup.name}</p>
-            ) : null}
-            {pickup.address ? <p className="text-body wrap-anywhere">{pickup.address}</p> : null}
-            {pickup.hours ? (
-              <p className="flex items-center gap-1.5 text-small font-normal text-muted wrap-anywhere">
-                <IconClock size={18} className="shrink-0" />
-                {pickup.hours}
-              </p>
-            ) : null}
-            {pickup.phone ? (
-              <p>
-                <a
-                  className="inline-flex min-h-11 items-center gap-1.5 text-body font-semibold whitespace-nowrap text-brand underline underline-offset-4"
-                  href={phoneHref(pickup.phone)}
-                >
-                  <IconPhone size={20} className="shrink-0" />
-                  {pickup.phone}
-                </a>
-              </p>
-            ) : null}
-          </div>
-        </address>
-      )}
-      {routes.length > 0 ? (
-        <div className="mt-4 flex min-w-0 flex-wrap gap-2">
-          {routes.map((route) => (
-            <a
-              key={route.href}
-              href={route.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={`Маршрут: ${route.label} (откроется в новой вкладке)`}
-              className={buttonClass({ variant: 'secondary' })}
-            >
-              <IconRoute size={20} className="text-brand" />
-              {route.label}
-            </a>
-          ))}
-        </div>
-      ) : null}
-    </section>
+      {code ? <PickupCodeBlock code={code} /> : null}
+    </PickupCard>
   );
+}
+
+/** Tone of an item's state badge: over and done are told apart from on the way. */
+function itemTone(item: OrderItemView): BadgeTone {
+  if (item.inactive) return 'neutral';
+  return item.state === 'arrived' || item.state === 'handed' ? 'ok' : 'info';
 }
 
 function ItemRow({ item }: { item: OrderItemView }) {
   return (
     <li
-      className={cn(
-        'grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)_auto] items-start gap-x-3 py-3.5',
-        item.inactive && 'opacity-55',
-      )}
+      className="grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)_auto] items-start gap-x-3 py-3.5"
       data-testid="order-item"
       data-state={item.state}
     >
@@ -253,21 +184,35 @@ function ItemRow({ item }: { item: OrderItemView }) {
           {item.brand} <span className="tabular-nums">{item.article}</span>
         </p>
         <p className="line-clamp-1 text-small font-normal text-muted wrap-anywhere">{item.name}</p>
-        {item.isLocal ? <p className="text-small text-ok">Склад в Оренбурге</p> : null}
-        {item.stateLabel ? (
-          <p className="mt-1 text-small font-semibold text-info" data-testid="order-item-state">
-            {item.stateLabel}
-          </p>
-        ) : null}
       </div>
       <div className="text-right">
-        <p className="text-[1.0625rem] font-bold whitespace-nowrap tabular-nums">
+        {/* An item out of the order: the sum struck through, the text keeps its contrast. */}
+        <p
+          className={cn(
+            'text-[1.0625rem] font-bold whitespace-nowrap tabular-nums',
+            item.inactive && 'text-muted line-through',
+          )}
+        >
           {formatRub(item.lineTotalKop)}
         </p>
         <p className="text-small font-normal whitespace-nowrap text-muted tabular-nums">
           {item.qty} × {formatRub(item.priceClientKop)}
         </p>
       </div>
+      {/* One badge, like everywhere, under the name and the sum (it may be long): the item's
+          state once the order is confirmed, before that where it comes from. Never «склад»
+          next to «едет к нам». */}
+      {item.stateLabel ? (
+        <p className="col-span-2 col-start-2 mt-1.5">
+          <Badge tone={itemTone(item)} data-testid="order-item-state">
+            {item.stateLabel}
+          </Badge>
+        </p>
+      ) : item.isLocal ? (
+        <p className="col-span-2 col-start-2 mt-1.5">
+          <Badge tone="ok">Со склада в Оренбурге</Badge>
+        </p>
+      ) : null}
     </li>
   );
 }
@@ -401,7 +346,21 @@ export function MessengerPreview({
       </div>
     </>
   );
-  if (bare) return <div className="mt-5 border-t border-line pt-5">{body}</div>;
+  if (bare) {
+    // Inside the notifications card: folded, the card itself stays two buttons and a line.
+    return (
+      <details className="details-plain group mt-4 border-t border-line pt-3">
+        <summary className="inline-flex min-h-11 items-center gap-1 text-small font-semibold text-ink underline decoration-line-strong underline-offset-4 hover:decoration-brand">
+          Как выглядит сообщение
+          <IconChevronDown
+            size={18}
+            className="shrink-0 text-muted transition-transform duration-150 group-open:rotate-180"
+          />
+        </summary>
+        <div className="pt-2">{body}</div>
+      </details>
+    );
+  }
   return (
     <Card title="Уведомления о статусе" testId="order-messengers">
       {body}

@@ -30,13 +30,58 @@ export function PaymentModeNotice({
   payment,
   checkoutOpen,
   hasToOrder = false,
+  inline = false,
 }: {
   payment: PaymentNotice;
   /** Some lines are to order (prepaid): say how the money is paid and protected. */
   hasToOrder?: boolean;
   /** Checkout gate open and the order minimums met; otherwise no checkout links. */
   checkoutOpen: boolean;
+  /**
+   * Inside the cart summary, right under its payment badge, for a cart paid one way: the badge
+   * already says how, so only «Как это работает» with the details folded, no card of its own.
+   */
+  inline?: boolean;
 }) {
+  const details = (
+    <>
+      {payment.sentences.map((sentence) => (
+        <p key={sentence}>{sentence}</p>
+      ))}
+      {hasToOrder ? (
+        <p className="flex items-start gap-2">
+          <IconShield size={20} className="mt-px shrink-0 text-ok" />
+          <span className="min-w-0">
+            Под заказ — предоплата картой или СБП через ЮKassa, чек придёт на телефон. Если
+            поставщик подведёт — вернём деньги полностью, без удержаний.
+          </span>
+        </p>
+      ) : null}
+    </>
+  );
+  if (inline && !payment.mixed) {
+    return (
+      <section
+        className="mt-1 min-w-0"
+        aria-labelledby="payment-mode-title"
+        data-testid="payment-mode-notice"
+      >
+        <details className="details-plain group">
+          <summary className="inline-flex min-h-11 items-center gap-1 text-small font-semibold text-ink underline decoration-line-strong underline-offset-4 hover:decoration-brand">
+            <h2 id="payment-mode-title" className="sr-only">
+              {headline(payment)}
+            </h2>
+            Как это работает
+            <IconChevronDown
+              size={18}
+              className="shrink-0 text-muted transition-transform duration-150 group-open:rotate-180"
+            />
+          </summary>
+          <div className="space-y-2 pt-1 pb-1 text-small font-normal">{details}</div>
+        </details>
+      </section>
+    );
+  }
   return (
     <section
       className={cn(
@@ -61,20 +106,7 @@ export function PaymentModeNotice({
             className="shrink-0 text-muted transition-transform duration-150 group-open:rotate-180"
           />
         </summary>
-        <div className="space-y-2 px-3 pt-1 pb-3 text-small font-normal">
-          {payment.sentences.map((sentence) => (
-            <p key={sentence}>{sentence}</p>
-          ))}
-          {hasToOrder ? (
-            <p className="flex items-start gap-2">
-              <IconShield size={20} className="mt-px shrink-0 text-ok" />
-              <span className="min-w-0">
-                Под заказ — предоплата картой или СБП через ЮKassa, чек придёт на телефон. Если
-                поставщик подведёт — вернём деньги полностью, без удержаний.
-              </span>
-            </p>
-          ) : null}
-        </div>
+        <div className="space-y-2 px-3 pt-1 pb-3 text-small font-normal">{details}</div>
       </details>
       {payment.mixed && checkoutOpen ? (
         payment.offerSplit ? (

@@ -57,8 +57,11 @@ export function OfferGroup({
   searchArticleNorm,
   orderingOpen,
   plans,
+  first = false,
 }: {
   id: string;
+  /** The first group under the filters: no marker on phones. */
+  first?: boolean;
   title: string;
   offers: readonly OfferView[];
   searchArticleNorm: string;
@@ -71,7 +74,7 @@ export function OfferGroup({
   const marks = offerMarks(sorted, plans);
   return (
     <section aria-labelledby={id} className="min-w-0">
-      <SectionHeading id={id}>
+      <SectionHeading id={id} phoneMarker={!first}>
         {title} <span className="font-bold text-muted tabular-nums">{offers.length}</span>
       </SectionHeading>
       <ul className="mt-5 space-y-3 md:mt-6 md:space-y-4">

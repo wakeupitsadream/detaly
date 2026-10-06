@@ -1,21 +1,12 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import {
-  IconBox,
-  IconChevronDown,
-  IconClock,
-  IconDocument,
-  IconPhone,
-  IconPin,
-  IconShield,
-  IconWallet,
-} from '@/components/icons';
+import { IconBox, IconChevronDown, IconDocument, IconShield, IconWallet } from '@/components/icons';
 import { LegalDocumentView } from '@/components/LegalDocumentView';
 import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
-import { buttonClass } from '@/components/ui/Button';
-import { InfoCard } from '@/components/ui/Card';
+import { PickupCard } from '@/components/PickupCard';
+import { pickupRoutes } from '@/components/PickupRouteLinks';
 import { SectionHeading } from '@/components/ui/Section';
-import { getBrand, telHref } from '@/server/brand';
+import { getBrand } from '@/server/brand';
 import { loadPublishedDocument, type LegalDocument } from '@/server/documents';
 import { getLogger } from '@/server/logger';
 
@@ -139,36 +130,15 @@ export default async function ReturnsPage() {
           </ol>
         </section>
 
-        <InfoCard
+        <PickupCard
           title="Куда принести"
           titleId="returns-where"
-          aria-labelledby="returns-where"
-          icon={<IconPin size={40} strokeWidth={1.5} />}
-        >
-          <div className="flex min-w-0 flex-col gap-5 md:flex-row md:items-center md:justify-between">
-            <ul className="min-w-0 space-y-2 text-body">
-              <li className="font-semibold wrap-anywhere">
-                {pickup.name ? `${pickup.name}, ` : null}
-                {pickup.address ?? 'Адрес уточните по телефону'}
-              </li>
-              {pickup.hours ? (
-                <li className="flex items-center gap-2 text-muted">
-                  <IconClock size={22} className="shrink-0 text-brand" />
-                  {pickup.hours}
-                </li>
-              ) : null}
-            </ul>
-            {brand.contactPhone ? (
-              <a
-                className={buttonClass({ variant: 'primary', size: 'lg' })}
-                href={telHref(brand.contactPhone)}
-              >
-                <IconPhone size={20} />
-                <span className="whitespace-nowrap tabular-nums">{brand.contactPhone}</span>
-              </a>
-            ) : null}
-          </div>
-        </InfoCard>
+          testId="returns-where"
+          pickup={pickup}
+          phone={brand.contactPhone}
+          routes={pickupRoutes(brand)}
+          logo={brand.pickupLogo?.color ?? null}
+        />
 
         <section aria-labelledby="returns-rules" className="min-w-0 max-w-3xl">
           <SectionHeading id="returns-rules">Подробно</SectionHeading>

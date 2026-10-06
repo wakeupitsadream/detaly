@@ -53,8 +53,11 @@ const CLAIM_ID = 'd0000000-0000-4000-8000-00000000c001';
 const BOOKING_ID = 'd0000000-0000-4000-8000-00000000d001';
 /** The forms of the sample order carry a fixed key: nothing is ever stored for them. */
 const DEMO_REQUEST_KEY = 'd0000000-0000-4000-8000-00000000e001';
-/** The sample installation partner when INSTALL_PARTNER_NAME is not set (never a real one). */
-export const DEMO_INSTALL_PARTNER = { name: 'сервис-партнёр', requisites: null };
+/**
+ * The sample installation partner when neither INSTALL_PARTNER_NAME nor PICKUP_POINT_NAME is set
+ * (never a real one). Genitive: it ends the sentence «Установка — услуга …» (installPaymentText).
+ */
+export const DEMO_INSTALL_PARTNER = { name: 'сервиса-партнёра', requisites: null };
 const ITEM_IDS = ['d0000000-0000-4000-8000-00000000b001', 'd0000000-0000-4000-8000-00000000b002'];
 
 const HOUR_MS = 3_600_000;

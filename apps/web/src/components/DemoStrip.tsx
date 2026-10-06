@@ -51,7 +51,7 @@ export function DemoStrip({ demoMode }: { demoMode: boolean }) {
             <a
               key={example.q}
               href={`/search?q=${example.q}`}
-              className="font-bold tabular-nums underline decoration-1 underline-offset-4 hover:decoration-2"
+              className="-my-1 inline-flex h-11 items-center font-bold tabular-nums underline decoration-1 underline-offset-4 hover:decoration-2"
             >
               {example.article}
             </a>

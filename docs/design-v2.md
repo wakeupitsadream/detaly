@@ -177,7 +177,7 @@
 | P1 — главная | `app/(site)/page.tsx`, `components/home/*` | Раздел 4 «Главная»; удаление старых home-компонентов. |
 | P2 — поиск | `app/(site)/search/*`, `components/search/*`, `OfferRow.tsx`, `StockBadge.tsx`, `EmptyState.tsx`, `AddToCartForm.tsx`, `DemoDataBanner.tsx`, `DemoStrip.tsx` | Раздел 4 «Поиск»; редирект VIN. |
 | P3 — корзина, оформление, заказ | `app/(site)/cart/*`, `checkout/*`, `o/*`, `components/Cart*`, `DiffBanner.tsx`, `PaymentModeNotice.tsx`, `components/checkout/*`, `components/order/*`, `components/forms/*`, `components/install/InstallBookingBlock.tsx` | Раздел 4 «Корзина», «Заказ». |
-| P4 — VIN и инфостраницы | `app/(site)/vin/*`, `p/*`, `about/*`, `returns/*`, `docs/*`, `app/not-found.tsx`, `components/vin/*`, `components/page/*`, `LegalDocumentView.tsx` | Раздел 4 «VIN», «Инфостраницы»; предзаполнение `/vin` из query. |
+| P4 — VIN и инфостраницы | `app/(site)/vin/*`, `p/*`, `about/*`, `returns/*`, `docs/*`, `app/not-found.tsx`, `components/vin/*`, `LegalDocumentView.tsx` | Раздел 4 «VIN», «Инфостраницы»; предзаполнение `/vin` из query. |
 
 Общие файлы, нужные нескольким пакетам, правит только F; пакеты P1–P4 берут из F готовые компоненты и при нехватке пишут локальный компонент в своих путях.
 

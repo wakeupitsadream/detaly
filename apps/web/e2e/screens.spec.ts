@@ -68,7 +68,7 @@ for (const { slug, path } of PAGES) {
       const empty = page.getByTestId('cart-empty');
       await expect(empty).toBeVisible();
       await expect(empty).toContainText('Корзина пуста');
-      await expect(empty.getByRole('link', { name: 'Искать по артикулу' })).toHaveAttribute(
+      await expect(empty.getByRole('link', { name: 'Найти по артикулу' })).toHaveAttribute(
         'href',
         '/',
       );

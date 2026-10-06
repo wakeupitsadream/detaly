@@ -18,7 +18,7 @@ import { useRouter } from 'next/navigation';
 import { useId, useState, type FormEvent } from 'react';
 import { IconAlert } from '@/components/icons';
 import { PhotoInput } from '@/components/forms/PhotoInput';
-import { buttonClass } from '@/components/ui/Button';
+import { buttonClass, Spinner } from '@/components/ui/Button';
 import { cn } from '@/components/ui/cn';
 import { inputClass } from '@/components/ui/Input';
 
@@ -60,7 +60,13 @@ export function claimErrorText(status: number, body: ClaimResponse | null): stri
 }
 
 const OPTION =
-  'flex min-w-0 cursor-pointer items-start gap-3 rounded border border-line bg-card px-4 py-3 transition-colors hover:border-ink has-checked:border-ink has-checked:bg-paper-2';
+  'flex min-h-14 min-w-0 cursor-pointer items-start gap-3 rounded-control border-[1.5px] border-line-strong bg-bg px-4 py-3 transition-colors hover:border-muted has-checked:border-brand has-checked:bg-brand-soft has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-brand';
+
+/** A 22 px radio: a brand ring when checked. */
+const RADIO =
+  'mt-0.5 size-[22px] shrink-0 cursor-pointer appearance-none rounded-full border-2 border-line-strong bg-bg transition-[border-width,border-color] checked:border-[7px] checked:border-brand focus-visible:outline-none';
+
+const LABEL = 'mb-2 block text-[0.9375rem] leading-snug font-semibold';
 
 export function ClaimForm({
   action,
@@ -124,7 +130,7 @@ export function ClaimForm({
 
   if (done) {
     return (
-      <p className="font-medium" role="status" data-testid="claim-done">
+      <p className="text-body font-semibold text-ok" role="status" data-testid="claim-done">
         Претензия принята. Порядок действий — выше.
       </p>
     );
@@ -148,7 +154,7 @@ export function ClaimForm({
 
       {targets.length > 1 ? (
         <fieldset className="min-w-0 space-y-2">
-          <legend className="mb-1.5 text-sm font-medium">Что не так</legend>
+          <legend className={LABEL}>Что не так</legend>
           {targets.map((target, index) => (
             <label key={target.value || 'order'} className={OPTION}>
               <input
@@ -156,10 +162,10 @@ export function ClaimForm({
                 name="itemId"
                 value={target.value}
                 defaultChecked={index === 0}
-                className="mt-1 size-4 shrink-0 accent-ink"
+                className={RADIO}
                 data-testid="claim-target"
               />
-              <span className="min-w-0 wrap-anywhere">{target.label}</span>
+              <span className="min-w-0 text-body wrap-anywhere">{target.label}</span>
             </label>
           ))}
         </fieldset>
@@ -168,7 +174,7 @@ export function ClaimForm({
       )}
 
       <fieldset className="min-w-0 space-y-2">
-        <legend className="mb-1.5 text-sm font-medium">Вид претензии</legend>
+        <legend className={LABEL}>Вид претензии</legend>
         {kinds.map((kind, index) => (
           <label key={kind.kind} className={OPTION}>
             <input
@@ -177,19 +183,19 @@ export function ClaimForm({
               value={kind.kind}
               required
               defaultChecked={kinds.length === 1 && index === 0}
-              className="mt-1 size-4 shrink-0 accent-ink"
+              className={RADIO}
               data-testid={`claim-kind-${kind.kind}`}
             />
             <span className="min-w-0">
-              <span className="block font-medium">{kind.label}</span>
-              <span className="block text-sm text-muted">{kind.hint}</span>
+              <span className="block text-body font-semibold">{kind.label}</span>
+              <span className="block text-small font-normal text-muted">{kind.hint}</span>
             </span>
           </label>
         ))}
       </fieldset>
 
       <div className="min-w-0">
-        <label htmlFor={`${id}-text`} className="mb-1.5 block text-sm font-medium">
+        <label htmlFor={`${id}-text`} className={LABEL}>
           Опишите, что случилось
         </label>
         <textarea
@@ -201,8 +207,8 @@ export function ClaimForm({
           aria-describedby={`${id}-text-hint`}
           data-testid="claim-text"
         />
-        <p id={`${id}-text-hint`} className="mt-1.5 text-sm text-muted">
-          До {textMax} символов. Не пишите сюда номера документов и карт — они не нужны.
+        <p id={`${id}-text-hint`} className="mt-2 text-small font-normal text-muted">
+          До {textMax} символов. Номера документов и карт не нужны.
         </p>
       </div>
 
@@ -217,7 +223,7 @@ export function ClaimForm({
       ) : null}
 
       <div className="min-w-0">
-        <label htmlFor={`${id}-last4`} className="mb-1.5 block text-sm font-medium">
+        <label htmlFor={`${id}-last4`} className={LABEL}>
           Последние 4 цифры телефона из заказа
         </label>
         <input
@@ -231,7 +237,7 @@ export function ClaimForm({
           required
           className={inputClass({
             mono: true,
-            className: 'h-12 max-w-36 text-center text-lg tracking-[0.4em]',
+            className: 'h-16 max-w-44 text-center text-[1.5rem] font-bold tracking-[0.4em]',
           })}
           data-testid="claim-last4"
         />
@@ -239,11 +245,11 @@ export function ClaimForm({
 
       {error !== null ? (
         <p
-          className="flex items-start gap-1.5 text-sm text-danger"
+          className="flex items-start gap-1.5 text-small font-medium text-danger"
           role="alert"
           data-testid="claim-error"
         >
-          <IconAlert size={16} className="mt-0.5 shrink-0" />
+          <IconAlert size={18} className="mt-0.5 shrink-0" />
           <span className="min-w-0">{error}</span>
         </p>
       ) : null}
@@ -252,13 +258,17 @@ export function ClaimForm({
         <button
           type="submit"
           disabled={pending}
-          className={cn(buttonClass({ variant: 'primary' }), 'w-full sm:w-auto')}
+          aria-busy={pending || undefined}
+          className={cn(buttonClass({ variant: 'primary', size: 'lg' }), 'w-full sm:w-auto')}
           data-testid="claim-submit"
         >
+          {pending ? <Spinner /> : null}
           {pending ? 'Отправляем…' : 'Отправить претензию'}
         </button>
         {contactPhone ? (
-          <p className="text-sm text-muted">Удобнее голосом — позвоните {contactPhone}.</p>
+          <p className="text-small font-normal text-muted">
+            Удобнее голосом — позвоните <span className="whitespace-nowrap">{contactPhone}</span>.
+          </p>
         ) : null}
       </div>
     </form>

@@ -1,20 +1,20 @@
 import { promisedDate, type IsoDate } from '@detaly/domain';
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
-import Link from 'next/link';
 import { CartLineRow } from '@/components/CartLineRow';
-import { CartCheckoutBar, CartSummary } from '@/components/CartSummary';
+import { CartCheckoutBar, CartSummary, type CartPaymentMode } from '@/components/CartSummary';
 import { CheckoutSteps } from '@/components/checkout/CheckoutSteps';
 import { DiffBanner } from '@/components/DiffBanner';
-import { IconArrowRight, IconCart, IconSearch } from '@/components/icons';
+import { IconCart, IconPlus, IconSearch, IconSts } from '@/components/icons';
 import { Notice } from '@/components/page/Notice';
 import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
 import { PaymentModeNotice } from '@/components/PaymentModeNotice';
-import { buttonClass } from '@/components/ui/Button';
+import { ButtonLink } from '@/components/ui/Button';
 import { cartCountLabel } from '@/lib/plural';
+import { vinRequestHref } from '@/lib/vin-link';
 import { getCartService } from '@/server/cart';
 import { CART_ERROR_MESSAGES, isCartErrorCode } from '@/server/cart/errors';
-import { STALE_PRICES_TEXT, summarizeCart } from '@/server/cart/summary';
+import { FINAL_SCHEME_NOTE, STALE_PRICES_TEXT, summarizeCart } from '@/server/cart/summary';
 import { readCartToken } from '@/server/cart-store';
 import { getBrand } from '@/server/brand';
 import type { CartView } from '@/server/cart/cart-service';
@@ -22,6 +22,7 @@ import { currentCheckoutGate } from '@/server/checkout-gate';
 import { errorInfo, PageDataError } from '@/server/errors';
 import { planInstallForDate, type InstallPlanView } from '@/server/install';
 import { getLogger } from '@/server/logger';
+import { FindByArticleLink } from './FindByArticleLink';
 
 export const metadata: Metadata = {
   title: 'Корзина',
@@ -34,28 +35,39 @@ function first(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? '';
 }
 
+/** An empty cart: a large cart icon, one line and the two ways to find a part. */
 function EmptyCart() {
   return (
     <div
-      className="mx-auto flex max-w-xl min-w-0 flex-col items-center rounded border border-line bg-card px-5 py-10 text-center md:py-14"
+      className="mx-auto flex max-w-xl min-w-0 flex-col items-center rounded-panel bg-surface px-6 py-10 text-center md:py-14"
       data-testid="cart-empty"
     >
-      <div
-        aria-hidden
-        className="grid size-20 place-items-center rounded bg-graphite-800 bg-tread text-steel-200"
-      >
-        <IconCart size={34} />
+      <div aria-hidden className="grid size-28 place-items-center rounded-full bg-bg text-brand">
+        <IconCart size={64} strokeWidth={1.5} />
       </div>
       <h2 className="mt-6 text-h2">Корзина пуста</h2>
-      <p className="mt-3 max-w-sm text-muted">
-        Найдите деталь по артикулу и нажмите «В корзину». Цену и дату получения покажем сразу.
+      <p className="mt-2 text-body text-muted">
+        Найдите деталь по артикулу или отдайте подбор мастеру.
       </p>
-      <Link href="/" className={`${buttonClass({ size: 'lg' })} mt-7`}>
-        <IconSearch size={18} strokeWidth={2} />
-        Искать по артикулу
-      </Link>
+      <div className="mt-7 grid w-full max-w-sm gap-3">
+        <FindByArticleLink icon={<IconSearch size={22} />}>Найти по артикулу</FindByArticleLink>
+        <ButtonLink
+          href={vinRequestHref()}
+          variant="secondary"
+          size="lg"
+          block
+          icon={<IconSts size={22} className="text-brand" />}
+        >
+          Подобрать по VIN
+        </ButtonLink>
+      </div>
     </div>
   );
+}
+
+/** How the summary badge names the payment: summarizeCart adds the phone note only on pickup. */
+function paymentMode(payment: { mixed: boolean; sentences: string[] }): CartPaymentMode {
+  return !payment.mixed && payment.sentences.includes(FINAL_SCHEME_NOTE) ? 'on_pickup' : 'prepay';
 }
 
 export default async function CartPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -95,11 +107,12 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
   return (
     <InnerPage>
       <PageBand
-        eyebrow={summary ? `В корзине ${cartCountLabel(summary.lines.length)}` : 'Корзина'}
+        tone="light"
         title="Корзина"
+        lead={summary ? cartCountLabel(summary.lines.length) : undefined}
         meta={<CheckoutSteps current={0} />}
       />
-      <PageBody className="space-y-6">
+      <PageBody className="space-y-4">
         {isCartErrorCode(errorCode) ? (
           <Notice tone="danger" role="alert" data-testid="cart-error">
             {CART_ERROR_MESSAGES[errorCode]}
@@ -118,27 +131,27 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
         ) : null}
 
         {summary && gate ? (
-          <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-10">
-            <div className="min-w-0 space-y-5">
+          <div className="grid min-w-0 gap-6 pt-2 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start lg:gap-8">
+            <div className="min-w-0 space-y-4">
               <ul className="min-w-0 space-y-3">
                 {summary.lines.map((line) => (
                   <CartLineRow key={line.id} line={line} />
                 ))}
               </ul>
               <p className="min-w-0" data-testid="cart-more">
-                <Link href="/" className={buttonClass({ variant: 'secondary' })}>
+                <ButtonLink href="/" variant="secondary" icon={<IconPlus size={20} />}>
                   Найти ещё деталь
-                  <IconArrowRight size={18} />
-                </Link>
+                </ButtonLink>
               </p>
             </div>
-            <div className="min-w-0 space-y-5 lg:sticky lg:top-24">
+            <div className="min-w-0 space-y-3 lg:sticky lg:top-6">
               <CartSummary
                 subtotalText={summary.subtotalText}
                 itemsCount={summary.itemsCount}
                 promiseText={summary.promiseText}
                 minimums={summary.minimums}
                 install={install}
+                payment={paymentMode(summary.payment)}
                 gate={gate.open ? { open: true } : { open: false, message: gate.message, phone }}
               />
               {/* Below the minimum no part of the cart can be checked out either. */}

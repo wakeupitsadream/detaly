@@ -1,10 +1,12 @@
 import { formatRub } from '@detaly/domain';
 import type { ReactNode } from 'react';
-import { IconCard, IconClock, IconLift } from '@/components/icons';
+import { IconCalendar, IconCard, IconLift, IconLock, IconWallet } from '@/components/icons';
+import { InstallLine } from '@/components/install/InstallLine';
+import { InstallBookingBlock } from '@/components/install/InstallBookingBlock';
 import { Notice } from '@/components/page/Notice';
 import { PageBand, PageBody } from '@/components/page/PageBand';
+import { Badge } from '@/components/ui/Badge';
 import { FullBleed } from '@/components/ui/Section';
-import { InstallBookingBlock } from '@/components/install/InstallBookingBlock';
 import type { InstallPlanView } from '@/server/install/types';
 import type { CartReminder } from '@/server/orders/cart-reminder';
 import type { OrderFlash } from '@/server/orders/flash';
@@ -23,6 +25,7 @@ import {
   RefuseBlock,
 } from './OrderActions';
 import {
+  Card,
   CartReminderBanner,
   ItemsBlock,
   MessengerPreview,
@@ -31,8 +34,19 @@ import {
   StatusBadge,
   TimelineBlock,
   type PickupInfo,
+  type PickupRoute,
 } from './OrderSections';
 import { OrderStepper } from './OrderStepper';
+
+/**
+ * One column on phones in reading order. From lg two: everything in the left column and the
+ * pickup card sticky on the right, spanning all rows (`row-span-30`; the rows the page does not
+ * fill are empty and take no room, so the gaps are margins of the items).
+ */
+const GRID =
+  'grid min-w-0 gap-y-4 md:gap-y-5 lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-x-8 lg:gap-y-0 lg:[&>*]:col-start-1 lg:[&>*]:mb-5';
+const SIDE =
+  'lg:col-start-2! lg:row-span-30 lg:row-start-1 lg:mb-0! lg:sticky lg:top-6 lg:self-start';
 
 const NO_NOTICE: PayNotice = { paid: false, payError: null, since: null };
 
@@ -60,30 +74,9 @@ function FlashNotice({ flash }: { flash: OrderFlash }) {
 /** Statuses at which the order has stopped: the stepper greys out and a danger plate says so. */
 const STOPPED = new Set(['cancelled', 'refund_pending', 'refunded']);
 
-/** One fact of the work order head: an icon and a line in the text face. */
-function HeadFact({
-  icon,
-  children,
-  testId,
-}: {
-  icon: ReactNode;
-  children: ReactNode;
-  testId?: string;
-}) {
-  return (
-    <span
-      className="inline-flex min-w-0 items-start gap-2 text-paper md:text-[1.0625rem]"
-      data-testid={testId}
-    >
-      <span className="mt-0.5 shrink-0 text-steel-400 md:mt-1">{icon}</span>
-      <span className="min-w-0">{children}</span>
-    </span>
-  );
-}
-
 /** How the order is paid, as one line of the head: the card below only carries actions. */
 function paymentLine(view: OrderView): ReactNode {
-  const total = <span className="font-semibold whitespace-nowrap">{formatRub(view.totalKop)}</span>;
+  const total = <span className="font-bold whitespace-nowrap">{formatRub(view.totalKop)}</span>;
   if (view.scheme === 'prepay') {
     return view.moneyHeld ? <>Оплачено онлайн · {total}</> : <>Предоплата онлайн · {total}</>;
   }
@@ -91,13 +84,37 @@ function paymentLine(view: OrderView): ReactNode {
 }
 
 /**
- * /o/<token> (docs/phase-1a-implementation.md 7.1, phase 1B section 14.4). Presentational:
- * everything comes from the read model; the client's phone is not part of it and is never
- * shown. `notice` carries the query flags after the payment page (?paid=1, ?pay=error).
+ * The «Машина готова …» line of the order, or the note when there is no slot to book here. The
+ * calculation is not a booking: the master confirms the slot.
+ */
+function InstallCard({ plan }: { plan: InstallPlanView | null }) {
+  return (
+    <Card title="Установка" icon={<IconLift size={26} />} testId="order-install">
+      <div data-testid="order-car-ready">
+        <InstallLine plan={plan} size="md" />
+      </div>
+      <p className="mt-2 text-small font-normal text-muted">
+        Запись подтверждает мастер; установка — услуга сервиса, оплата там.
+      </p>
+      {plan?.demo ? (
+        <Badge tone="demo" className="mt-3">
+          загрузка демонстрационная
+        </Badge>
+      ) : null}
+    </Card>
+  );
+}
+
+/**
+ * /o/<token> (docs/phase-1a-implementation.md 7.1, phase 1B section 14.4; docs/design-v2.md,
+ * «Заказ»). Presentational: everything comes from the read model; the client's phone is not
+ * part of it and is never shown. `notice` carries the query flags after the payment page
+ * (?paid=1, ?pay=error).
  *
- * Layout: the graphite band is the head of the work order (number, status, date, stepper);
- * below it the decisions and the money on the left, the point, history and the rest on the
- * right (one column on phones, in the same order).
+ * One column, like a receipt: the head (number, a large status badge, the date and how it is
+ * paid), the stepper, whatever needs the client's decision or money, where to collect it (the
+ * pickup code), the installation line with the booking chips, the parts, the claims, then the
+ * secondary actions (statuses in a messenger, cancel, refuse) and the folded history.
  */
 export function OrderDetails({
   view,
@@ -110,6 +127,8 @@ export function OrderDetails({
   services,
   flash = null,
   demo = false,
+  routes = [],
+  pickupLogo = null,
 }: {
   view: OrderView;
   pickup: PickupInfo;
@@ -126,6 +145,10 @@ export function OrderDetails({
   flash?: OrderFlash | null;
   /** The sample order of DEMO_MODE: a preview of a status message under the buttons. */
   demo?: boolean;
+  /** Route links to the pickup point (pickupRoutes(brand)). */
+  routes?: readonly PickupRoute[];
+  /** The partner's colour mark (PICKUP_LOGO_SRC). */
+  pickupLogo?: string | null;
 }) {
   const check = payCheckState(view, notice, nowMs);
   const stopped = STOPPED.has(view.status);
@@ -142,127 +165,157 @@ export function OrderDetails({
         : flash.section === 'install'
           ? Boolean(services?.install)
           : messenger !== null;
+  const installLine =
+    showInstall && install !== undefined ? (
+      <div data-testid="order-car-ready">
+        <InstallLine plan={install} size="md" />
+        {install?.demo ? (
+          <Badge tone="demo" className="mt-2">
+            загрузка демонстрационная
+          </Badge>
+        ) : null}
+      </div>
+    ) : undefined;
+  const PayIcon = view.scheme === 'prepay' ? IconCard : IconWallet;
   return (
     <FullBleed data-testid="order-page">
-      <PageBand
-        eyebrow="Страница заказа · сохраните ссылку"
-        titleTestId="order-number"
-        title={
-          <>
-            Заказ <span className="font-mono font-semibold tracking-tight">{view.number}</span>
-          </>
-        }
-      >
-        <div className="flex min-w-0 flex-col items-start gap-3 md:flex-row md:flex-wrap md:items-center md:gap-x-7">
-          <StatusBadge label={view.statusLabel} tone={view.statusTone} />
-          {view.promiseText ? (
-            <HeadFact icon={<IconClock size={18} />} testId="order-promise">
-              Получение <span className="font-semibold">{view.promiseText}</span>
-            </HeadFact>
-          ) : null}
-          {showInstall && install ? (
-            <HeadFact icon={<IconLift size={18} />} testId="order-car-ready">
-              Подъёмник <time dateTime={install.slotStartIso}>{install.slotText}</time> · машина
-              готова <span className="font-semibold">{install.carReadyText}</span>
-            </HeadFact>
-          ) : null}
-          {stopped ? null : (
-            <HeadFact icon={<IconCard size={18} />} testId="order-payment-line">
-              {paymentLine(view)}
-            </HeadFact>
-          )}
-        </div>
-        <div className="mt-7 border-t border-graphite-700 pt-6 md:mt-8 md:pt-7">
-          <OrderStepper status={view.status} scheme={view.scheme} />
-        </div>
-      </PageBand>
-
-      <PageBody className="space-y-5">
-        {stopped ? (
-          <Notice tone="danger" title={view.statusLabel} data-testid="order-stopped">
-            Заказ остановлен. Что произошло и когда — в истории заказа ниже.
-          </Notice>
-        ) : null}
-        {flash !== null && !flashHome ? <FlashNotice flash={flash} /> : null}
-        {cartReminder ? <CartReminderBanner reminder={cartReminder} /> : null}
-
-        <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:items-start lg:gap-8">
-          {/* Left: decisions, money and the parts; the notifications close it. Right: where to
-              come and what happened. One column on phones, in this order. */}
-          <div className="min-w-0 space-y-5">
-            <ApprovalBlock view={view} contactPhone={contactPhone} />
-
-            {view.pickupCode ? <PickupCodeBlock code={view.pickupCode} /> : null}
-
-            <PaymentBlock view={view} notice={notice} check={check} contactPhone={contactPhone} />
-
-            {services?.claims ? (
-              <ClaimBlock
-                token={view.token}
-                block={services.claims}
-                pickup={pickup}
-                contactPhone={contactPhone}
-                notice={flashFor('claim')}
-              />
+      <div>
+        <PageBand
+          tone="light"
+          eyebrow={
+            <span className="inline-flex items-center gap-1.5">
+              <IconLock size={18} className="shrink-0" />
+              Сохраните ссылку — по ней виден заказ
+            </span>
+          }
+          titleTestId="order-number"
+          title={
+            <>
+              Заказ <span className="whitespace-nowrap tabular-nums">{view.number}</span>
+            </>
+          }
+        >
+          <div className="flex min-w-0 flex-col items-start gap-3">
+            <StatusBadge label={view.statusLabel} tone={view.statusTone} />
+            {view.promiseText ? (
+              <p className="flex min-w-0 items-center gap-2.5 text-h3" data-testid="order-promise">
+                <IconCalendar size={28} className="shrink-0 text-brand" />
+                <span className="min-w-0">
+                  Получение <span className="whitespace-nowrap">{view.promiseText}</span>
+                </span>
+              </p>
             ) : null}
+            {stopped ? null : (
+              <p
+                className="flex min-w-0 items-start gap-2.5 text-body"
+                data-testid="order-payment-line"
+              >
+                <PayIcon size={24} className="shrink-0 text-brand" />
+                <span className="min-w-0">{paymentLine(view)}</span>
+              </p>
+            )}
+          </div>
+        </PageBand>
+      </div>
 
-            <RefundBlock view={view} />
+      <div>
+        <PageBody className={GRID}>
+          <section
+            className="min-w-0 rounded-panel bg-surface px-5 py-5 md:px-6 md:py-7"
+            aria-label="Ход заказа"
+          >
+            <OrderStepper status={view.status} scheme={view.scheme} />
+          </section>
 
-            <PartialArrivalBlock view={view} contactPhone={contactPhone} />
+          {stopped ? (
+            <Notice tone="danger" title={view.statusLabel} data-testid="order-stopped">
+              Заказ остановлен. Что и когда произошло — в истории заказа ниже.
+            </Notice>
+          ) : null}
+          {flash !== null && !flashHome ? <FlashNotice flash={flash} /> : null}
+          {cartReminder ? <CartReminderBanner reminder={cartReminder} /> : null}
 
-            {services?.install ? (
-              <InstallBookingBlock
-                token={view.token}
-                install={services.install}
-                notice={flashFor('install')}
-              />
-            ) : null}
+          <ApprovalBlock view={view} contactPhone={contactPhone} />
+          <PaymentBlock view={view} notice={notice} check={check} contactPhone={contactPhone} />
+          <RefundBlock view={view} />
+          <PartialArrivalBlock view={view} contactPhone={contactPhone} />
 
-            <ItemsBlock
-              items={view.items}
-              subtotalKop={view.subtotalKop}
-              courierFeeKop={view.courierFeeKop}
-              totalKop={view.totalKop}
+          {view.fulfillment === 'pickup' ? (
+            <PickupBlock
+              className={SIDE}
+              pickup={pickup}
+              code={view.pickupCode}
+              routes={routes}
+              logoSrc={pickupLogo}
             />
+          ) : view.pickupCode ? (
+            <div className={SIDE}>
+              <PickupCodeBlock code={view.pickupCode} />
+            </div>
+          ) : null}
 
-            {messenger ? (
-              <MessengerBlock
-                token={view.token}
-                messenger={messenger}
-                preferred={view.preferredChannel}
-                demo={demo}
-                notice={flashFor('notify')}
-                preview={
-                  demo ? (
-                    <MessengerPreview
-                      number={view.number}
-                      install={install ?? null}
-                      hours={pickup.hours}
-                      bare
-                    />
-                  ) : undefined
-                }
-              />
-            ) : null}
-          </div>
+          {services?.install ? (
+            <InstallBookingBlock
+              token={view.token}
+              install={services.install}
+              notice={flashFor('install')}
+              lead={installLine}
+            />
+          ) : showInstall && install !== undefined ? (
+            <InstallCard plan={install} />
+          ) : null}
 
-          <div className="min-w-0 space-y-5 lg:sticky lg:top-24">
-            {view.fulfillment === 'pickup' ? (
-              <PickupBlock pickup={pickup} install={view.closed ? undefined : install} />
-            ) : null}
+          <ItemsBlock
+            items={view.items}
+            subtotalKop={view.subtotalKop}
+            courierFeeKop={view.courierFeeKop}
+            totalKop={view.totalKop}
+          />
 
-            {services ? <OrderPhotos photos={services.photos} demo={services.demo} /> : null}
+          {services ? <OrderPhotos photos={services.photos} demo={services.demo} /> : null}
 
-            <TimelineBlock entries={view.timeline} />
+          {services?.claims ? (
+            <ClaimBlock
+              token={view.token}
+              block={services.claims}
+              pickup={pickup}
+              contactPhone={contactPhone}
+              notice={flashFor('claim')}
+            />
+          ) : null}
 
-            <RefuseBlock view={view} contactPhone={contactPhone} />
+          {messenger ? (
+            <MessengerBlock
+              token={view.token}
+              messenger={messenger}
+              preferred={view.preferredChannel}
+              demo={demo}
+              notice={flashFor('notify')}
+              preview={
+                demo ? (
+                  <MessengerPreview
+                    number={view.number}
+                    install={install ?? null}
+                    hours={pickup.hours}
+                    bare
+                  />
+                ) : undefined
+              }
+            />
+          ) : null}
 
-            {view.canCancel ? (
-              <CancelOrderForm token={view.token} contactPhone={contactPhone} />
-            ) : null}
-          </div>
-        </div>
-      </PageBody>
+          {view.canCancel || view.actions.refuse ? (
+            <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+              {view.canCancel ? (
+                <CancelOrderForm token={view.token} contactPhone={contactPhone} />
+              ) : null}
+              <RefuseBlock view={view} contactPhone={contactPhone} />
+            </div>
+          ) : null}
+
+          <TimelineBlock entries={view.timeline} />
+        </PageBody>
+      </div>
     </FullBleed>
   );
 }

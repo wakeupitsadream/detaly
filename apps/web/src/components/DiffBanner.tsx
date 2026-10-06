@@ -1,4 +1,6 @@
 import { formatRub, type LineChange } from '@detaly/domain';
+import { plural } from '@/lib/plural';
+import { IconChevronDown } from './icons';
 import { Notice } from './page/Notice';
 
 /** Signed per-unit price delta: '+53 ₽', '−120 ₽'. */
@@ -23,10 +25,16 @@ export function describeChange(change: LineChange): string {
 
 export const CART_CHANGED_TEXT = 'Корзина изменилась — проверьте состав и сумму';
 
+/** «Корзина изменилась: 3 изменения» — the one line over several changes. */
+function changesHeadline(count: number): string {
+  return `Корзина изменилась: ${count} ${plural(count, 'изменение', 'изменения', 'изменений')}`;
+}
+
 /**
  * What changed in the cart since the client last saw it (repricing on open or a 409 from
- * checkout). With no line changes but `cartChanged` (e.g. a stale total) it shows a general
- * notice; with nothing to say it renders nothing.
+ * checkout), as one line (docs/design-v2.md, «Корзина»): a single change is that line; several
+ * are a headline with the list under a disclosure. With no line changes but `cartChanged` (e.g.
+ * a stale total) it shows a general notice; with nothing to say it renders nothing.
  */
 export function DiffBanner({
   changes,
@@ -36,16 +44,26 @@ export function DiffBanner({
   cartChanged?: boolean;
 }) {
   if (changes.length === 0 && !cartChanged) return null;
+  const items = changes.map((change) => (
+    <li key={`${change.kind}:${change.lineId}`}>{describeChange(change)}</li>
+  ));
   return (
     <Notice tone="wait" role="status" data-testid="diff-banner">
       {changes.length === 0 ? (
         <p>{CART_CHANGED_TEXT}</p>
+      ) : changes.length === 1 ? (
+        <ul>{items}</ul>
       ) : (
-        <ul className="space-y-1">
-          {changes.map((change) => (
-            <li key={`${change.kind}:${change.lineId}`}>{describeChange(change)}</li>
-          ))}
-        </ul>
+        <details className="details-plain group">
+          <summary className="-my-2.5 flex min-h-11 items-center justify-between gap-3 font-semibold">
+            <span className="min-w-0">{changesHeadline(changes.length)}</span>
+            <IconChevronDown
+              size={22}
+              className="shrink-0 transition-transform duration-150 group-open:rotate-180"
+            />
+          </summary>
+          <ul className="mt-2 space-y-1">{items}</ul>
+        </details>
       )}
     </Notice>
   );

@@ -5,7 +5,7 @@
  * /api/orders/<token>/actions (ClientActionForm).
  */
 import { formatRub } from '@detaly/domain';
-import { IconAlert, IconCheck, IconInfo } from '@/components/icons';
+import { IconAlert, IconCard, IconCheck, IconInfo, IconWallet } from '@/components/icons';
 import { buttonClass } from '@/components/ui/Button';
 import { cn } from '@/components/ui/cn';
 import type { OrderView } from '@/server/orders/order-view';
@@ -14,6 +14,17 @@ import { ClientActionForm } from './ClientActionForm';
 import { Card } from './OrderSections';
 
 const PRIMARY_BUTTON = cn(buttonClass({ variant: 'primary', size: 'lg' }), 'w-full sm:w-auto');
+
+/** The payment way as the first line of the card: an icon and the scheme, 17 px bold. */
+function SchemeLine({ prepay, children }: { prepay: boolean; children: string }) {
+  const Icon = prepay ? IconCard : IconWallet;
+  return (
+    <p className="flex items-center gap-2.5 text-body font-bold">
+      <Icon size={24} className="shrink-0 text-brand" />
+      {children}
+    </p>
+  );
+}
 
 export const PAY_TEXTS = {
   checking: 'Проверяем оплату…',
@@ -46,15 +57,19 @@ function Notice({
   testId: string;
 }) {
   const cls =
-    tone === 'error' ? 'text-danger' : tone === 'success' ? 'font-medium text-ok' : 'text-muted';
+    tone === 'error'
+      ? 'font-medium text-danger'
+      : tone === 'success'
+        ? 'font-semibold text-ok'
+        : 'text-muted';
   const Icon = tone === 'error' ? IconAlert : tone === 'success' ? IconCheck : IconInfo;
   return (
     <p
-      className={cn('mt-3 flex items-start gap-2 text-sm', cls)}
+      className={cn('mt-3 flex items-start gap-2 text-small', cls)}
       role={tone === 'error' ? 'alert' : 'status'}
       data-testid={testId}
     >
-      <Icon size={16} className="mt-0.5 shrink-0" />
+      <Icon size={20} className="mt-px shrink-0" />
       <span className="min-w-0">{children}</span>
     </p>
   );
@@ -82,18 +97,14 @@ export function PaymentBlock({
     const waiting = status === 'awaiting_payment';
     return (
       <Card title="Оплата" testId="order-payment">
-        <p className="text-[1.0625rem] font-medium">Предоплата 100% онлайн</p>
+        <SchemeLine prepay>Предоплата 100% онлайн</SchemeLine>
         {check?.kind === 'checking' ? (
           <>
             <meta httpEquiv="refresh" content={`${check.refreshSec};url=${check.refreshUrl}`} />
-            <p
-              className="mt-3 text-[1.0625rem] font-semibold"
-              role="status"
-              data-testid="pay-checking"
-            >
+            <p className="mt-3 text-h3" role="status" data-testid="pay-checking">
               {PAY_TEXTS.checking}
             </p>
-            <p className="mt-1 text-sm text-muted">{PAY_TEXTS.checkingHint}</p>
+            <p className="mt-1 text-small font-normal text-muted">{PAY_TEXTS.checkingHint}</p>
           </>
         ) : null}
         {check?.kind === 'slow' ? (
@@ -125,12 +136,12 @@ export function PaymentBlock({
               type="button"
               disabled
               aria-disabled="true"
-              className="mt-4 inline-flex min-h-13 w-full cursor-not-allowed items-center justify-center rounded bg-paper-2 px-7 font-semibold text-faint sm:w-auto"
+              className="mt-4 inline-flex min-h-13 w-full cursor-not-allowed items-center justify-center rounded-control bg-surface-2 px-6 text-[1.0625rem] font-semibold text-muted sm:w-auto"
               data-testid="pay-button"
             >
               Оплатить {formatRub(totalKop)}
             </button>
-            <p className="mt-2 text-sm text-muted">{PAY_TEXTS.disabled}</p>
+            <p className="mt-2 text-small font-normal text-muted">{PAY_TEXTS.disabled}</p>
           </>
         ) : null}
       </Card>
@@ -140,12 +151,10 @@ export function PaymentBlock({
   if (!(status === 'awaiting_confirmation' || actions.prepayNow)) return null;
   return (
     <Card title="Оплата" testId="order-payment">
-      <p className="text-[1.0625rem] font-medium">Оплата при получении картой или по QR</p>
+      <SchemeLine prepay={false}>Оплата при получении картой или по QR</SchemeLine>
       {status === 'awaiting_confirmation' && actions.confirm ? (
-        <div className="mt-3 space-y-2">
-          <p className="text-sm text-muted">
-            Подтвердите заказ: после этого мы отложим детали для вас. Оплата — при получении.
-          </p>
+        <div className="mt-3 space-y-3">
+          <p className="text-body">Подтвердите заказ — и мы отложим детали для вас.</p>
           <ClientActionForm
             token={token}
             action="confirm"
@@ -162,14 +171,14 @@ export function PaymentBlock({
         </div>
       ) : null}
       {status === 'awaiting_confirmation' && !actions.confirm ? (
-        <p className="mt-2 text-sm text-muted">
+        <p className="mt-2 text-small font-normal text-muted">
           Подтверждение заказа подключается: мы свяжемся с вами.
         </p>
       ) : null}
       {actions.prepayNow ? (
-        <div className="mt-3 space-y-2">
-          <p className="text-sm text-muted">
-            Можно оплатить заказ заранее онлайн и прийти только забрать детали.
+        <div className="mt-3 space-y-3">
+          <p className="text-small font-normal text-muted">
+            Можно оплатить заранее и прийти только забрать детали.
           </p>
           <ClientActionForm
             token={token}
@@ -212,7 +221,13 @@ export function ApprovalBlock({
       ? 'Заказ будет отменён. Оплаты не было — возвращать нечего.'
       : 'Позиция будет отменена, остальное привезём.';
   return (
-    <Card title="Нужно ваше решение" testId="order-approval" id="decision">
+    <Card
+      title="Нужно ваше решение"
+      icon={<IconAlert size={26} />}
+      testId="order-approval"
+      id="decision"
+      attention
+    >
       {approval.kind === 'alternative' && approval.alternative ? (
         <div className="space-y-1">
           <p className="wrap-anywhere">
@@ -221,11 +236,11 @@ export function ApprovalBlock({
           </p>
           <p className="font-semibold wrap-anywhere" data-testid="approval-offer">
             {approval.alternative.brand}{' '}
-            <span className="font-mono">{approval.alternative.article}</span> —{' '}
+            <span className="tabular-nums">{approval.alternative.article}</span> —{' '}
             {approval.alternative.name}
           </p>
           {approval.alternative.etaText ? (
-            <p className="text-sm text-muted">Приедет {approval.alternative.etaText}</p>
+            <p className="text-small text-muted">Приедет {approval.alternative.etaText}</p>
           ) : null}
         </div>
       ) : (
@@ -235,12 +250,12 @@ export function ApprovalBlock({
         </p>
       )}
       {approval.deadlineText ? (
-        <p className="mt-2 text-sm text-muted" data-testid="approval-deadline">
+        <p className="mt-2 text-small font-normal text-muted" data-testid="approval-deadline">
           Ответьте до {approval.deadlineText}. Если ответа не будет,{' '}
           {view.moneyHeld ? `вернём деньги ${target}` : 'отменим без оплаты'}.
         </p>
       ) : null}
-      <div className="mt-3 flex flex-col gap-3">
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
         {view.actions.approve ? (
           <ClientActionForm
             token={view.token}
@@ -293,10 +308,10 @@ export function PartialArrivalBlock({
   const until = view.partialArrival.waitUntilText;
   return (
     <Card title="Часть заказа уже приехала" testId="order-partial">
-      <p className="font-medium" data-testid="order-wait-until">
+      <p className="text-body font-bold" data-testid="order-wait-until">
         {until ? `Жду до ${until}` : 'Жду остальное'}
       </p>
-      <p className="mt-1 text-sm text-muted">
+      <p className="mt-1 text-small font-normal text-muted">
         Если готовы подождать, ничего делать не нужно — сообщим, когда приедет всё.
         {view.moneyHeld && cancellable.length > 0
           ? ' Позицию, которая задерживается, можно отменить: деньги за неё вернём в течение 10 дней.'
@@ -344,12 +359,7 @@ export function RefuseBlock({
     ? 'Отказаться от заказа можно до получения. Деньги вернём в течение 10 дней.'
     : 'Отказаться от заказа можно до получения. Оплаты не было — возвращать нечего.';
   return (
-    <section
-      id="refuse"
-      className="min-w-0 scroll-mt-24 rounded border border-line bg-card p-5 md:p-6"
-      data-testid="order-refuse"
-    >
-      <p className="mb-4 text-sm text-muted">{text}</p>
+    <div id="refuse" className="min-w-0 scroll-mt-24 space-y-2" data-testid="order-refuse">
       <ClientActionForm
         token={view.token}
         action="refuse"
@@ -362,8 +372,10 @@ export function RefuseBlock({
         doneText={view.moneyHeld ? 'Отказ оформлен, возвращаем деньги' : 'Заказ отменён'}
         testId="order-refuse-form"
         contactPhone={contactPhone}
+        block
       />
-    </section>
+      <p className="text-small font-normal text-muted">{text}</p>
+    </div>
   );
 }
 

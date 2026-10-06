@@ -2,10 +2,11 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { IconAlert } from '@/components/icons';
-import { buttonClass } from '@/components/ui/Button';
-import { cn } from '@/components/ui/cn';
+import { IconAlert, IconClose } from '@/components/icons';
+import { buttonClass, Spinner } from '@/components/ui/Button';
 import { inputClass } from '@/components/ui/Input';
+import { DANGER_SUBMIT, LAST4_INPUT } from './ClientActionForm';
+import { ConfirmSheet } from './ConfirmSheet';
 
 interface CancelResponse {
   error?: string;
@@ -29,9 +30,10 @@ export function cancelErrorText(status: number, body: CancelResponse | null): st
 }
 
 /**
- * «Отменить заказ» on /o/<token>: expands into a field for the last 4 phone digits and posts
- * them to /api/orders/<token>/cancel. On success the server component re-renders
- * (router.refresh) with the cancelled status. Requires JavaScript (decision Д20).
+ * «Отменить заказ» on /o/<token>: a secondary button among the order's actions that opens a
+ * sheet with the field for the last 4 phone digits and posts them to
+ * /api/orders/<token>/cancel. On success the server component re-renders (router.refresh) with
+ * the cancelled status. Requires JavaScript (decision Д20).
  */
 export function CancelOrderForm({
   token,
@@ -47,17 +49,21 @@ export function CancelOrderForm({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
   const openButtonRef = useRef<HTMLButtonElement>(null);
-  // Where focus goes after the block expands or collapses: the button that had it is removed
-  // from the DOM, so without this keyboard and screen reader users land on <body>.
-  const focusNext = useRef<'input' | 'open' | null>(null);
+  const wasOpen = useRef(false);
 
+  // Back to «Отменить заказ» when the sheet closes (keyboard and screen readers).
   useEffect(() => {
-    if (focusNext.current === 'input') inputRef.current?.focus();
-    else if (focusNext.current === 'open') openButtonRef.current?.focus();
-    focusNext.current = null;
+    if (!open && wasOpen.current) openButtonRef.current?.focus();
+    wasOpen.current = open;
   }, [open]);
+
+  function close() {
+    if (pending) return;
+    setOpen(false);
+    setError(null);
+    setLast4('');
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -97,101 +103,92 @@ export function CancelOrderForm({
 
   if (done) {
     return (
-      <p className="font-semibold text-danger" role="status" data-testid="cancel-done">
+      <p className="text-body font-semibold text-danger" role="status" data-testid="cancel-done">
         Заказ отменён
       </p>
     );
   }
 
   return (
-    <section
-      className="min-w-0 rounded border border-dashed border-danger/40 bg-card p-5 md:p-6"
-      data-testid="order-cancel"
-    >
-      <p className="mb-4 text-sm text-muted">
-        Передумали? Пока заказ не оплачен и не подтверждён, его можно отменить здесь.
-      </p>
+    <div className="min-w-0" data-testid="order-cancel">
       <noscript>
-        <p className="text-sm text-muted">
+        <p className="text-small text-muted">
           Для отмены заказа включите JavaScript
           {contactPhone ? ` или позвоните ${contactPhone}` : ''}.
         </p>
       </noscript>
-      {!open ? (
-        <button
-          type="button"
-          className={buttonClass({ variant: 'danger' })}
-          ref={openButtonRef}
-          aria-expanded="false"
-          onClick={() => {
-            focusNext.current = 'input';
-            setOpen(true);
-          }}
-          data-testid="cancel-open"
-        >
-          Отменить заказ
-        </button>
-      ) : (
-        <form onSubmit={(event) => void onSubmit(event)} noValidate className="space-y-3">
-          <label htmlFor={inputId} className="block text-sm font-medium">
-            Для подтверждения введите последние 4 цифры телефона
-          </label>
-          <input
-            ref={inputRef}
-            id={inputId}
-            name="last4"
-            type="text"
-            inputMode="numeric"
-            autoComplete="off"
-            pattern="[0-9]{4}"
-            maxLength={4}
-            required
-            value={last4}
-            onChange={(e) => setLast4(e.target.value.replace(/\D/g, '').slice(0, 4))}
-            aria-invalid={error !== null}
-            aria-describedby={error !== null ? `${inputId}-error` : undefined}
-            className={inputClass({
-              mono: true,
-              className: 'h-12 w-36 text-center text-lg tracking-[0.4em]',
-            })}
-            data-testid="cancel-last4"
-          />
-          {error !== null ? (
-            <p
-              id={`${inputId}-error`}
-              className="flex items-start gap-1.5 text-sm text-danger"
-              role="alert"
-              data-testid="cancel-error"
-            >
-              <IconAlert size={16} className="mt-0.5 shrink-0" />
-              <span className="min-w-0">{error}</span>
-            </p>
-          ) : null}
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="submit"
-              disabled={pending}
-              className="inline-flex min-h-11 items-center justify-center rounded bg-danger px-5 font-semibold text-card transition-colors hover:bg-danger/90 disabled:opacity-60"
-              data-testid="cancel-submit"
-            >
-              {pending ? 'Отменяем…' : 'Отменить заказ'}
-            </button>
-            <button
-              type="button"
-              disabled={pending}
-              className={cn(buttonClass({ variant: 'ghost' }), 'text-muted')}
-              onClick={() => {
-                focusNext.current = 'open';
-                setOpen(false);
-                setError(null);
-                setLast4('');
-              }}
-            >
-              Не отменять
-            </button>
-          </div>
-        </form>
-      )}
-    </section>
+      <button
+        type="button"
+        className={buttonClass({ variant: 'secondary', block: true })}
+        ref={openButtonRef}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+        data-testid="cancel-open"
+      >
+        <IconClose size={20} className="text-danger" />
+        Отменить заказ
+      </button>
+      {open ? (
+        <ConfirmSheet title="Отменить заказ?" onClose={close}>
+          <form onSubmit={(event) => void onSubmit(event)} noValidate className="space-y-4">
+            <p>Пока заказ не оплачен и не подтверждён, его можно отменить здесь.</p>
+            <div>
+              <label htmlFor={inputId} className="mb-2 block text-[0.9375rem] font-semibold">
+                Последние 4 цифры телефона из заказа
+              </label>
+              <input
+                id={inputId}
+                name="last4"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                pattern="[0-9]{4}"
+                maxLength={4}
+                required
+                value={last4}
+                onChange={(e) => setLast4(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                aria-invalid={error !== null}
+                aria-describedby={error !== null ? `${inputId}-error` : undefined}
+                className={inputClass({ mono: true, className: LAST4_INPUT })}
+                data-testid="cancel-last4"
+                data-autofocus
+              />
+            </div>
+            {error !== null ? (
+              <p
+                id={`${inputId}-error`}
+                className="flex items-start gap-1.5 text-small font-medium text-danger"
+                role="alert"
+                data-testid="cancel-error"
+              >
+                <IconAlert size={18} className="mt-0.5 shrink-0" />
+                <span className="min-w-0">{error}</span>
+              </p>
+            ) : null}
+            <div className="flex flex-col gap-2 pt-1 sm:flex-row">
+              <button
+                type="submit"
+                disabled={pending}
+                aria-busy={pending || undefined}
+                className={DANGER_SUBMIT}
+                data-testid="cancel-submit"
+              >
+                {pending ? <Spinner /> : null}
+                {pending ? 'Отменяем…' : 'Отменить заказ'}
+              </button>
+              <button
+                type="button"
+                disabled={pending}
+                className={buttonClass({ variant: 'secondary', size: 'lg' })}
+                onClick={close}
+              >
+                Не отменять
+              </button>
+            </div>
+          </form>
+        </ConfirmSheet>
+      ) : null}
+    </div>
   );
 }

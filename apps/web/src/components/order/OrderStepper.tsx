@@ -1,5 +1,14 @@
 import type { OrderStatus, PaymentScheme } from '@detaly/domain';
-import { IconCheck } from '@/components/icons';
+import {
+  IconBox,
+  IconCard,
+  IconCheck,
+  IconPin,
+  IconReceipt,
+  IconRoute,
+  IconShield,
+  type IconComponent,
+} from '@/components/icons';
 import { cn } from '@/components/ui/cn';
 
 type StepState = 'done' | 'current' | 'todo' | 'stopped';
@@ -70,37 +79,36 @@ const SR_STATE: Record<StepState, string> = {
   stopped: 'не выполнен',
 };
 
-function Marker({ state, index }: { state: StepState; index: number }) {
+/** The icon of each step: receipt, payment (card) or confirmation (shield), box, route, pin. */
+function stepIcons(scheme: PaymentScheme): readonly IconComponent[] {
+  return [IconReceipt, scheme === 'prepay' ? IconCard : IconShield, IconBox, IconRoute, IconPin];
+}
+
+function Marker({ state, Icon }: { state: StepState; Icon: IconComponent }) {
   return (
     <span
       aria-hidden
       className={cn(
-        'relative z-10 grid size-7 shrink-0 place-items-center rounded-full font-mono text-[0.6875rem] font-semibold',
-        state === 'done' && 'bg-paper text-ink',
-        state === 'current' &&
-          'border-2 border-accent bg-graphite-900 shadow-[0_0_0_5px_rgb(255_91_31/0.18)]',
-        state === 'todo' && 'border border-dashed border-steel-400/60 text-steel-400',
-        state === 'stopped' && 'border border-graphite-700 bg-graphite-800 text-steel-400/70',
+        'relative z-10 grid size-11 shrink-0 place-items-center rounded-full md:size-12',
+        state === 'done' && 'bg-ok text-on-brand',
+        state === 'current' && 'bg-brand text-on-brand ring-4 ring-brand-soft',
+        state === 'todo' && 'border-2 border-line-strong bg-bg text-muted',
+        state === 'stopped' && 'bg-surface-2 text-faint',
       )}
     >
-      {state === 'done' ? (
-        <IconCheck size={15} strokeWidth={2.5} />
-      ) : state === 'current' ? (
-        <span className="size-2.5 rounded-full bg-accent" />
-      ) : (
-        index + 1
-      )}
+      {state === 'done' ? <IconCheck size={22} strokeWidth={2.5} /> : <Icon size={22} />}
     </span>
   );
 }
 
 /**
- * The order's way as a timeline on the graphite band of /o/<token>: horizontal from md,
- * vertical on phones. Passed steps are a paper disc with a tick, the current one a signal ring,
- * the rest dashed; a cancelled order greys the whole line.
+ * The order's way (docs/design-v2.md, Stepper): steps with icons in circles, horizontal from md,
+ * a vertical list on phones. Passed steps are green with a tick, the current one is the brand
+ * with a soft ring and «сейчас», the rest are outlined; a cancelled order greys the whole line.
  */
 export function OrderStepper({ status, scheme }: { status: OrderStatus; scheme: PaymentScheme }) {
   const steps = orderSteps(status, scheme);
+  const icons = stepIcons(scheme);
   return (
     <ol
       aria-label="Ход заказа"
@@ -111,41 +119,43 @@ export function OrderStepper({ status, scheme }: { status: OrderStatus; scheme: 
         const last = index === steps.length - 1;
         const next = steps[index + 1];
         const solid = step.state === 'done' && next !== undefined && next.state !== 'stopped';
+        const Icon = icons[index] ?? IconCheck;
         return (
           <li
             key={step.label}
-            className="flex min-w-0 gap-3.5 md:flex-col md:gap-3"
+            className="flex min-w-0 gap-4 md:flex-col md:items-center md:gap-3 md:text-center"
             aria-current={step.state === 'current' ? 'step' : undefined}
           >
-            <div className="flex flex-col items-center md:flex-row">
-              <Marker state={step.state} index={index} />
+            <div className="flex flex-col items-center md:relative md:w-full md:flex-row md:justify-center">
+              <Marker state={step.state} Icon={Icon} />
               {!last ? (
                 <span
                   aria-hidden
                   className={cn(
-                    'my-1 min-h-3 w-0 flex-1 border-l md:mx-2 md:my-0 md:h-0 md:min-h-0 md:w-auto md:border-t md:border-l-0',
-                    solid ? 'border-steel-200' : 'border-dashed border-graphite-700',
+                    'my-1 min-h-4 w-0.5 flex-1 rounded-full',
+                    'md:absolute md:top-1/2 md:left-[calc(50%+1.75rem)] md:my-0 md:h-0.5 md:min-h-0 md:w-[calc(100%-3.5rem)] md:flex-none md:-translate-y-1/2',
+                    solid ? 'bg-ok' : 'bg-line-strong',
                   )}
                 />
               ) : null}
             </div>
-            <div className={cn('min-w-0 pt-1 md:pt-0 md:pr-4', last ? 'pb-0' : 'pb-3 md:pb-0')}>
+            <div className={cn('min-w-0 pt-2.5 md:px-1 md:pt-0', last ? 'pb-0' : 'pb-3 md:pb-0')}>
               <p
                 className={cn(
-                  'text-sm leading-snug',
+                  'text-body leading-snug md:text-small',
                   step.state === 'current'
-                    ? 'font-semibold text-paper'
+                    ? 'font-bold text-ink'
                     : step.state === 'done'
-                      ? 'text-steel-200'
-                      : 'text-steel-400',
-                  step.state === 'stopped' && 'line-through decoration-graphite-700',
+                      ? 'font-semibold text-ink'
+                      : 'text-muted',
+                  step.state === 'stopped' && 'line-through decoration-line-strong',
                 )}
               >
                 {step.label}
                 <span className="sr-only"> — {SR_STATE[step.state]}</span>
               </p>
               {step.state === 'current' ? (
-                <p aria-hidden className="mt-1 text-label text-accent">
+                <p aria-hidden className="mt-0.5 text-small font-semibold text-brand">
                   сейчас{step.hint ? ` · ${step.hint}` : ''}
                 </p>
               ) : null}

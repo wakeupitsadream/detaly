@@ -8,18 +8,19 @@
  */
 import type { NotificationChannel } from '@detaly/domain';
 import type { ReactNode } from 'react';
-import { IconCheck, IconMessage } from '@/components/icons';
+import { IconArrowRight, IconCheck, IconMax, IconMessage, IconTelegram } from '@/components/icons';
 import { cn } from '@/components/ui/cn';
 import type { MessengerView } from '@/server/orders/order-services';
 import { Card } from './OrderSections';
 import { TelegramLinkButton } from './TelegramLinkButton';
 
+/** A messenger button: secondary, 52 px, the icon on the left, a tag or an arrow on the right. */
 const ROW =
-  'flex min-h-12 w-full flex-wrap items-center justify-between gap-2 rounded border px-4 py-2 text-left font-medium';
+  'flex min-h-13 w-full items-center justify-between gap-3 rounded-control border-[1.5px] border-line-strong bg-bg px-4 py-2 text-left text-[1.0625rem] leading-tight font-semibold text-ink transition-colors duration-150';
 
 function SoonTag({ children }: { children: ReactNode }) {
   return (
-    <span className="rounded-sm bg-paper-2 px-1.5 py-0.5 font-mono text-[0.6875rem] tracking-wider text-muted uppercase">
+    <span className="shrink-0 rounded-full bg-surface px-2.5 py-0.5 text-caption text-muted">
       {children}
     </span>
   );
@@ -27,7 +28,7 @@ function SoonTag({ children }: { children: ReactNode }) {
 
 function ChosenNote({ selected }: { selected: boolean }) {
   return selected ? (
-    <span className="ml-2 text-sm font-normal text-muted">— вы выбрали</span>
+    <span className="block text-small font-normal text-muted">вы выбрали</span>
   ) : null;
 }
 
@@ -43,23 +44,23 @@ function StubRow({
   tag: string;
   selected: boolean;
 }) {
+  const Icon = channel === 'max' ? IconMax : IconTelegram;
   return (
     <button
       type="button"
       disabled
       aria-disabled="true"
-      className={cn(
-        ROW,
-        'cursor-not-allowed border-line bg-paper',
-        selected ? 'text-ink' : 'text-muted',
-      )}
+      className={cn(ROW, 'cursor-not-allowed border-line text-muted')}
       data-testid={`messenger-${channel}`}
       data-selected={selected ? 'true' : 'false'}
       data-state="unavailable"
     >
-      <span>
-        {label}
-        <ChosenNote selected={selected} />
+      <span className="flex min-w-0 items-center gap-2.5">
+        <Icon size={24} className="shrink-0" />
+        <span className="min-w-0">
+          {label}
+          <ChosenNote selected={selected} />
+        </span>
       </span>
       <SoonTag>{tag}</SoonTag>
     </button>
@@ -83,21 +84,19 @@ function TelegramForm({
     <TelegramLinkButton
       action={`/api/orders/${token}/link`}
       demo={demo}
-      className="flex min-h-12 w-full items-center justify-between gap-3 rounded border-[1.5px] border-ink bg-card px-4 py-2 text-left font-medium text-ink transition-colors duration-150 hover:bg-ink hover:text-paper disabled:opacity-60"
+      className={cn(ROW, 'hover:border-ink hover:bg-surface disabled:opacity-60')}
       testId="messenger-telegram"
       selected={selected}
       state={state}
     >
-      <span className="flex min-w-0 flex-1 items-center gap-2">
-        <IconMessage size={18} className="shrink-0" />
+      <span className="flex min-w-0 flex-1 items-center gap-2.5">
+        <IconTelegram size={24} className="shrink-0 text-brand" />
         <span className="min-w-0">
           {label}
           <ChosenNote selected={selected} />
         </span>
       </span>
-      <span aria-hidden className="shrink-0 font-mono text-sm">
-        →
-      </span>
+      <IconArrowRight size={20} className="shrink-0 text-brand" />
     </TelegramLinkButton>
   );
 }
@@ -122,20 +121,23 @@ export function MessengerBlock({
 }) {
   const telegramSelected = preferred === 'telegram';
   return (
-    <Card title="Уведомления о статусе" testId="order-messengers" id="notify">
+    <Card
+      title="Статусы заказа"
+      icon={<IconMessage size={26} />}
+      testId="order-messengers"
+      id="notify"
+    >
       {notice}
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+      <div className="grid gap-2 sm:grid-cols-2">
         {messenger.telegram === 'active' ? (
           <p
-            className={cn(ROW, 'border-ok/30 bg-ok-soft text-ink')}
+            className="flex min-h-13 items-center gap-2.5 rounded-control bg-ok-soft px-4 py-2 font-semibold text-ink"
             data-testid="messenger-telegram"
             data-selected={telegramSelected ? 'true' : 'false'}
             data-state="active"
           >
-            <span className="inline-flex items-center gap-2">
-              <IconCheck size={18} className="shrink-0 text-ok" />
-              Статусы приходят в Telegram
-            </span>
+            <IconCheck size={22} className="shrink-0 text-ok" />
+            Статусы приходят в Telegram
           </p>
         ) : messenger.telegramAvailable ? (
           <TelegramForm
@@ -155,38 +157,29 @@ export function MessengerBlock({
             selected={telegramSelected}
           />
         )}
-        <StubRow
-          channel="max"
-          label="Статусы в MAX"
-          tag="после запуска MAX"
-          selected={preferred === 'max'}
-        />
+        <StubRow channel="max" label="Статусы в MAX" tag="скоро" selected={preferred === 'max'} />
       </div>
-      <div className="mt-3 space-y-1.5 text-sm text-muted" data-testid="messenger-help">
-        {messenger.telegram === 'active' ? (
-          <p>Отключить уведомления — команда /stop в боте.</p>
-        ) : null}
+      <div
+        className="mt-3 space-y-1 text-small font-normal text-muted"
+        data-testid="messenger-help"
+      >
+        {messenger.telegram === 'active' ? <p>Отключить — команда /stop в боте.</p> : null}
         {messenger.telegram === 'blocked' ? (
           <p data-testid="messenger-blocked">
             Вы отключили уведомления в Telegram. Подключить снова — кнопкой выше.
           </p>
         ) : null}
         {messenger.telegram !== 'active' && messenger.telegramAvailable ? (
-          <p>
-            Бот попросит подтвердить номер телефона из заказа. Ссылка на бота действует 24 часа.
-          </p>
+          <p>Бот попросит подтвердить номер из заказа. Ссылка действует 24 часа.</p>
         ) : null}
         {!messenger.telegramAvailable && messenger.telegram !== 'active' ? (
           <p>
             {preferred === 'sms'
-              ? 'Вы выбрали SMS. Важные сообщения о заказе придут по SMS, остальное — на этой странице.'
-              : 'Уведомления подключаются — пока следите за заказом на этой странице.'}
+              ? 'Вы выбрали SMS: важное придёт по SMS, остальное — здесь.'
+              : 'Пока следите за заказом на этой странице.'}
           </p>
         ) : null}
-        <p>
-          Это подписка на уведомления о заказе, а не вход в аккаунт. Сохраните ссылку на эту
-          страницу: по ней видно статус заказа.
-        </p>
+        <p>Это подписка на статусы, а не вход в аккаунт.</p>
       </div>
       {preview}
     </Card>

@@ -40,49 +40,58 @@ export function legalIsDraft(doc: Pick<LegalDocument, 'bodyMd' | 'isDraft'>): bo
   return doc.isDraft || BODY_DRAFT_RE.test(doc.bodyMd);
 }
 
+/** Every markdown heading one level down («#» -> «##»): the document inside another page. */
+function demoteHeadings(body: string): string {
+  return body.replace(/^(#{1,5})(?=[ \t])/gm, '#$1');
+}
+
 /**
- * A legal document as a sheet of paper: the edition line on top like the title block of a
- * drawing, a draft notice when it is not published, then the text (.legal in globals.css).
- * `sheet` frames it as a card (the /docs pages); without it the caller frames it (/returns).
+ * A legal document for reading (docs/design-v2.md, /docs/*): the edition line on top, a draft
+ * notice when it is not published, then the text 17/28 in a 68ch column (.legal in globals.css)
+ * with headings in the site's h2/h3 sizes. `sheet` frames it as a white card from md (the /docs
+ * pages); without it the caller frames it. `embedded` (the memo under a disclosure on /returns)
+ * moves every heading one level down, so the page keeps its single h1.
  */
 export function LegalDocumentView({
   doc,
   sheet = false,
+  embedded = false,
   className,
 }: {
   doc: LegalDocument;
   sheet?: boolean;
+  embedded?: boolean;
   className?: string;
 }) {
   const bodyDraft = BODY_DRAFT_RE.test(doc.bodyMd);
   const draft = legalIsDraft(doc);
-  const body = legalBodyForView(doc);
+  const view = legalBodyForView(doc);
+  const body = embedded ? demoteHeadings(view) : view;
   const blanks = legalBlanksNotice(missingLegalValues(`${doc.title}\n${doc.bodyMd}`));
+  const Title = embedded ? 'h2' : 'h1';
   return (
     <article
       className={cn(
         'min-w-0',
         sheet &&
-          'rounded border border-line bg-card px-5 py-6 sm:px-8 md:px-12 md:py-12 print:border-0 print:p-0',
+          'md:rounded-panel md:border md:border-line md:px-12 md:py-12 print:border-0 print:p-0',
         className,
       )}
       data-testid="legal-document"
     >
-      <div className="mb-7 flex min-w-0 flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-ink pb-3 md:mb-10">
-        <span className="inline-flex items-center gap-2 text-label text-muted">
-          <IconDocument size={15} className="shrink-0 text-ink" />
+      <div className="mb-6 flex max-w-[68ch] min-w-0 flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-line pb-4 md:mb-10">
+        <span className="inline-flex items-center gap-2 text-small text-muted">
+          <IconDocument size={22} className="shrink-0 text-brand" />
           Редакция
           {/* The version as written: no uppercase, «d1» stays «d1». */}
-          <span className="font-mono text-sm font-semibold tracking-normal text-ink normal-case">
-            {doc.version}
-          </span>
+          <span className="font-bold text-ink tabular-nums">{doc.version}</span>
         </span>
         {draft ? (
-          <Badge tone="wait" className="font-semibold" data-testid="legal-draft">
+          <Badge tone="wait" data-testid="legal-draft">
             Черновик
           </Badge>
         ) : (
-          <span className="text-label text-muted">
+          <span className="text-small text-muted">
             {/* The demo bundle publishes by env without a date: not a draft, so a current one. */}
             {doc.publishedAt
               ? `Опубликована ${DATE_FORMAT.format(doc.publishedAt)}`
@@ -92,19 +101,24 @@ export function LegalDocumentView({
       </div>
       {/* The body opens with its own draft note: one notice is enough. */}
       {doc.isDraft && !bodyDraft ? (
-        <Notice tone="wait" role="note" className="mb-6">
+        <Notice tone="wait" role="note" className="mb-6 max-w-[68ch]">
           Черновик документа: действующая редакция ещё не опубликована.
         </Notice>
       ) : null}
       {blanks ? (
-        <Notice tone="info" role="note" className="mb-6" data-testid="legal-blanks">
+        <Notice tone="info" role="note" className="mb-6 max-w-[68ch]" data-testid="legal-blanks">
           {blanks}
         </Notice>
       ) : null}
-      {hasTopHeading(body) ? null : (
-        <h1 className="mb-6 text-h1">{blankMissingLegalValues(doc.title)}</h1>
+      {hasTopHeading(view) ? null : (
+        <Title className={cn('mb-6 max-w-[68ch]', embedded ? 'text-h2' : 'text-h1')}>
+          {blankMissingLegalValues(doc.title)}
+        </Title>
       )}
-      <Markdown source={body} className="legal" />
+      <Markdown
+        source={body}
+        className="legal max-w-[68ch] [&_h2]:text-h2 [&_h3]:text-h3 [&_h4]:text-h3"
+      />
     </article>
   );
 }

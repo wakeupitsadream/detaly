@@ -1,7 +1,7 @@
 import { isLinkToken } from '@detaly/orders';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
+import { InnerPage, PageBody } from '@/components/page/PageBand';
 import { VinSent, type VinSentChannel } from '@/components/vin/VinSent';
 import { getBrand } from '@/server/brand';
 import { serverEnv } from '@/server/env';
@@ -41,11 +41,16 @@ export default async function VinSentLinkPage({ params }: { params: Params }) {
         deepLink: `https://t.me/${encodeURIComponent(username)}?start=${encodeURIComponent(link)}`,
       }
     : { kind: 'sms' };
+  const brand = getBrand();
   return (
     <InnerPage>
-      <PageBand eyebrow="Подбор по VIN" title="Заявка отправлена" />
-      <PageBody>
-        <VinSent channel={channel} hours={getBrand().pickup.hours} demo={false} />
+      <PageBody className="pt-8 md:pt-12">
+        <VinSent
+          channel={channel}
+          hours={brand.pickup.hours}
+          chatUrl={brand.pickupLinks?.telegram ?? null}
+          demo={false}
+        />
       </PageBody>
     </InnerPage>
   );

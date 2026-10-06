@@ -1,10 +1,13 @@
 'use client';
 
 /**
- * The VIN request form (docs/phase-1c-implementation.md decision С12) in «Техкарта»: VIN with the
- * O/0 and I/1 hint, the car, what is needed, up to three photos, the phone, the answer channel
- * (Telegram or SMS; MAX shown as «скоро»), a separate PD consent with the link to its text, and
- * the honeypot.
+ * The VIN request form (docs/phase-1c-implementation.md decision С12; look: docs/design-v2.md,
+ * /vin): a large VIN field with the O/0 and I/1 hint, the car, what is needed, up to three
+ * photos, the phone, the answer channel as radio cards (Telegram or SMS; MAX shown as «скоро»),
+ * a separate PD consent with the link to its text, and the honeypot.
+ *
+ * `initial` pre-fills VIN, car and need from the page query (links from the home page and the
+ * header search: /vin?vin=…&car=…&need=…). Only default values: the form validates as before.
  *
  * Without JavaScript it is a plain multipart post to /api/vin: errors come back as `?e=<codes>`
  * (the page passes them in as `errors`). With JavaScript the same form is sent by fetch with
@@ -15,13 +18,28 @@
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { PhotoInput } from '@/components/forms/PhotoInput';
-import { IconAlert, IconArrowRight, IconCheck } from '@/components/icons';
+import {
+  IconAlert,
+  IconArrowRight,
+  IconCheck,
+  IconMax,
+  IconMessage,
+  IconTelegram,
+  type IconComponent,
+} from '@/components/icons';
 import { Notice } from '@/components/page/Notice';
 import { SheetTitle } from '@/components/page/SheetTitle';
-import { buttonClass } from '@/components/ui/Button';
+import { Spinner, buttonClass } from '@/components/ui/Button';
 import { cn } from '@/components/ui/cn';
 import { inputClass } from '@/components/ui/Input';
 import type { VinFormField } from '@/server/vin/form';
+
+/** Values from the page query, shown as the fields' defaults. */
+export interface VinFormInitial {
+  vin?: string;
+  car?: string;
+  need?: string;
+}
 
 export interface VinFormProps {
   /** document_versions.id of the consent text linked from the checkbox. */
@@ -35,15 +53,18 @@ export interface VinFormProps {
   errors: Partial<Record<VinFormField, string>>;
   formError: string | null;
   demo: boolean;
+  initial?: VinFormInitial;
 }
 
-const LABEL = 'mb-1.5 block text-sm font-medium text-ink';
+const LABEL = 'mb-2 block text-[0.9375rem] leading-snug font-semibold text-ink';
+const OPTIONAL = 'font-medium text-muted';
+const HINT = 'mt-2 text-small font-normal text-muted';
 const DOC_LINK =
-  'font-medium text-accent-ink underline decoration-1 underline-offset-4 hover:decoration-2';
+  'font-semibold text-brand underline decoration-1 underline-offset-4 hover:text-brand-hover hover:decoration-2';
 const TEXTAREA = cn(
-  'block min-h-32 w-full min-w-0 resize-y rounded border-[1.5px] border-line-strong bg-card px-4 py-3 text-base text-ink',
-  'transition-[border-color,box-shadow] duration-150 placeholder:text-faint hover:border-muted',
-  'focus:border-ink focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-accent)_35%,transparent)] focus-visible:outline-none',
+  'block min-h-32 w-full min-w-0 resize-y rounded-control border-[1.5px] border-line-strong bg-surface px-4 py-3 text-[1.0625rem] leading-relaxed text-ink',
+  'transition-[border-color,box-shadow,background-color] duration-150 placeholder:text-faint hover:border-muted',
+  'focus:border-brand focus:bg-bg focus:shadow-[0_0_0_3px_var(--color-brand-soft)] focus-visible:outline-none',
   'aria-invalid:border-danger',
 );
 const GENERIC_ERROR = 'Не удалось отправить заявку — попробуйте ещё раз';
@@ -58,26 +79,38 @@ interface ApiBody {
 function FieldError({ id, message }: { id: string; message: string | undefined }) {
   if (!message) return null;
   return (
-    <p id={id} className="mt-1.5 flex items-start gap-1.5 text-sm text-danger" role="alert">
-      <IconAlert size={16} className="mt-0.5 shrink-0" />
+    <p
+      id={id}
+      className="mt-2 flex items-start gap-1.5 text-small font-medium text-danger"
+      role="alert"
+    >
+      <IconAlert size={18} className="mt-0.5 shrink-0" />
       <span className="min-w-0">{message}</span>
     </p>
   );
 }
 
-function Sheet({ className, children }: { className?: string; children: ReactNode }) {
+/** One step of the form: a white card with a numbered title. */
+function Step({ index, title, children }: { index: string; title: string; children: ReactNode }) {
   return (
-    <section className={cn('min-w-0 rounded border border-line bg-card p-5 md:p-6', className)}>
+    <section className="min-w-0 space-y-5 rounded-tile border border-line bg-bg p-5 md:p-6">
+      <SheetTitle index={index} as="h3" className="mb-0">
+        {title}
+      </SheetTitle>
       {children}
     </section>
   );
 }
 
-const CHANNELS = [
-  { value: 'telegram', label: 'Telegram' },
-  { value: 'sms', label: 'SMS' },
-  { value: 'max', label: 'MAX' },
-] as const;
+const CHANNELS: readonly {
+  value: 'telegram' | 'sms' | 'max';
+  label: string;
+  Icon: IconComponent;
+}[] = [
+  { value: 'telegram', label: 'Telegram', Icon: IconTelegram },
+  { value: 'sms', label: 'SMS', Icon: IconMessage },
+  { value: 'max', label: 'MAX', Icon: IconMax },
+];
 
 export function VinForm(props: VinFormProps) {
   const router = useRouter();
@@ -86,6 +119,7 @@ export function VinForm(props: VinFormProps) {
   const [consent, setConsent] = useState(false);
   const [pending, setPending] = useState(false);
   const [done, setDone] = useState(false);
+  const initial = props.initial ?? {};
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -140,7 +174,7 @@ export function VinForm(props: VinFormProps) {
       action="/api/vin"
       encType="multipart/form-data"
       onSubmit={(event) => void onSubmit(event)}
-      className="relative min-w-0 space-y-5"
+      className="relative min-w-0 space-y-4"
       data-testid="vin-form"
     >
       {formError ? (
@@ -149,8 +183,7 @@ export function VinForm(props: VinFormProps) {
         </Notice>
       ) : null}
 
-      <Sheet className="space-y-5">
-        <SheetTitle index="01">Автомобиль</SheetTitle>
+      <Step index="01" title="Автомобиль">
         <div className="min-w-0">
           <label htmlFor="vin-vin" className={LABEL}>
             VIN
@@ -165,20 +198,25 @@ export function VinForm(props: VinFormProps) {
             autoComplete="off"
             autoCapitalize="characters"
             spellCheck={false}
-            placeholder="XTA210990Y1234567"
+            placeholder="17 символов из СТС"
+            defaultValue={initial.vin}
             aria-invalid={invalid('vin')}
             aria-describedby="vin-vin-hint vin-vin-error"
-            className={inputClass({ mono: true, className: 'uppercase' })}
+            className={inputClass({
+              size: 'lg',
+              mono: true,
+              className:
+                'font-bold tracking-[0.08em] uppercase placeholder:font-medium placeholder:tracking-normal placeholder:normal-case',
+            })}
           />
-          <p id="vin-vin-hint" className="mt-1.5 text-sm text-muted">
-            17 знаков из СТС или с таблички под лобовым стеклом. Букв O, I и Q в VIN не бывает —
-            вместо них пишите цифры 0 и 1.
+          <p id="vin-vin-hint" className={HINT}>
+            Букв O, I и Q в VIN не бывает — вместо них цифры 0 и 1.
           </p>
           <FieldError id="vin-vin-error" message={err.vin} />
         </div>
         <div className="min-w-0">
           <label htmlFor="vin-car" className={LABEL}>
-            Марка и модель <span className="font-normal text-muted">(необязательно)</span>
+            Марка и модель <span className={OPTIONAL}>(необязательно)</span>
           </label>
           <input
             id="vin-car"
@@ -186,17 +224,17 @@ export function VinForm(props: VinFormProps) {
             type="text"
             maxLength={200}
             autoComplete="off"
-            placeholder="Например, Lada Granta 2019, 1.6"
+            placeholder="Например, Lada Granta 2019"
+            defaultValue={initial.car}
             aria-invalid={invalid('car')}
             aria-describedby="vin-car-error"
             className={inputClass()}
           />
           <FieldError id="vin-car-error" message={err.car} />
         </div>
-      </Sheet>
+      </Step>
 
-      <Sheet className="space-y-5">
-        <SheetTitle index="02">Что нужно</SheetTitle>
+      <Step index="02" title="Что нужно">
         <div className="min-w-0">
           <label htmlFor="vin-need" className={LABEL}>
             Какая деталь нужна
@@ -207,31 +245,31 @@ export function VinForm(props: VinFormProps) {
             required
             minLength={3}
             maxLength={1000}
-            rows={4}
-            placeholder="Например: передние тормозные колодки и диски, масляный фильтр"
+            rows={3}
+            placeholder="Например: передние колодки и диски"
+            defaultValue={initial.need}
             aria-invalid={invalid('need')}
             aria-describedby="vin-need-hint vin-need-error"
             className={TEXTAREA}
           />
-          <p id="vin-need-hint" className="mt-1.5 text-sm text-muted">
-            Можно своими словами. Телефон и данные документов сюда писать не нужно.
+          <p id="vin-need-hint" className={HINT}>
+            Своими словами. Телефон сюда писать не нужно.
           </p>
           <FieldError id="vin-need-error" message={err.need} />
         </div>
         {props.photos.enabled ? (
           <PhotoInput
             label="Фото (необязательно)"
-            hint={`До ${props.photos.max} фото: табличка с VIN, СТС или старая деталь. Каждое до ${props.photos.maxFileMb} МБ — уменьшим перед отправкой.`}
+            hint={`До ${props.photos.max} фото: табличка с VIN, СТС или старая деталь. Каждое до ${props.photos.maxFileMb} МБ.`}
             max={props.photos.max}
             maxFileMb={props.photos.maxFileMb}
             error={err.photos}
             disabled={pending}
           />
         ) : null}
-      </Sheet>
+      </Step>
 
-      <Sheet className="space-y-5">
-        <SheetTitle index="03">Куда прислать подборку</SheetTitle>
+      <Step index="03" title="Куда прислать подборку">
         <div className="min-w-0">
           <label htmlFor="vin-phone" className={LABEL}>
             Телефон
@@ -249,14 +287,14 @@ export function VinForm(props: VinFormProps) {
             aria-describedby="vin-phone-hint vin-phone-error"
             className={inputClass({ className: 'tabular-nums' })}
           />
-          <p id="vin-phone-hint" className="mt-1.5 text-sm text-muted">
-            Мобильный номер: +7 или 8 и 10 цифр. Мастер может позвонить, чтобы уточнить деталь.
+          <p id="vin-phone-hint" className={HINT}>
+            Мобильный. Мастер может позвонить, чтобы уточнить.
           </p>
           <FieldError id="vin-phone-error" message={err.phone} />
         </div>
         <fieldset className="min-w-0" aria-describedby="vin-channel-hint vin-channel-error">
-          <legend className={LABEL}>Как прислать ссылку на подборку</legend>
-          <div className="flex flex-wrap gap-2 sm:grid sm:grid-cols-3">
+          <legend className={LABEL}>Как прислать ссылку</legend>
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
             {CHANNELS.map((channel) => {
               const disabled =
                 channel.value === 'max' || (channel.value === 'telegram' && !props.telegram);
@@ -264,11 +302,11 @@ export function VinForm(props: VinFormProps) {
                 <label
                   key={channel.value}
                   className={cn(
-                    'flex h-12 min-w-0 grow items-center gap-2 rounded border-[1.5px] border-line bg-card px-3 font-medium transition-colors sm:gap-2.5 sm:px-4',
+                    'relative flex min-h-24 min-w-0 flex-col items-center justify-center gap-1.5 rounded-control border-[1.5px] px-2 py-3 text-center font-semibold transition-colors',
                     disabled
-                      ? 'cursor-not-allowed bg-paper-2 text-faint'
-                      : 'cursor-pointer hover:border-muted has-[:checked]:border-ink has-[:checked]:bg-paper',
-                    'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent',
+                      ? 'cursor-not-allowed border-line bg-surface text-muted'
+                      : 'cursor-pointer border-line-strong bg-bg text-ink hover:border-muted has-[:checked]:border-brand has-[:checked]:bg-brand-soft',
+                    'has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-brand',
                   )}
                 >
                   <input
@@ -280,27 +318,41 @@ export function VinForm(props: VinFormProps) {
                     defaultChecked={
                       props.telegram ? channel.value === 'telegram' : channel.value === 'sms'
                     }
-                    className="size-4.5 shrink-0 cursor-pointer appearance-none rounded-full border-[1.5px] border-line-strong bg-card transition-[border-width,border-color] checked:border-[5px] checked:border-ink focus-visible:outline-none disabled:cursor-not-allowed"
+                    className="peer sr-only"
                   />
-                  <span className="whitespace-nowrap">{channel.label}</span>
-                  {disabled ? <span className="ml-auto text-xs font-normal">скоро</span> : null}
+                  <channel.Icon
+                    size={28}
+                    className={disabled ? 'text-faint' : 'text-brand'}
+                    strokeWidth={1.75}
+                  />
+                  <span className="max-w-full text-base leading-tight wrap-anywhere">
+                    {channel.label}
+                  </span>
+                  {disabled ? (
+                    <span className="text-caption font-medium text-muted">скоро</span>
+                  ) : null}
+                  <span
+                    aria-hidden
+                    className="absolute top-2 right-2 hidden size-6 place-items-center rounded-full bg-brand text-on-brand peer-checked:grid"
+                  >
+                    <IconCheck size={16} strokeWidth={2.5} />
+                  </span>
                 </label>
               );
             })}
           </div>
-          <p id="vin-channel-hint" className="mt-3 text-sm text-muted">
+          <p id="vin-channel-hint" className={HINT}>
             {props.telegram
-              ? 'Telegram: после отправки подключите бота одной кнопкой. SMS: пришлём ссылку сообщением.'
+              ? 'В Telegram подключите бота после отправки. Или пришлём SMS.'
               : 'Пришлём ссылку на подборку в SMS.'}
           </p>
           <FieldError id="vin-channel-error" message={err.channel} />
         </fieldset>
-      </Sheet>
+      </Step>
 
-      <Sheet className="space-y-3">
-        <SheetTitle index="04">Согласие</SheetTitle>
-        <label className="flex cursor-pointer items-start gap-3 leading-snug">
-          <span className="relative grid size-[22px] shrink-0 place-items-center">
+      <section className="min-w-0 rounded-tile border border-line bg-bg p-5 md:p-6">
+        <label className="flex cursor-pointer items-start gap-3 text-body">
+          <span className="relative grid size-7 shrink-0 place-items-center">
             <input
               type="checkbox"
               name="consentPd"
@@ -308,24 +360,24 @@ export function VinForm(props: VinFormProps) {
               required
               aria-invalid={invalid('consent')}
               aria-describedby="vin-consent-error"
-              className="peer size-[22px] cursor-pointer appearance-none rounded-sm border-[1.5px] border-line-strong bg-card transition-colors hover:border-muted checked:border-ink checked:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              className="peer size-6 cursor-pointer appearance-none rounded-md border-2 border-line-strong bg-bg transition-colors hover:border-muted checked:border-brand checked:bg-brand aria-invalid:border-danger"
             />
             <IconCheck
-              size={16}
+              size={18}
               strokeWidth={2.5}
-              className="pointer-events-none absolute hidden text-ink peer-checked:block"
+              className="pointer-events-none absolute hidden text-on-brand peer-checked:block"
             />
           </span>
-          <span className="min-w-0 pt-px">
+          <span className="min-w-0">
             Даю{' '}
             <a className={DOC_LINK} href="/docs/consent" target="_blank" rel="noopener">
               согласие на обработку персональных данных
-            </a>
-            , включая фото, для подбора детали
+            </a>{' '}
+            и фото для подбора
           </span>
         </label>
         <FieldError id="vin-consent-error" message={err.consent} />
-      </Sheet>
+      </section>
 
       {/* Honeypot: off screen, skipped by keyboard and screen readers; people never fill it. */}
       <div aria-hidden="true" className="absolute -left-[10000px] h-px w-px overflow-hidden">
@@ -335,25 +387,24 @@ export function VinForm(props: VinFormProps) {
       <input type="hidden" name="consentPdVersionId" value={props.consentPdVersionId} />
       <input type="hidden" name="requestKey" value={props.requestKey} />
 
-      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+      <div className="min-w-0 space-y-3 pt-2">
         <button
           type="submit"
           disabled={pending || done}
-          className={cn(
-            buttonClass({ variant: 'primary', size: 'lg' }),
-            'w-full shrink-0 sm:w-auto',
-          )}
+          aria-busy={pending || undefined}
+          className={cn(buttonClass({ variant: 'primary', size: 'lg', block: true }), 'md:w-auto')}
           data-testid="vin-submit"
         >
+          {pending ? <Spinner /> : null}
           {done ? 'Открываем…' : pending ? 'Отправляем…' : 'Отправить заявку'}
-          {!done && !pending ? <IconArrowRight size={18} /> : null}
+          {!done && !pending ? <IconArrowRight size={20} /> : null}
         </button>
-        <p className="min-w-0 text-sm text-muted">
+        <p className="min-w-0 text-small font-normal text-muted">
           {props.demo
-            ? 'Демо: заявка не отправляется — покажем, как выглядит ответ.'
+            ? 'Демо: заявка не уйдёт — покажем, как выглядит ответ.'
             : consent
-              ? 'Подбор бесплатный. Мастер ответит в рабочее время, обычно в течение 4 часов.'
-              : 'Чтобы отправить заявку, отметьте согласие на обработку данных.'}
+              ? 'Бесплатно. Мастер ответит в рабочее время, обычно за 4 часа.'
+              : 'Чтобы отправить, отметьте согласие.'}
         </p>
       </div>
     </form>

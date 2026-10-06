@@ -1,31 +1,39 @@
+import { IconHome, IconSearch, IconSts } from '@/components/icons';
 import { ButtonLink } from '@/components/ui/Button';
-import { Eyebrow } from '@/components/ui/Eyebrow';
-import { HazardBand } from '@/components/ui/HazardBand';
 
-// Root 404 (also prerendered at build time): no env, no database.
+/**
+ * Root 404 (also prerendered at build time): no env, no database, so no brand name either —
+ * a brand plate on top stands for the header. docs/design-v2.md, «Инфостраницы»: an icon,
+ * «Страница не найдена», «На главную» and «Подбор по VIN».
+ */
 export default function NotFound() {
   return (
-    <main className="grain-dark flex min-h-screen flex-col bg-graphite-900 bg-blueprint text-steel-200">
-      <div className="mx-auto flex w-full max-w-site flex-1 flex-col justify-center gap-6 px-4 py-16 md:px-6 lg:px-8">
-        <Eyebrow onDark>Ошибка 404</Eyebrow>
-        <p
+    <main className="flex min-h-screen min-w-0 flex-col bg-bg text-ink">
+      <div aria-hidden className="h-6 rounded-b-header bg-brand lg:h-8 lg:rounded-b-header-lg" />
+      <div className="mx-auto flex w-full max-w-site flex-1 flex-col items-center justify-center px-4 py-16 text-center md:px-6 lg:px-8">
+        <span
           aria-hidden
-          className="font-mono text-[clamp(4.5rem,3rem+9vw,10rem)] leading-none font-semibold text-graphite-700"
+          className="relative grid size-28 place-items-center rounded-full bg-surface text-brand md:size-32"
         >
-          404
-        </p>
-        <h1 className="text-h1 max-w-2xl text-paper">Такой страницы нет</h1>
-        <p className="max-w-xl text-steel-400">
-          Возможно, ссылка устарела или в адресе опечатка. Начните с поиска по артикулу: цена и дата
-          получения будут сразу.
-        </p>
-        <div className="flex flex-wrap gap-3">
-          <ButtonLink href="/" onDark>
+          <IconSearch size={64} strokeWidth={1.5} />
+        </span>
+        <p className="mt-6 text-small font-semibold text-muted tabular-nums">Ошибка 404</p>
+        <h1 className="mt-2 text-h1">Страница не найдена</h1>
+        <p className="mt-3 max-w-md text-body text-muted">Ссылка устарела или в адресе опечатка.</p>
+        <div className="mt-8 flex w-full max-w-md flex-col gap-3 sm:w-auto sm:max-w-none sm:flex-row">
+          <ButtonLink href="/" size="lg" icon={<IconHome size={20} />}>
             На главную
+          </ButtonLink>
+          <ButtonLink
+            href="/vin"
+            variant="secondary"
+            size="lg"
+            icon={<IconSts size={20} className="text-brand" />}
+          >
+            Подбор по VIN
           </ButtonLink>
         </div>
       </div>
-      <HazardBand />
     </main>
   );
 }

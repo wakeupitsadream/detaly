@@ -1,11 +1,12 @@
 import type { HTMLAttributes, ReactNode } from 'react';
 import { cn } from './cn';
 
+/** A round chip: 44 px high, 15 px semibold; the active one is filled with the brand. */
 export function chipClass(active: boolean, className?: string): string {
   return cn(
-    'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-sm border px-3 text-sm whitespace-nowrap',
+    'inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full px-4 text-[0.9375rem] font-semibold whitespace-nowrap',
     'transition-colors duration-150',
-    active ? 'border-ink bg-ink text-paper' : 'border-line bg-card text-ink hover:border-ink',
+    active ? 'bg-brand text-on-brand' : 'bg-surface text-ink hover:bg-surface-2',
     className,
   );
 }

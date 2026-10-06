@@ -12,7 +12,8 @@ export function fieldDescribedBy(
 }
 
 /**
- * Label above, hint and error below. The control is passed as children and wires itself with
+ * Label above (15 px 600), hint and error below (15 px; the error in `danger` with an icon, so
+ * it never relies on the red alone). The control is passed as children and wires itself with
  * `id={id}` and `aria-describedby={fieldDescribedBy(id, { hint, error })}`.
  */
 export function Field({
@@ -32,18 +33,21 @@ export function Field({
 }) {
   return (
     <div className={cn('min-w-0', className)}>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-ink">
+      <label htmlFor={id} className="mb-2 block text-[0.9375rem] leading-snug font-semibold">
         {label}
       </label>
       {children}
       {hint ? (
-        <p id={`${id}-hint`} className="mt-1.5 text-sm text-muted">
+        <p id={`${id}-hint`} className="mt-2 text-small font-normal text-muted">
           {hint}
         </p>
       ) : null}
       {error ? (
-        <p id={`${id}-error`} className="mt-1.5 flex items-start gap-1.5 text-sm text-danger">
-          <IconAlert size={16} className="mt-0.5 shrink-0" />
+        <p
+          id={`${id}-error`}
+          className="mt-2 flex items-start gap-1.5 text-small font-medium text-danger"
+        >
+          <IconAlert size={18} className="mt-0.5 shrink-0" />
           <span className="min-w-0">{error}</span>
         </p>
       ) : null}

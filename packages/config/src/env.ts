@@ -13,6 +13,14 @@ import { ROSSKO_MODES, STAFF_ROLES, VIN_PROVIDERS } from '@detaly/domain/statuse
 import type { StaffSeed } from '@detaly/domain/types';
 
 const optionalString = z.string().trim().min(1).optional();
+/** An image served by the site itself: '/images/partner/logo.webp' (no host, no '..'). */
+const sitePath = z
+  .string()
+  .trim()
+  .regex(
+    /^\/(?!\/)(?!.*\.\.)[\w./-]+\.(?:webp|png|svg|jpe?g)$/i,
+    'expected a site path like /images/x.webp',
+  );
 const int = (min = 0) => z.coerce.number().int().min(min);
 const bool = (defaultValue: boolean) => z.stringbool().default(defaultValue);
 
@@ -180,6 +188,10 @@ const envShape = {
   PICKUP_MAP_URL_2GIS: z.url({ protocol: /^https$/ }).optional(),
   // Chat of the pickup point for a VIN request with a photo of the СТС, e.g. https://t.me/name
   PICKUP_TELEGRAM_URL: z.url({ protocol: /^https$/ }).optional(),
+  // Logo of the pickup partner, a site path under public/ (CSP img-src 'self') [дизайн v2]:
+  // the colour mark for white cards and the white emblem for the red header and dark panel.
+  PICKUP_LOGO_SRC: sitePath.optional(),
+  PICKUP_EMBLEM_WHITE_SRC: sitePath.optional(),
   STAFF_SEED_JSON: staffSeedJson.default([]),
 
   // --- Installation partner [ф1C] (decision С6): without the name booking is hidden ---

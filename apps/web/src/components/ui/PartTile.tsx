@@ -1,15 +1,15 @@
-import { CATEGORY_LABEL, CategoryIcon, categoryOf, type PartCategory } from '@/components/icons';
+import { CategoryIcon, categoryOf, type PartCategory } from '@/components/icons';
 import { cn } from './cn';
 
 const SIZE = {
-  sm: 'size-14',
-  md: 'size-16 md:size-18',
+  sm: 'size-14 rounded-control',
+  md: 'size-18 rounded-tile',
 } as const;
 
 /**
- * Stands in for a photo (the supplier has none): a graphite plate with the tread pattern, the
- * category glyph in the middle and a mono caption in the corner. Category comes from the offer
- * name unless given.
+ * Stands in for a photo (the supplier has none): a `surface` plate with the category glyph in
+ * the brand colour. 72 px in an offer card (`md`), 56 px in compact lists (`sm`). Category
+ * comes from the offer name unless given. Decorative: the name is written next to it.
  */
 export function PartTile({
   name,
@@ -28,15 +28,12 @@ export function PartTile({
       aria-hidden
       data-category={cat}
       className={cn(
-        'relative grid shrink-0 place-items-center overflow-hidden rounded bg-graphite-800 bg-tread text-steel-200',
+        'grid shrink-0 place-items-center bg-surface text-brand',
         SIZE[size],
         className,
       )}
     >
-      <CategoryIcon category={cat} size={28} />
-      <span className="absolute right-1 bottom-0.5 font-mono text-[9px] leading-none tracking-wider text-steel-400 uppercase">
-        {CATEGORY_LABEL[cat]}
-      </span>
+      <CategoryIcon category={cat} size={size === 'sm' ? 30 : 36} strokeWidth={1.5} />
     </div>
   );
 }

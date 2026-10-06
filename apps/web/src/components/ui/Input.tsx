@@ -2,9 +2,9 @@ import type { InputHTMLAttributes } from 'react';
 import { cn } from './cn';
 
 /**
- * Text field: 48px (56px `lg`, the search), card background, 1.5px `line-strong` border; ink
- * border and a soft orange ring on focus, `danger` border when aria-invalid. `mono` for article
- * numbers (placeholder too).
+ * Text field: 56 px (64 px `lg`, the VIN), 17 px text, `rounded-control`, `surface` at rest
+ * with a `line-strong` border; white with a brand border and a soft ring on focus, `danger`
+ * border when aria-invalid. `mono` is the old name for codes: tabular digits, a little tracking.
  */
 export function inputClass({
   size = 'md',
@@ -12,12 +12,12 @@ export function inputClass({
   className,
 }: { size?: 'md' | 'lg'; mono?: boolean; className?: string } = {}): string {
   return cn(
-    'block w-full min-w-0 rounded border-[1.5px] border-line-strong bg-card px-4 text-ink',
-    'transition-[border-color,box-shadow] duration-150 placeholder:text-faint hover:border-muted',
-    'focus:border-ink focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-accent)_35%,transparent)] focus-visible:outline-none',
-    'aria-invalid:border-danger disabled:bg-paper-2 disabled:text-faint',
-    size === 'lg' ? 'h-14 text-lg' : 'h-12 text-base',
-    mono && 'font-mono tracking-wide',
+    'block w-full min-w-0 rounded-control border-[1.5px] border-line-strong bg-surface px-4 text-ink',
+    'transition-[border-color,box-shadow,background-color] duration-150 placeholder:text-faint hover:border-muted',
+    'focus:border-brand focus:bg-bg focus:shadow-[0_0_0_3px_var(--color-brand-soft)] focus-visible:outline-none',
+    'aria-invalid:border-danger disabled:bg-surface-2 disabled:text-muted',
+    size === 'lg' ? 'h-16 text-[1.1875rem]' : 'h-14 text-[1.0625rem]',
+    mono && 'tracking-wide tabular-nums',
     className,
   );
 }

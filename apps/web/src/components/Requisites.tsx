@@ -3,15 +3,15 @@ import type { Brand } from '@/server/brand';
 import { cn } from './ui/cn';
 
 /**
- * Seller requisites as a definition list (/about): labels as mono captions, values set like a
- * data plate. `compact` for narrow places. Only the rows that are set are listed; while none
+ * Seller requisites as a definition list (/about): muted labels, values in ink with tabular
+ * digits, hairlines between the rows. `compact` (14 px) for narrow places. Only the rows that are set are listed; while none
  * is set (a demo before the launch) one neutral line stands instead of the list.
  */
 export function Requisites({ brand, compact = false }: { brand: Brand; compact?: boolean }) {
   const { seller } = brand;
   if (!hasSellerRequisites(seller)) {
     return (
-      <div className={cn('space-y-1', compact ? 'text-sm' : 'text-[0.9375rem]')}>
+      <div className={cn('space-y-1', compact ? 'text-sm' : 'text-small font-normal')}>
         <p className="font-medium" data-testid="requisites-pending">
           {REQUISITES_PENDING}.
         </p>
@@ -36,23 +36,18 @@ export function Requisites({ brand, compact = false }: { brand: Brand; compact?:
       <dl
         className={cn(
           'grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-4',
-          compact ? 'text-sm' : 'text-[0.9375rem]',
+          compact ? 'text-sm' : 'text-small font-normal',
         )}
       >
         {rows.map(([label, value]) => (
           <div key={label} className="contents">
-            <dt
-              className={cn(
-                'border-b border-dashed border-line text-label text-muted',
-                compact ? 'py-1' : 'py-2',
-              )}
-            >
+            <dt className={cn('border-b border-line text-muted', compact ? 'py-1' : 'py-2')}>
               {label}
             </dt>
             <dd
               className={cn(
-                'min-w-0 border-b border-dashed border-line font-mono wrap-anywhere',
-                compact ? 'py-0.5' : 'py-1.5',
+                'min-w-0 border-b border-line font-medium tabular-nums wrap-anywhere',
+                compact ? 'py-1' : 'py-2',
               )}
               data-testid={`requisite-${label}`}
             >

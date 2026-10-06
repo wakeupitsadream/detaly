@@ -19,11 +19,12 @@ export function pickupRoutes(brand: Pick<Brand, 'pickup' | 'pickupLinks'>): {
     brand.pickupLinks?.twoGisMap ??
     (address ? `https://2gis.ru/search/${encodeURIComponent(address)}` : null);
   const routes: { label: string; href: string }[] = [];
-  if (yandex) routes.push({ label: 'Маршрут в Яндекс Картах', href: yandex });
+  if (yandex) routes.push({ label: 'Яндекс Карты', href: yandex });
   if (twoGis) routes.push({ label: '2ГИС', href: twoGis });
   return routes;
 }
 
+/** Two secondary buttons, 48 px, side by side (they wrap on a narrow screen). */
 export function PickupRouteLinks({
   brand,
   onDark = false,
@@ -37,17 +38,18 @@ export function PickupRouteLinks({
   if (routes.length === 0) return null;
   return (
     <div className={cn('flex min-w-0 flex-wrap gap-2', className)} data-testid="pickup-routes">
-      {routes.map((route, index) => (
+      {routes.map((route) => (
         <a
           key={route.href}
           href={route.href}
           target="_blank"
           rel="noopener noreferrer"
-          className={cn(buttonClass({ variant: 'secondary', onDark }), 'min-h-10 px-4 text-sm')}
+          aria-label={`Маршрут: ${route.label} (откроется в новой вкладке)`}
+          className={cn(buttonClass({ variant: 'secondary', onDark }), 'px-4')}
         >
-          {index === 0 ? <IconRoute size={17} /> : null}
+          <IconRoute size={20} className={onDark ? undefined : 'text-brand'} />
           {route.label}
-          <IconExternal size={14} className="opacity-60" />
+          <IconExternal size={16} className="hidden opacity-60 sm:block" />
         </a>
       ))}
     </div>

@@ -1,6 +1,7 @@
-import { cn } from './cn';
-
-/** Hazard tape between the hero and the install widget: 10px of signal yellow and graphite. */
-export function HazardBand({ className }: { className?: string }) {
-  return <div aria-hidden className={cn('hazard h-2.5 w-full', className)} />;
+/**
+ * @deprecated «Техкарта» hazard tape. Draws nothing in the light storefront; the call sites go
+ * away with their page packages (docs/design-v2.md, section 7), then this file is deleted.
+ */
+export function HazardBand(_props: { className?: string }) {
+  return null;
 }

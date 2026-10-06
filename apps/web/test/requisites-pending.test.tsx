@@ -42,7 +42,9 @@ function brand(seller: Partial<Brand['seller']> = {}): Brand {
     seller: { ...NO_SELLER, ...seller },
     pickup: {
       name: 'Сервис56',
-      address: 'Оренбург — адрес уточняется',
+      // A real-looking address: the footer shows the pickup point since redesign 2, and this
+      // test is about the seller's requisites.
+      address: 'Оренбург, ул. Примерная, 1',
       hours: 'Пн–Пт 10:00–19:00',
       phone: null,
     },

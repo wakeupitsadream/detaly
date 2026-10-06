@@ -5,21 +5,17 @@ import { cn } from '@/components/ui/cn';
 export type NoticeTone = 'wait' | 'info' | 'ok' | 'danger' | 'neutral';
 
 const TONE: Record<NoticeTone, { box: string; icon: string; Icon: typeof IconInfo }> = {
-  wait: { box: 'border-wait/25 border-l-wait bg-wait-soft', icon: 'text-wait', Icon: IconAlert },
-  info: { box: 'border-info/20 border-l-info bg-info-soft', icon: 'text-info', Icon: IconInfo },
-  ok: { box: 'border-ok/20 border-l-ok bg-ok-soft', icon: 'text-ok', Icon: IconCheck },
-  danger: {
-    box: 'border-danger/25 border-l-danger bg-danger-soft',
-    icon: 'text-danger',
-    Icon: IconAlert,
-  },
-  neutral: { box: 'border-line border-l-ink bg-card', icon: 'text-muted', Icon: IconInfo },
+  wait: { box: 'bg-wait-soft', icon: 'text-wait', Icon: IconAlert },
+  info: { box: 'bg-info-soft', icon: 'text-info', Icon: IconInfo },
+  ok: { box: 'bg-ok-soft', icon: 'text-ok', Icon: IconCheck },
+  danger: { box: 'bg-danger-soft', icon: 'text-danger', Icon: IconAlert },
+  neutral: { box: 'bg-surface', icon: 'text-muted', Icon: IconInfo },
 };
 
 /**
- * A plate of state on paper: soft fill of the state colour, a 3px edge on the left and its icon.
- * Text stays ink for reading; the colour says what kind of message it is. `title` is a bold
- * first line.
+ * A note of state: the soft fill of its tone, `rounded-tile`, the tone's icon on the left and
+ * ink text (15 px), so the message reads without the colour. `title` is a bold first line;
+ * keep the rest to one sentence, details go under a <details>.
  */
 export function Notice({
   tone = 'neutral',
@@ -39,15 +35,15 @@ export function Notice({
   return (
     <div
       className={cn(
-        'flex min-w-0 items-start gap-3 rounded-sm border border-l-[3px] px-4 py-3 text-sm leading-relaxed text-ink',
+        'flex min-w-0 items-start gap-3 rounded-tile px-4 py-3 text-small font-normal text-ink',
         box,
         className,
       )}
       {...rest}
     >
-      {icon ? <Icon size={18} className={cn('mt-0.5 shrink-0', iconClass)} /> : null}
+      {icon ? <Icon size={22} className={cn('shrink-0', iconClass)} /> : null}
       <div className="min-w-0 flex-1">
-        {title ? <p className="font-semibold">{title}</p> : null}
+        {title ? <p className="font-bold">{title}</p> : null}
         {children}
       </div>
     </div>

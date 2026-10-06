@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cartCountLabel } from '@/lib/plural';
-import { IconArrowRight } from './icons';
+import { IconArrowRight, IconCart } from './icons';
 import { buttonClass } from './ui/Button';
 import { cn } from './ui/cn';
 
@@ -21,35 +21,36 @@ function hiddenOn(pathname: string | null): boolean {
 }
 
 /**
- * Phones only (below md): a fixed bottom bar with the cart once it has lines. The spacer after
- * it keeps the end of the page (the footer) reachable above the bar.
+ * Phones only (below md): a white floating panel at the bottom once the cart has lines, with
+ * the number of lines and the way to checkout (through the cart, which re-prices first). The
+ * spacer after the page keeps the end of the footer reachable above the panel.
  */
 export function MobileCartBar({ cartCount }: { cartCount: number }) {
   const pathname = usePathname();
   if (cartCount <= 0 || hiddenOn(pathname)) return null;
   return (
     <>
+      <div aria-hidden className="h-[calc(5.5rem+env(safe-area-inset-bottom))] md:hidden" />
       <div
-        aria-hidden
-        className="h-[calc(4rem+env(safe-area-inset-bottom))] bg-graphite-950 md:hidden"
-      />
-      <div
-        className="mobile-cart-bar fixed inset-x-0 bottom-0 z-40 border-t border-graphite-700 bg-graphite-950 pb-[env(safe-area-inset-bottom)] text-paper md:hidden"
+        className="mobile-cart-bar fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:hidden"
         data-testid="mobile-cart-bar"
       >
-        <div className="flex h-16 items-center justify-between gap-3 px-4">
-          <p className="min-w-0 text-sm">
-            <span className="text-steel-400">В корзине </span>
-            <span className="font-semibold">{cartCountLabel(cartCount)}</span>
+        <div className="flex h-17 items-center justify-between gap-3 rounded-tile border border-line bg-bg pr-2.5 pl-4 text-ink shadow-float">
+          <p className="flex min-w-0 items-center gap-2.5 text-small">
+            <IconCart size={24} className="shrink-0 text-brand" />
+            <span className="min-w-0">
+              <span className="text-muted">В корзине </span>
+              <span className="font-bold whitespace-nowrap">{cartCountLabel(cartCount)}</span>
+            </span>
           </p>
           {/* No prefetch: opening the cart re-prices it at the supplier. */}
           <Link
             href="/cart"
             prefetch={false}
-            className={cn(buttonClass({ variant: 'primary', onDark: true }), 'shrink-0 px-4')}
+            className={cn(buttonClass({ variant: 'primary' }), 'shrink-0 px-5')}
           >
-            Корзина
-            <IconArrowRight size={18} />
+            Оформить
+            <IconArrowRight size={20} />
           </Link>
         </div>
       </div>

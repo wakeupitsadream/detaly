@@ -2,23 +2,26 @@ import type { HTMLAttributes, ReactNode } from 'react';
 import { cn } from './cn';
 import { Container } from './Container';
 
-export type SectionTone = 'paper' | 'sunken' | 'dark' | 'darker';
+export type SectionTone = 'bg' | 'surface' | 'dark' | 'paper' | 'sunken' | 'darker';
 
 const TONE: Record<SectionTone, string> = {
-  paper: 'bg-paper text-ink',
-  sunken: 'bg-paper-2 text-ink',
-  dark: 'bg-graphite-900 text-steel-200 grain-dark',
-  darker: 'bg-graphite-950 text-steel-200 grain-dark',
+  bg: 'bg-bg text-ink',
+  surface: 'bg-surface text-ink',
+  dark: 'bg-dark text-on-brand',
+  // Old «Техкарта» names.
+  paper: 'bg-bg text-ink',
+  sunken: 'bg-surface text-ink',
+  darker: 'bg-dark text-on-brand',
 };
 
 /**
- * A full-width band of a bleed page: tone, optional drafting grid, the 56/88/120 px rhythm and
- * the site column inside. `contained={false}` leaves the column to the caller; `spaced={false}`
- * drops the vertical rhythm (a hero sets its own).
+ * A full-width band of a bleed page: tone, the 48 / 72 px rhythm and the site column inside.
+ * `contained={false}` leaves the column to the caller; `spaced={false}` drops the rhythm.
+ * `blueprint` is the old drafting grid and draws nothing now.
  */
 export function Section({
-  tone = 'paper',
-  blueprint = false,
+  tone = 'bg',
+  blueprint: _blueprint = false,
   contained = true,
   spaced = true,
   className,
@@ -27,6 +30,7 @@ export function Section({
   ...rest
 }: {
   tone?: SectionTone;
+  /** @deprecated «Техкарта» drafting grid; ignored. */
   blueprint?: boolean;
   contained?: boolean;
   spaced?: boolean;
@@ -34,18 +38,63 @@ export function Section({
   children: ReactNode;
 } & HTMLAttributes<HTMLElement>) {
   return (
-    <section
-      className={cn(
-        'min-w-0',
-        TONE[tone],
-        blueprint && 'bg-blueprint',
-        spaced && 'section-y',
-        className,
-      )}
-      {...rest}
-    >
+    <section className={cn('min-w-0', TONE[tone], spaced && 'section-y', className)} {...rest}>
       {contained ? <Container className={innerClassName}>{children}</Container> : children}
     </section>
+  );
+}
+
+/**
+ * Heading of a section (docs/design-v2.md, SectionHeading): the marker — a hairline across the
+ * column with a 96 x 6 px brand bar on its left — and a bold `text-h2` title on the left.
+ * `center` drops the marker and centres the title («Популярные категории»). `action` sits on
+ * the right of the title (a «Все марки» link).
+ */
+export function SectionHeading({
+  as: Tag = 'h2',
+  id,
+  center = false,
+  onDark = false,
+  action,
+  className,
+  children,
+}: {
+  as?: 'h1' | 'h2' | 'h3';
+  id?: string;
+  center?: boolean;
+  /** On the dark panel: white title, no marker line. */
+  onDark?: boolean;
+  action?: ReactNode;
+  className?: string;
+  children: ReactNode;
+}) {
+  if (center) {
+    return (
+      <Tag
+        id={id}
+        className={cn('text-center text-h2 text-balance', onDark && 'text-on-brand', className)}
+      >
+        {children}
+      </Tag>
+    );
+  }
+  return (
+    <div className={cn('min-w-0', className)}>
+      {onDark ? null : (
+        <div aria-hidden className="relative h-1.5">
+          <div className="h-px bg-line" />
+          <div className="absolute top-0 left-0 h-1.5 w-24 bg-brand" />
+        </div>
+      )}
+      <div
+        className={cn('flex min-w-0 items-end justify-between gap-4', !onDark && 'mt-5 md:mt-6')}
+      >
+        <Tag id={id} className={cn('min-w-0 text-h2', onDark && 'text-on-brand')}>
+          {children}
+        </Tag>
+        {action ? <div className="shrink-0">{action}</div> : null}
+      </div>
+    </div>
   );
 }
 

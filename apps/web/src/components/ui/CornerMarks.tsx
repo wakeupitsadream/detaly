@@ -1,28 +1,13 @@
 import type { HTMLAttributes } from 'react';
-import { cn } from './cn';
 
 /**
- * Drawing corner marks around a key card (install widget, cart total, order header): four
- * L-shaped corners just outside the box, drawn by `.corner-marks` in globals.css. `tone="light"`
- * for graphite sections.
+ * @deprecated «Техкарта» drawing corner marks. Now a plain wrapper without marks; the call
+ * sites go away with their page packages (docs/design-v2.md, section 7), then this file is
+ * deleted.
  */
 export function CornerMarks({
-  tone = 'ink',
-  className,
-  style,
+  tone: _tone,
   ...rest
 }: { tone?: 'ink' | 'light' | 'accent' } & HTMLAttributes<HTMLDivElement>) {
-  const color =
-    tone === 'light'
-      ? 'var(--color-steel-400)'
-      : tone === 'accent'
-        ? 'var(--color-accent)'
-        : undefined;
-  return (
-    <div
-      className={cn('corner-marks', className)}
-      style={color ? { ...style, ['--corner-color' as string]: color } : style}
-      {...rest}
-    />
-  );
+  return <div {...rest} />;
 }

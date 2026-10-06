@@ -1,5 +1,5 @@
-// Foundation of the «Техкарта» storefront (docs/design.md, package F): category glyphs, plural
-// forms, the shared header/footer contracts and the base components, rendered without Next.
+// Foundation of the storefront (docs/design-v2.md, package F): category glyphs, plural forms,
+// the shared header/footer contracts and the base components, rendered without Next.
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -61,7 +61,22 @@ describe('categoryOf', () => {
     ['Лампа H7 12V', 'bulb'],
     ['Масло моторное 5W-30', 'oil'],
     ['Ремкомплект суппорта', 'part'],
-    ['Прокладка клапанной крышки', 'part'],
+    ['Датчик ABS передний', 'part'],
+    ['Фаркоп', 'part'],
+    ['Прокладка клапанной крышки', 'engine'],
+    ['Опора двигателя', 'engine'],
+    ['Диск сцепления', 'clutch'],
+    ['Комплект сцепления', 'clutch'],
+    ['Подшипник выжимной', 'clutch'],
+    ['Радиатор охлаждения', 'cooling'],
+    ['Насос водяной (помпа)', 'cooling'],
+    ['Термостат', 'cooling'],
+    ['Датчик температуры охлаждающей жидкости', 'cooling'],
+    ['Комплект ремня ГРМ с помпой', 'belt'],
+    ['Цепь ГРМ', 'belt'],
+    ['Фара передняя левая', 'bulb'],
+    ['Бампер передний', 'body'],
+    ['Зеркало наружное', 'body'],
     ['', 'part'],
   ] as const)('%s -> %s', (name, category) => {
     expect(categoryOf(name)).toBe(category);
@@ -72,10 +87,15 @@ describe('categoryOf', () => {
     expect(categoryOf(undefined)).toBe('part');
   });
 
-  it('PartTile shows the glyph caption, never a "no photo" text', () => {
+  it('every category has a label', () => {
+    for (const label of Object.values(CATEGORY_LABEL)) expect(label).not.toBe('');
+  });
+
+  it('PartTile shows the glyph only (v2: no caption), never a "no photo" text', () => {
     const html = renderToStaticMarkup(createElement(PartTile, { name: 'Фильтр масляный' }));
     expect(html).toContain('data-category="filter"');
-    expect(text(html)).toBe(CATEGORY_LABEL.filter);
+    expect(html).toContain('<svg');
+    expect(text(html)).toBe('');
     expect(html).toContain('aria-hidden');
     expect(html.toLowerCase()).not.toContain('фото');
   });
@@ -150,11 +170,14 @@ describe('shared chrome', () => {
 });
 
 describe('base components', () => {
-  it('primary button: ink on orange, never white text', () => {
+  it('primary button: white on the brand token, never a raw colour', () => {
     const primary = buttonClass();
-    expect(primary).toContain('bg-accent');
-    expect(primary).toContain('text-ink');
+    expect(primary).toContain('bg-brand');
+    expect(primary).toContain('text-on-brand');
     expect(primary).not.toContain('text-white');
+    expect(primary).not.toMatch(/#[0-9a-f]{3,6}/i);
+    expect(buttonClass({ size: 'lg' })).toContain('min-h-13');
+    expect(buttonClass({ size: 'md' })).toContain('min-h-12');
   });
 
   it('Badge carries data attributes through', () => {
@@ -162,7 +185,8 @@ describe('base components', () => {
       createElement(Badge, { tone: 'demo', 'data-testid': 'x' } as never, 'демо'),
     );
     expect(html).toContain('data-testid="x"');
-    expect(html).toContain('bg-signal');
+    expect(html).toContain('bg-wait-soft');
+    expect(html).toContain('rounded-full');
   });
 
   it('Field wires hint and error ids', () => {
@@ -194,8 +218,9 @@ describe('base components', () => {
         },
       }),
     );
-    expect(text(html)).toBe('Установка: чт 8 окт с 14:00 · машина готова к 16:00');
+    expect(text(html)).toBe('Машина готова чт 8 окт к 16:00');
     expect(html).toContain('dateTime="2026-10-08T14:00:00+05:00"');
+    expect(html).toContain('title="Установка: чт 8 окт с 14:00"');
   });
 
   it('install contract never fails: no offers give an empty map, a date gives a plan or null', async () => {

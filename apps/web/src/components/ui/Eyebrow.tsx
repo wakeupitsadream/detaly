@@ -2,12 +2,13 @@ import type { HTMLAttributes } from 'react';
 import { cn } from './cn';
 
 /**
- * Mono uppercase label above a heading ("Оренбург · автозапчасти с установкой"), with a small
- * signal-orange square like a marking on equipment.
+ * @deprecated «Техкарта» label above a heading; replaced by SectionHeading. Now a quiet 15 px
+ * caption without mono, caps or marker, until the page packages drop it (docs/design-v2.md,
+ * section 7).
  */
 export function Eyebrow({
   onDark = false,
-  marker = true,
+  marker: _marker = true,
   className,
   children,
   ...rest
@@ -15,14 +16,13 @@ export function Eyebrow({
   return (
     <p
       className={cn(
-        'flex min-w-0 items-center gap-2 text-label',
-        onDark ? 'text-steel-400' : 'text-muted',
+        'min-w-0 text-small font-semibold',
+        onDark ? 'text-on-brand/80' : 'text-muted',
         className,
       )}
       {...rest}
     >
-      {marker ? <span aria-hidden className="size-2 shrink-0 bg-accent" /> : null}
-      <span className="min-w-0">{children}</span>
+      {children}
     </p>
   );
 }

@@ -3,7 +3,7 @@ import { cn } from './cn';
 
 type ContainerTag = 'div' | 'section' | 'header' | 'footer' | 'nav';
 
-/** The site column: 72rem, side gutters 16 / 24 / 32 px. */
+/** The site column: 75rem, side gutters 16 / 24 / 32 px. */
 export function Container({
   as: Tag = 'div',
   className,

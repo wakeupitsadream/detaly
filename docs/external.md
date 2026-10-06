@@ -327,10 +327,10 @@ msw-моках SMS-шлюзов: `api.yookassa.ru`, `api.rossko.ru`, SMS Aero и
 | `packages/rossko/src/mapper.ts`: 75 | Нечисловой остаток (`">10"`) отбрасывает предложение | R13 | Максим и Лёша (письмо Rossko) | 1A |
 | `packages/rossko/src/client.ts`: 75 | Текст «ничего не найдено» GetSearch взят из синтетической фикстуры | R15 | Максим (`scripts/rossko-smoke.ts`) | 1A |
 | `packages/domain/src/cart.ts`: 6; `apps/web/src/server/cart-store.ts`: 11; `apps/web/src/server/cart/cart-service.ts`: 15 | Стабильный id склада между вызовами GetSearch, кроссы по исходному артикулу | R13–R15 | Максим и Лёша (письмо Rossko) | 1A |
-| `packages/notify/src/drivers/sms.ts`: 10, 31; `packages/config/src/env.ts`: 256 | Адреса шлюзов (`https://gate.smsaero.ru/v2`, `https://smsc.ru/sys`) и форматы: SMS Aero — `GET /sms/send` с Basic `login:apiKey`, ответ `{success, data: {id, cost}}`; smsc — `GET /send.php` с `fmt=3`, ошибки `{error, error_code}` при HTTP 200 | раздел 5: «SMS Aero [ф1B]», «smsc.ru [ф1B]» | Максим (SMS-провайдер) | 1B |
+| `packages/notify/src/drivers/sms.ts`: 10, 31; `packages/config/src/env.ts`: 268 | Адреса шлюзов (`https://gate.smsaero.ru/v2`, `https://smsc.ru/sys`) и форматы: SMS Aero — `GET /sms/send` с Basic `login:apiKey`, ответ `{success, data: {id, cost}}`; smsc — `GET /send.php` с `fmt=3`, ошибки `{error, error_code}` при HTTP 200 | раздел 5: «SMS Aero [ф1B]», «smsc.ru [ф1B]» | Максим (SMS-провайдер) | 1B |
 | `packages/notify/src/drivers/sms.ts`: 154, 168 | smsc: временные коды ошибок 4 и 9; `cost=2` отправляет и возвращает цену | раздел 5: «smsc.ru [ф1B]» | Максим (SMS-провайдер) | 1B |
 | `packages/notify/src/sms-text.ts`: 7 | Оба шлюза считают кириллицу по 70/67 символов, тариф за часть; шаблоны рассчитаны на 2 части | раздел 5: «SMS-сегменты [ф1B]» | Максим (SMS-провайдер) | 1B |
-| `packages/config/src/env.ts`: 259; `apps/worker/src/jobs/notify/sms.ts`: 10 | Цена одного SMS `SMS_PRICE_KOP` (по умолчанию 500 коп.) для месячного бюджета; неудачная отправка стоит 0 | раздел 5: «SMS [ф1B]» | Максим (SMS-провайдер) | 1B |
+| `packages/config/src/env.ts`: 271; `apps/worker/src/jobs/notify/sms.ts`: 10 | Цена одного SMS `SMS_PRICE_KOP` (по умолчанию 500 коп.) для месячного бюджета; неудачная отправка стоит 0 | раздел 5: «SMS [ф1B]» | Максим (SMS-провайдер) | 1B |
 
 Проверка полноты списка (в CI её нет, запускать вручную перед закрытием фазы):
 

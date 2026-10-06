@@ -28,6 +28,15 @@ export interface Brand {
     twoGisMap: string | null;
     telegram: string | null;
   };
+  /**
+   * Marks of the pickup partner (PICKUP_LOGO_SRC, PICKUP_EMBLEM_WHITE_SRC), site paths under
+   * public/: the colour logo for white cards, the white emblem for the red header and the dark
+   * panel. Null: a pin icon stands instead.
+   */
+  pickupLogo?: {
+    color: string | null;
+    emblemWhite: string | null;
+  };
   /** Phone for questions and VIN requests: pickup point first, then the seller. */
   contactPhone: string | null;
   /** ROSSKO_MODE=fixtures: prices and stock are synthetic. */
@@ -57,6 +66,10 @@ export function brandFromEnv(env: Env): Brand {
       yandexMap: env.PICKUP_MAP_URL_YANDEX ?? null,
       twoGisMap: env.PICKUP_MAP_URL_2GIS ?? null,
       telegram: env.PICKUP_TELEGRAM_URL ?? null,
+    },
+    pickupLogo: {
+      color: env.PICKUP_LOGO_SRC ?? null,
+      emblemWhite: env.PICKUP_EMBLEM_WHITE_SRC ?? null,
     },
     contactPhone: env.PICKUP_PHONE ?? env.SELLER_REQUISITES_PHONE ?? null,
     demoData: env.ROSSKO_MODE === 'fixtures',

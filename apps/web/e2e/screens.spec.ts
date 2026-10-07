@@ -65,8 +65,13 @@ for (const { slug, path } of PAGES) {
       );
     }
     if (slug.startsWith('docs-')) {
-      await expect(page.getByTestId('legal-document')).toBeVisible();
-      await expect(page.locator('.legal h1, .legal h2').first()).toBeVisible();
+      const doc = page.getByTestId('legal-document');
+      await expect(doc).toBeVisible();
+      // The title is the page's single h1 (docs/design-v2.md: first under the document chips,
+      // above the edition line; a body that opens with its own title keeps it in the text).
+      await expect(page.locator('h1')).toHaveCount(1);
+      await expect(doc.getByRole('heading', { level: 1 })).toBeVisible();
+      await expect(doc.locator('.legal')).not.toBeEmpty();
     }
     if (slug === 'cart-empty') {
       const empty = page.getByTestId('cart-empty');

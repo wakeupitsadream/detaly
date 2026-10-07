@@ -138,6 +138,11 @@ export interface OrderView {
   preferredChannel: NotificationChannel | null;
   /** Only from `ready` on (decision Д13), otherwise null even when it exists. */
   pickupCode: string | null;
+  /**
+   * A ready order waits at the point until this day (orders.expires_at, the storage window of
+   * pickup.window_*_days): 'чт 15 октября'. Null in other statuses.
+   */
+  keepUntilText: string | null;
   /** The 1A cancellation (client_cancelled) applies: before payment / confirmation. */
   canCancel: boolean;
   /** The order is over for the client (cancelled, refunded, handed, completed). */
@@ -409,6 +414,10 @@ export async function loadOrderView(
     timeline: buildTimeline(events, undefined, itemTitles),
     preferredChannel: order.preferredChannel,
     pickupCode: PICKUP_CODE_SET.has(status) ? order.pickupCode : null,
+    keepUntilText:
+      status === 'ready' && order.expiresAt !== null
+        ? formatDayWithWeekday(localDate(order.expiresAt))
+        : null,
     canCancel: allowed('client_cancelled'),
     closed,
     paymentsEnabled,

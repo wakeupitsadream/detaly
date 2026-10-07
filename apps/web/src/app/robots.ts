@@ -22,5 +22,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ['/o/', '/p/', '/admin'],
       },
     ],
+    sitemap: new URL('/sitemap.xml', env.APP_BASE_URL).toString(),
   };
 }

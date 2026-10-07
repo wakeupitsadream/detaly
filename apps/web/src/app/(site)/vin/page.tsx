@@ -27,7 +27,11 @@ import { photosEnabled } from '@/server/files';
 import { isDemoMode } from '@/server/mode';
 import { errorsOf, parseErrorCodes, VIN_FORM_MESSAGES } from '@/server/vin/form';
 
-export const metadata: Metadata = { title: 'Подбор запчастей по VIN' };
+// The canonical drops ?vin, ?car and ?need: the home page links /vin with 48 of them.
+export const metadata: Metadata = {
+  title: 'Подбор запчастей по VIN',
+  alternates: { canonical: '/vin' },
+};
 
 // The form appears with the checkout gate (RKN number, documents, pickup point): runtime env
 // and the database decide, so the page is rendered per request.

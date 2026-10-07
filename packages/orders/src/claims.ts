@@ -245,6 +245,7 @@ export async function openClaim(
       scheme: order.paymentScheme,
       moneyHeld: moneyHeldOf(snapshot),
       handedAt: order.handedAt,
+      receivedAt: order.receivedAt,
       promisedDate: order.promisedDate,
       now,
     });

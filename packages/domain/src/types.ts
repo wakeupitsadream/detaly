@@ -20,6 +20,7 @@ import type {
   PaymentSubject,
   StaffRole,
 } from './statuses';
+import type { WeekSchedule } from './work-hours';
 
 /** Integer kopecks. */
 export type Kop = number;
@@ -108,6 +109,11 @@ export interface EtaSettings {
   invoiceLagDays: number;
   /** settings `rossko.prepay_invoice`. */
   prepayInvoice: boolean;
+  /**
+   * parseWorkHours(PICKUP_HOURS): a promised date that falls on a day off of the pickup point
+   * moves to its next working day. null/absent (not set or not understood): no shift.
+   */
+  pickupSchedule?: WeekSchedule | null;
 }
 
 // ---------------------------------------------------------------------------

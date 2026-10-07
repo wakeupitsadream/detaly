@@ -6,7 +6,12 @@
  */
 import { pctToBp, settingsDefaultsFromEnv, type Env } from '@detaly/config';
 import { inArray, settings, type Executor } from '@detaly/db';
-import { validateMarkupRules, type MarkupRule, type SettingsValues } from '@detaly/domain';
+import {
+  parseWorkHours,
+  validateMarkupRules,
+  type MarkupRule,
+  type SettingsValues,
+} from '@detaly/domain';
 import type { OrderSettings } from './types';
 
 const KEYS = [
@@ -67,6 +72,7 @@ export function resolveOrderSettings(rows: ReadonlyMap<string, unknown>, env: En
       bufferDays: pick('eta.buffer_days', isNonNegativeInt),
       invoiceLagDays: pick('eta.supplier_invoice_lag_days', isNonNegativeInt),
       prepayInvoice: pick('rossko.prepay_invoice', (v) => typeof v === 'boolean'),
+      pickupSchedule: parseWorkHours(env.PICKUP_HOURS ?? null),
     },
     driftToleranceBp: pctToBp(pick('pricing.drift_tolerance_pct', isPct)),
     marginFloorBp: pctToBp(pick('pricing.margin_floor_pct', isPct)),

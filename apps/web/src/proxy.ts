@@ -44,8 +44,10 @@
  *    (server/demo/rate-limit.ts, Redis is never touched); /admin, /api/admin/*,
  *    /api/webhooks/* and /api/orders/* answer 404, and so does every order page but the sample
  *    /o/demo (its handlers check the same again). Phase 1C (decision С21): the demo forms are
- *    answered here WITHOUT reading the body — POST /api/vin -> 303 /vin/sent?demo=1, POST
- *    /api/orders/demo/{link,install,claims} -> 303 /o/demo?demo=<what>; every proposal but
+ *    answered here WITHOUT reading the body — POST /api/vin -> 303 /vin/sent?demo=1 (only
+ *    for a client that posts it anyway: the demo VIN form has no action and no submit), POST
+ *    /api/orders/demo/{link,install,claims} -> 303 /o/demo?demo=<what>, POST
+ *    /api/demo/checkout-done -> 303 /o/demo with the demo cart emptied; every proposal but
  *    /p/demo (and its API) and every /vin/sent/<token> answer 404.
  */
 import { NextResponse, type NextRequest } from 'next/server';
@@ -56,6 +58,8 @@ import {
   isAdminPath,
 } from './server/admin-auth';
 import { getClientIp } from './server/client-ip';
+import { demoCartSetCookie } from './server/demo/cart-cookie';
+import { DEMO_CHECKOUT_DONE_PATH } from './server/demo/checkout-done';
 import { createMemoryRateLimiter } from './server/demo/rate-limit';
 import { serverEnv, type Env } from './server/env';
 import { singleton } from './server/globals';
@@ -297,6 +301,7 @@ const DEMO_ORDER_FORMS: Readonly<Record<string, string>> = {
 export function demoFormRedirect(method: string, path: string): string | null {
   if (method.toUpperCase() !== 'POST') return null;
   if (path === '/api/vin') return '/vin/sent?demo=1';
+  if (path === DEMO_CHECKOUT_DONE_PATH) return DEMO_ORDER_PATH;
   const prefix = '/api/orders/demo/';
   if (path.startsWith(prefix)) {
     const form = path.slice(prefix.length);
@@ -405,7 +410,13 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const path = canonicalPath(pathname);
   if (env.DEMO_MODE) {
     const redirect = demoFormRedirect(request.method, path);
-    if (redirect !== null) return demoSeeOther(env.APP_BASE_URL, redirect);
+    if (redirect !== null) {
+      const response = demoSeeOther(env.APP_BASE_URL, redirect);
+      if (path === DEMO_CHECKOUT_DONE_PATH) {
+        response.headers.append('Set-Cookie', demoCartSetCookie(null, env));
+      }
+      return response;
+    }
     const blocked = isAdminPath(pathname) ? 'page' : demoBlockedPath(path);
     if (blocked !== null) {
       return demoNotFoundResponse(request, path.startsWith('/api/') ? 'api' : blocked);

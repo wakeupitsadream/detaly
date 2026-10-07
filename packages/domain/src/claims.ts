@@ -10,7 +10,8 @@
  *   and ends at the end of the 7th day;
  * - a defect may be claimed any time after the handover (the warranty is checked by the master);
  * - a delay — after a handover later than the promised date, or before the handover when the
- *   promised date has passed and the client's money is held.
+ *   client's money is held and the order arrived after the promised date (or has not arrived
+ *   and the promised date has passed).
  */
 import { addDays, CLIENT_TIME_ZONE, localDate } from './dates';
 import { REFUSABLE_STATUSES } from './state-machine/transitions';
@@ -61,6 +62,12 @@ export interface ClaimKindsInput {
   handedAt: Date | null;
   /** orders.promised_date */
   promisedDate: IsoDate | null;
+  /**
+   * orders.received_at: the order arrived at the pickup point (the storage window started).
+   * Once it is set, a delay before the handover is judged by the arrival day, not by today: a
+   * part that came on time is not late because the client comes for it later.
+   */
+  receivedAt?: Date | null;
   now: Date;
   timeZone?: string;
 }
@@ -86,9 +93,13 @@ export function claimKindsAvailable(input: ClaimKindsInput): ClaimKind[] {
     const handedDay = localDate(input.handedAt, timeZone);
     if (input.promisedDate !== null && handedDay > input.promisedDate) kinds.add('delay');
   } else if ((REFUSABLE_STATUSES as readonly OrderStatus[]).includes(input.status)) {
-    if (input.moneyHeld && input.promisedDate !== null && input.promisedDate < today) {
-      kinds.add('delay');
-    }
+    const receivedAt = input.receivedAt ?? null;
+    const late =
+      input.promisedDate !== null &&
+      (receivedAt === null
+        ? input.promisedDate < today
+        : localDate(receivedAt, timeZone) > input.promisedDate);
+    if (input.moneyHeld && late) kinds.add('delay');
   }
   return (['refusal', 'not_fit', 'defect', 'delay'] as const).filter((kind) => kinds.has(kind));
 }

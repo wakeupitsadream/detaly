@@ -58,7 +58,7 @@
 | `PICKUP_MAP_URL_YANDEX`, `PICKUP_MAP_URL_2GIS` | ссылки «Маршрут в Яндекс Картах» и «2ГИС» (https). Без них кнопки ищут адрес точки в картах |
 | `PICKUP_TELEGRAM_URL` | чат точки (https://t.me/…): на `/vin` появляется кнопка «Отправить фото СТС в Telegram» с готовым началом сообщения |
 | `SELLER_REQUISITES_*` | реквизиты в футере, на «О нас» и в документах. Без них везде одна нейтральная строка «Реквизиты продавца появятся к запуску», в документах — пропуски `________` и пометка «Черновик» |
-| `LEGAL_OFFER_VERSION`, `LEGAL_PRIVACY_VERSION`, `LEGAL_CONSENT_PD_VERSION`, `LEGAL_CONSENT_MARKETING_VERSION`, `LEGAL_RETURN_MEMO_VERSION` | `2026-10-d1` (версия файла в `content/legal`). С ними и реквизитами документ идёт как «Действующая редакция», без плашки черновика. Сама пометка юриста внутри текста остаётся, пока её не уберут из `content/legal` |
+| `LEGAL_OFFER_VERSION`, `LEGAL_PRIVACY_VERSION`, `LEGAL_CONSENT_PD_VERSION`, `LEGAL_CONSENT_MARKETING_VERSION`, `LEGAL_RETURN_MEMO_VERSION` | `2026-10-d1` (версия файла в `content/legal`). Пока в тексте есть пометки юриста («Черновик, требует вычитки», «Для юриста:», «— уточнить»), документ показывается черновиком даже с ними и с реквизитами. «Действующей редакцией» без плашки он станет после вычитки, в новом файле версии без пометок. `LEGAL_ALLOW_DRAFT_PUBLISH` на Vercel не задавать |
 | `APP_BASE_URL` | адрес демо, например `https://detaly-demo.vercel.app`. Если не задан, в демо берётся из системных переменных Vercel: в production это `VERCEL_PROJECT_PRODUCTION_URL`, в preview — `VERCEL_URL` |
 
 Не задавать: `DATABASE_URL`, `REDIS_URL`, любые `YOOKASSA_*`, `ROSSKO_KEY*`.

@@ -9,11 +9,13 @@ import { settingsDefaultsFromEnv, type Env } from '@detaly/config';
 import type { Database } from '@detaly/db';
 import {
   DEFAULT_EXCLUDED_RULES,
+  parseWorkHours,
   validateMarkupRules,
   type EtaSettings,
   type ExcludedRule,
   type Kop,
   type MarkupRule,
+  type PaymentScheme,
   type SettingsValues,
 } from '@detaly/domain';
 
@@ -33,6 +35,9 @@ const SEARCH_KEYS = [
   'no_show.limit',
   'order.payment_ttl_min',
   'courier.fee_kop',
+  // how long a ready order waits at the point (checkout «Получение», the order page)
+  'pickup.window_prepaid_days',
+  'pickup.window_cod_days',
 ] as const satisfies readonly (keyof SettingsValues)[];
 
 /** Order thresholds and terms (settings keys in comments; 0 kop thresholds = no minimum). */
@@ -51,6 +56,18 @@ export interface OrderSettings {
   paymentTtlMin: number;
   /** courier.fee_kop */
   courierFeeKop: Kop;
+  /** pickup.window_prepaid_days: days a prepaid order waits at the point after «Приехало». */
+  pickupWindowPrepaidDays: number;
+  /** pickup.window_cod_days: the same for payment on handover. */
+  pickupWindowCodDays: number;
+}
+
+/** Days a ready order waits at the point under this payment scheme (the engine's window). */
+export function storageDays(
+  order: Pick<OrderSettings, 'pickupWindowPrepaidDays' | 'pickupWindowCodDays'>,
+  scheme: PaymentScheme,
+): number {
+  return scheme === 'prepay' ? order.pickupWindowPrepaidDays : order.pickupWindowCodDays;
 }
 
 export interface SearchSettings {
@@ -110,6 +127,7 @@ export function resolveSearchSettings(
       bufferDays: pick('eta.buffer_days', isNonNegativeInt),
       invoiceLagDays: pick('eta.supplier_invoice_lag_days', isNonNegativeInt),
       prepayInvoice: pick('rossko.prepay_invoice', (value) => typeof value === 'boolean'),
+      pickupSchedule: parseWorkHours(env.PICKUP_HOURS ?? null),
     },
     localStockIds: pick('rossko.local_stock_ids', isStringArray),
     order: {
@@ -120,6 +138,8 @@ export function resolveSearchSettings(
       noShowLimit: pick('no_show.limit', isPositiveInt),
       paymentTtlMin: pick('order.payment_ttl_min', isPositiveInt),
       courierFeeKop: pick('courier.fee_kop', isNonNegativeInt),
+      pickupWindowPrepaidDays: pick('pickup.window_prepaid_days', isPositiveInt),
+      pickupWindowCodDays: pick('pickup.window_cod_days', isPositiveInt),
     },
   };
 }

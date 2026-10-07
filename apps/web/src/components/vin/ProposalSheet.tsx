@@ -153,7 +153,7 @@ export function proposalPaymentLine(lines: readonly ProposalLineView[]): string 
   const live = lines.filter((line) => line.status === 'ok');
   if (live.length === 0) return null;
   if (live.every((line) => line.isLocal)) {
-    return 'Оплата при получении — картой или по QR. Наличные не принимаем.';
+    return 'Оплата при получении — с вашего телефона по QR-коду (СБП или карта). Наличные не принимаем.';
   }
   if (live.every((line) => !line.isLocal)) return 'Предоплата — картой или СБП при оформлении.';
   return MIXED_PROPOSAL_PAYMENT;

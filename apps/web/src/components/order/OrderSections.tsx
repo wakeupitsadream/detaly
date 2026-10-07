@@ -145,6 +145,7 @@ export function PickupCodeBlock({ code }: { code: string }) {
 export function PickupBlock({
   pickup,
   code = null,
+  keepUntil = null,
   routes = [],
   className,
 }: {
@@ -152,6 +153,8 @@ export function PickupBlock({
   pickup: PickupInfo;
   /** The pickup code (from `ready` on). */
   code?: string | null;
+  /** 'чт 15 октября': the last day a ready order waits (OrderView.keepUntilText). */
+  keepUntil?: string | null;
   routes?: readonly PickupRoute[];
 }) {
   return (
@@ -165,6 +168,11 @@ export function PickupBlock({
       fallback={PICKUP_ADDRESS_UNKNOWN}
       className={className}
     >
+      {keepUntil ? (
+        <p className="mb-3 text-body" data-testid="order-keep-until">
+          Храним до <span className="font-bold whitespace-nowrap">{keepUntil}</span>
+        </p>
+      ) : null}
       {code ? <PickupCodeBlock code={code} /> : null}
     </PickupCard>
   );

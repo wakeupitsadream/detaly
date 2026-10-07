@@ -71,6 +71,50 @@ describe('renderLegal', () => {
   });
 });
 
+describe('renderLegal: a draft is never published by mistake', () => {
+  const requisites = { SELLER_REQUISITES_INN: '123456789012', BRAND_NAME: 'Бренд' };
+  const draft = (body: string) => ({
+    kind: 'offer' as const,
+    version: 'v1',
+    title: 'Оферта',
+    body,
+    sourcePath: 'legal/offer/v1.md',
+  });
+
+  it('refuses to publish a text with the draft banner, lawyer notes or open questions', () => {
+    const env = parseEnv(minimalEnvSource(requisites));
+    for (const body of [
+      '> Черновик, требует вычитки юристом. Это не действующая редакция.\n',
+      'Срок хранения — уточнить.\n',
+      '(Для юриста: проверить основание.)\n',
+    ]) {
+      const { problems } = renderLegal(draft(body), env, 'publish');
+      expect(problems, body).toHaveLength(1);
+      expect(problems[0]).toMatch(/^legal\/offer\/v1\.md: the text is still a draft/);
+      // A draft is still rendered as a draft.
+      expect(renderLegal(draft(body), env, 'draft').problems).toEqual([]);
+    }
+    expect(renderLegal(draft('Чистый текст.\n'), env, 'publish').problems).toEqual([]);
+  });
+
+  it('publishes a draft text only with LEGAL_ALLOW_DRAFT_PUBLISH=true (tests, e2e)', () => {
+    const env = parseEnv(minimalEnvSource({ ...requisites, LEGAL_ALLOW_DRAFT_PUBLISH: 'true' }));
+    expect(renderLegal(draft('Для юриста: проверить.\n'), env, 'publish').problems).toEqual([]);
+    expect(parseEnv(minimalEnvSource()).LEGAL_ALLOW_DRAFT_PUBLISH).toBe(false);
+  });
+
+  it('the repository drafts are not publishable as they are', async () => {
+    const env = parseEnv(minimalEnvSource());
+    const sources = await readLegalSources(DEFAULT_LEGAL_DIR);
+    for (const source of sources) {
+      expect(
+        renderLegal(source, env, 'publish').problems.some((p) => p.includes('still a draft')),
+        source.sourcePath,
+      ).toBe(true);
+    }
+  });
+});
+
 describe('repository content/legal', () => {
   it('has a valid file for every document kind', async () => {
     const sources = await readLegalSources(DEFAULT_LEGAL_DIR);

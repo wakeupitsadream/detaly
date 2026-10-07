@@ -5,6 +5,7 @@
  * must be verified against real GetSearch responses.
  */
 import type { EtaSettings, IsoDate, StockInfo } from './types';
+import type { WeekSchedule } from './work-hours';
 
 export const CLIENT_TIME_ZONE = 'Asia/Yekaterinburg';
 /** Offset applied to supplier timestamps that carry no zone. */
@@ -166,9 +167,27 @@ export function etaDate(
   return addDays(localDate(now, timeZone), days);
 }
 
+/** How far a promised date may move to reach a working day of the pickup point. */
+const MAX_OPEN_DAY_SHIFT = 14;
+
+/**
+ * The first day on or after `date` when the pickup point works by `schedule`
+ * (parseWorkHours(PICKUP_HOURS)). Without a schedule, or when no working day comes within
+ * 14 days, the date stays as it is: a date is never invented from unknown hours.
+ */
+export function nextPickupDay(date: IsoDate, schedule: WeekSchedule | null | undefined): IsoDate {
+  if (schedule === null || schedule === undefined) return date;
+  for (let shift = 0; shift <= MAX_OPEN_DAY_SHIFT; shift += 1) {
+    const candidate = addDays(date, shift);
+    if (schedule[new Date(isoToUtcMs(candidate)).getUTCDay()] != null) return candidate;
+  }
+  return date;
+}
+
 /**
  * Promised date of an order: max(eta) + bufferDays (+ invoiceLagDays when Rossko ships only
- * after its invoice is paid).
+ * after its invoice is paid), moved to the next working day of the pickup point when
+ * `settings.pickupSchedule` is known (the point is closed on its days off).
  */
 export function promisedDate(etaDates: readonly IsoDate[], settings: EtaSettings): IsoDate {
   if (etaDates.length === 0) throw new DateError('no eta dates');
@@ -184,7 +203,8 @@ export function promisedDate(etaDates: readonly IsoDate[], settings: EtaSettings
   if (prepayInvoice && (!Number.isSafeInteger(invoiceLagDays) || invoiceLagDays < 0)) {
     throw new DateError('invoiceLagDays must be a non-negative integer');
   }
-  return addDays(latest as IsoDate, bufferDays + (prepayInvoice ? invoiceLagDays : 0));
+  const raw = addDays(latest as IsoDate, bufferDays + (prepayInvoice ? invoiceLagDays : 0));
+  return nextPickupDay(raw, settings.pickupSchedule);
 }
 
 const WEEKDAYS_SHORT = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'] as const;

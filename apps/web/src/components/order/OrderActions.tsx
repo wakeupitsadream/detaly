@@ -160,7 +160,9 @@ export function PaymentBlock({
   if (!(status === 'awaiting_confirmation' || actions.prepayNow)) return null;
   return (
     <Card title="Оплата" icon={<IconReceipt size={24} />} testId="order-payment">
-      <SchemeLine prepay={false}>Оплата при получении картой или по QR</SchemeLine>
+      <SchemeLine prepay={false}>
+        Оплата при получении — с вашего телефона по QR-коду (СБП или карта)
+      </SchemeLine>
       {status === 'awaiting_confirmation' && actions.confirm ? (
         <div className="mt-3 space-y-3">
           <p className="text-body">Подтвердите заказ — и мы отложим детали для вас.</p>
@@ -170,7 +172,7 @@ export function PaymentBlock({
             digits={false}
             tone="primary"
             openLabel="Подтверждаю"
-            confirmText="Подтверждаете заказ? Оплатите его при получении картой или по QR."
+            confirmText="Подтверждаете заказ? Оплатите его при получении по QR-коду с вашего телефона."
             submitLabel="Да, подтверждаю"
             pendingLabel="Подтверждаем…"
             doneText="Заказ подтверждён"

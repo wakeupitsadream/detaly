@@ -12,13 +12,17 @@ import { LegalDocumentView } from '@/components/LegalDocumentView';
 import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
 import { PickupCard } from '@/components/PickupCard';
 import { pickupRoutes } from '@/components/PickupRouteLinks';
+import { DefectClaimNote } from '@/components/returns/DefectClaimNote';
 import { SectionHeading } from '@/components/ui/Section';
 import { StepIconTile } from '@/components/ui/StepNumber';
 import { getBrand } from '@/server/brand';
 import { loadPublishedDocument, type LegalDocument } from '@/server/documents';
 import { getLogger } from '@/server/logger';
 
-export const metadata: Metadata = { title: 'Возврат и обмен' };
+export const metadata: Metadata = {
+  title: 'Возврат и обмен',
+  alternates: { canonical: '/returns' },
+};
 
 /** The three steps, with icons (docs/design-v2.md, /returns). */
 const STEPS: readonly { icon: IconComponent; title: string; text: string }[] = [
@@ -98,8 +102,8 @@ function Disclosure({
 }
 
 /**
- * /returns (docs/design-v2.md, «Инфостраницы»): three steps with icons, where to bring the part,
- * then the rules and the full memo (the published return_memo document) under disclosures.
+ * /returns (docs/design-v2.md, «Инфостраницы»): three steps with icons, where to go with a defect
+ * or a claim, where to bring the part, then the rules and the full memo (the published return_memo document) under disclosures.
  */
 export default async function ReturnsPage() {
   const brand = getBrand();
@@ -129,6 +133,8 @@ export default async function ReturnsPage() {
             ))}
           </ol>
         </section>
+
+        <DefectClaimNote pointName={pickup.name} phone={brand.contactPhone} />
 
         <PickupCard
           title="Куда принести"

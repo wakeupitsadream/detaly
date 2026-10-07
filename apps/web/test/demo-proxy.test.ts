@@ -203,6 +203,20 @@ describe('demo proxy: phase 1C forms and pages (decision С21)', () => {
     expect(state.redisCalls).toBe(0);
   });
 
+  it('«Оформить заказ» of the demo opens the sample order and empties the demo cart', async () => {
+    expect(demoFormRedirect('POST', '/api/demo/checkout-done')).toBe('/o/demo');
+    expect(demoFormRedirect('GET', '/api/demo/checkout-done')).toBeNull();
+    const response = await proxy(request('POST', '/api/demo/checkout-done'));
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('http://localhost:3000/o/demo');
+    const cookie = response.headers.getSetCookie().find((c) => c.startsWith('demo_cart='));
+    expect(cookie).toMatch(/^demo_cart=; Path=\/; Max-Age=0; HttpOnly; SameSite=Lax/);
+    expect(state.redisCalls).toBe(0);
+    // The other demo forms leave the cart alone.
+    const vin = await proxy(request('POST', '/api/vin'));
+    expect(vin.headers.getSetCookie()).toEqual([]);
+  });
+
   it('redirects the demo forms even when the env does not parse', async () => {
     state.env = new Error('invalid env');
     const saved = process.env.DEMO_MODE;

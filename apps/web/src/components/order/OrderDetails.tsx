@@ -82,7 +82,7 @@ function paymentLine(view: OrderView): ReactNode {
   if (view.scheme === 'prepay') {
     return view.moneyHeld ? <>Оплачено онлайн · {total}</> : <>Предоплата онлайн · {total}</>;
   }
-  return <>Оплата при получении · {total}, картой или по QR</>;
+  return <>Оплата при получении · {total}, по QR-коду с вашего телефона</>;
 }
 
 /**
@@ -237,7 +237,12 @@ export function OrderDetails({
 
           <div className={SIDE}>
             {view.fulfillment === 'pickup' ? (
-              <PickupBlock pickup={pickup} code={view.pickupCode} routes={routes} />
+              <PickupBlock
+                pickup={pickup}
+                code={view.pickupCode}
+                keepUntil={view.keepUntilText}
+                routes={routes}
+              />
             ) : view.pickupCode ? (
               <PickupCodeBlock code={view.pickupCode} />
             ) : null}

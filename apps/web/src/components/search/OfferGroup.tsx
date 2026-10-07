@@ -63,6 +63,7 @@ export function OfferGroup({
   marks: pageMarks,
   subtitle,
   first = false,
+  contactPhone = null,
 }: {
   id: string;
   /** Marks over the whole result (offerMarks of all groups); by default within this group. */
@@ -77,6 +78,8 @@ export function OfferGroup({
   orderingOpen: boolean;
   /** Install plans by offer id; undefined: no lift line under the offers. */
   plans?: ReadonlyMap<string, InstallPlanView | null>;
+  /** The point's phone for the excluded goods' call button. */
+  contactPhone?: string | null;
 }) {
   if (offers.length === 0) return null;
   const sorted = sortOffersForChoice(offers);
@@ -96,6 +99,7 @@ export function OfferGroup({
             orderingOpen={orderingOpen}
             install={plans ? (plans.get(offer.id) ?? null) : undefined}
             marks={marks.get(offer.id)}
+            contactPhone={contactPhone}
           />
         ))}
       </ul>

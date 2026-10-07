@@ -31,7 +31,8 @@ const NAV: readonly { slug: string; label: string }[] = [
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { slug } = await params;
-  return { title: TITLES[slug] ?? 'Документ' };
+  const title = TITLES[slug];
+  return title ? { title, alternates: { canonical: `/docs/${slug}` } } : { title: 'Документ' };
 }
 
 /** All documents as round chips on top: a scrolling row on phones, wrapped from md. */

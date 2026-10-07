@@ -147,8 +147,17 @@ export async function readLegalSources(legalDir: string): Promise<LegalSource[]>
 }
 
 /**
+ * Marks of a text that is not ready to be in force: the draft banner of content/legal, notes
+ * to the lawyer and open questions. Publishing such a text needs LEGAL_ALLOW_DRAFT_PUBLISH=true
+ * (tests and e2e only).
+ */
+export const LEGAL_DRAFT_MARKERS_RE = /Черновик, требует вычитки|Для юриста:|— уточнить/;
+
+/**
  * Substitutes {{PLACEHOLDER}} values from env. Unknown placeholders always fail. A missing
- * value fails for a document being published and becomes a visible marker in a draft.
+ * value fails for a document being published and becomes a visible marker in a draft. A text
+ * being published must not call itself a draft (LEGAL_DRAFT_MARKERS_RE) unless
+ * LEGAL_ALLOW_DRAFT_PUBLISH=true.
  */
 export function renderLegal(
   source: LegalSource,
@@ -174,6 +183,16 @@ export function renderLegal(
     });
   const bodyMd = substitute(source.body);
   const title = substitute(source.title);
+  const draftMark =
+    mode === 'publish' && env.LEGAL_ALLOW_DRAFT_PUBLISH !== true
+      ? LEGAL_DRAFT_MARKERS_RE.exec(`${source.title}\n${source.body}`)
+      : null;
+  if (draftMark !== null) {
+    problems.push(
+      `${source.sourcePath}: the text is still a draft («${draftMark[0]}»); remove the lawyer ` +
+        'notes in a new version file before publishing',
+    );
+  }
   return {
     rendered: {
       kind: source.kind,

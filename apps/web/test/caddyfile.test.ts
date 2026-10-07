@@ -119,3 +119,13 @@ describe('infra/Caddyfile phase 1C', () => {
     );
   });
 });
+
+describe('infra/Caddyfile headers', () => {
+  it('never replaces the no-referrer that Next sets on the token pages', () => {
+    // A plain `Referrer-Policy ...` in a header block with `-Server` is deferred and would
+    // overwrite no-referrer of /o, /p and /vin/sent; only a default (`?`) is allowed.
+    const unconditional = [...CADDYFILE.matchAll(/^\s*\+?Referrer-Policy\s/gmu)];
+    expect(unconditional).toEqual([]);
+    expect(CADDYFILE).toMatch(/^\s*\?Referrer-Policy "strict-origin-when-cross-origin"\s*$/mu);
+  });
+});

@@ -92,6 +92,19 @@ now_ms() {
   printf '%s\n' "$((us / 1000))"
 }
 
+# ADMIN_BASIC_AUTH (login:password) guards the admin with the clients' personal data and
+# refunds: when it is set, the password (after the first ":") must be at least 20 characters.
+# Prints the problem, or nothing.
+admin_auth_problem() {
+  local auth pass
+  auth="$(env_value "$1" ADMIN_BASIC_AUTH)"
+  [[ -n "$auth" ]] || return 0
+  pass="${auth#*:}"
+  if [[ "$pass" == "$auth" || ${#pass} -lt 20 ]]; then
+    printf '%s' "ADMIN_BASIC_AUTH password too short (openssl rand -base64 24)"
+  fi
+}
+
 # Problems that would break production; in DRY_RUN they are only reported.
 preflight() {
   local file="$1" problems=()
@@ -111,6 +124,9 @@ preflight() {
   if [[ ${#secret} -lt 32 || "$secret" == change-me* ]]; then
     problems+=("SESSION_SECRET is missing or the example value (openssl rand -hex 32)")
   fi
+  local admin
+  admin="$(admin_auth_problem "$file")"
+  [[ -z "$admin" ]] || problems+=("$admin")
   if [[ -z "$(env_value "$file" BACKUP_AGE_RECIPIENT)" && -z "$(env_value "$file" BACKUP_PASSPHRASE)" ]]; then
     problems+=("neither BACKUP_AGE_RECIPIENT nor BACKUP_PASSPHRASE is set: backups would fail")
   fi
@@ -276,6 +292,10 @@ stage_up() {
   validate_tag "$tag"
   [[ -f "$ENV_FILE" ]] || die "env file $ENV_FILE not found"
   [[ -f .env.stage ]] || die ".env.stage not found (stage containers read it; see docs/runbook.md)"
+  # The stage admin password is also Caddy's basic auth of the stage (runbook): same rule.
+  local admin
+  admin="$(admin_auth_problem .env.stage)"
+  [[ -z "$admin" ]] || die ".env.stage: $admin"
   # Two long-polling processes on one bot token steal each other's updates.
   local key prod_v stage_v
   for key in TG_SELLER_BOT_TOKEN TG_CLIENT_BOT_TOKEN MAX_BOT_TOKEN; do

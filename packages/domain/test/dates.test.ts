@@ -7,8 +7,11 @@ import {
   formatPromise,
   isIsoDate,
   localDate,
+  nextPickupDay,
   parseSupplierTimestamp,
+  parseWorkHours,
   promisedDate,
+  weekdayShort,
 } from '../src';
 import type { StockInfo } from '../src/types';
 
@@ -150,6 +153,49 @@ describe('promisedDate', () => {
     expect(() => promisedDate([], ETA)).toThrow(DateError);
     expect(() => promisedDate(['2026-13-01'], ETA)).toThrow(DateError);
     expect(() => promisedDate(['2026-10-01'], { ...ETA, bufferDays: -1 })).toThrow(DateError);
+  });
+});
+
+describe('promisedDate on the days the pickup point works', () => {
+  const weekdays = parseWorkHours('Пн–Пт 10:00–19:00');
+  const sixDays = parseWorkHours('Пн–Сб 9:00–19:00');
+  const at = (bufferDays: number, schedule: typeof weekdays) =>
+    promisedDate(['2026-10-07'], { ...ETA, bufferDays, pickupSchedule: schedule });
+
+  it('moves Saturday and Sunday to Monday when the point works Mon–Fri', () => {
+    // Wed 7 Oct + 3 = Sat 10 Oct -> Mon 12 Oct
+    expect(at(3, weekdays)).toBe('2026-10-12');
+    expect(weekdayShort(at(3, weekdays))).toBe('пн');
+    expect(at(4, weekdays)).toBe('2026-10-12'); // Sunday
+    expect(at(2, weekdays)).toBe('2026-10-09'); // Friday stays
+    expect(at(5, weekdays)).toBe('2026-10-12'); // Monday stays
+  });
+
+  it('keeps Saturday and moves only Sunday when the point works Mon–Sat', () => {
+    expect(at(3, sixDays)).toBe('2026-10-10');
+    expect(at(4, sixDays)).toBe('2026-10-12');
+  });
+
+  it('adds the invoice lag before moving to a working day', () => {
+    // Thu 8 Oct + 1 buffer + 1 lag = Sat 10 Oct -> Mon 12 Oct
+    expect(
+      promisedDate(['2026-10-08'], { ...ETA, prepayInvoice: true, pickupSchedule: weekdays }),
+    ).toBe('2026-10-12');
+  });
+
+  it('does not move the date without a schedule or with hours not understood', () => {
+    expect(at(3, null)).toBe('2026-10-10');
+    expect(promisedDate(['2026-10-07'], { ...ETA, bufferDays: 3 })).toBe('2026-10-10');
+    expect(parseWorkHours('')).toBeNull();
+    expect(at(3, parseWorkHours(''))).toBe('2026-10-10');
+    expect(at(3, parseWorkHours('по договорённости'))).toBe('2026-10-10');
+  });
+
+  it('nextPickupDay never goes further than 14 days', () => {
+    const closed = [null, null, null, null, null, null, null];
+    expect(nextPickupDay('2026-10-10', closed)).toBe('2026-10-10');
+    const sundayOnly = parseWorkHours('Вс 10-16');
+    expect(nextPickupDay('2026-10-12', sundayOnly)).toBe('2026-10-18');
   });
 });
 

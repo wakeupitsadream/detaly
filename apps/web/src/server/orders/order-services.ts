@@ -233,7 +233,7 @@ export async function loadOrderServices(
   const now = options.now ?? new Date();
   const { env } = options;
   const [row] = await db
-    .select({ userId: orders.userId, handedAt: orders.handedAt })
+    .select({ userId: orders.userId, handedAt: orders.handedAt, receivedAt: orders.receivedAt })
     .from(orders)
     .where(eq(orders.id, view.id));
   if (!row) return EMPTY_SERVICES;
@@ -246,6 +246,7 @@ export async function loadOrderServices(
     scheme: view.scheme,
     moneyHeld: view.moneyHeld,
     handedAt: row.handedAt,
+    receivedAt: row.receivedAt,
     promisedDate: isIsoDate(view.promisedDate) ? view.promisedDate : null,
     now,
   });

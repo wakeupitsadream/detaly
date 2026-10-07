@@ -51,10 +51,12 @@ export interface CheckoutFormProps {
   blockedMessage: string | null;
   contactPhone: string | null;
   /**
-   * DEMO_MODE: the same form filled with an example, no request at all. The button opens the
-   * sample order (`href`); POST /api/checkout stays closed (403) in the demo anyway.
+   * DEMO_MODE: the same form filled with an example. The button posts an EMPTY separate form to
+   * `action` (the proxy answers 303 to the sample order and empties the demo cart, never
+   * reading a body); not one field of this form is sent. POST /api/checkout stays closed (403)
+   * in the demo anyway.
    */
-  demo?: { href: string };
+  demo?: { action: string };
   /** Step «Получение»: the pickup point card (server-rendered, refreshed with the page). */
   receive?: ReactNode;
   /** Step «Оплата»: the payment scheme card. */
@@ -76,6 +78,9 @@ const FIELD_OF_INPUT: Readonly<Record<string, Field>> = {
   acceptOffer: 'acceptOffer',
   consentPd: 'consentPd',
 };
+
+/** The empty form the demo button submits (DEMO_MODE). */
+const DEMO_DONE_FORM_ID = 'demo-checkout-done';
 
 /** Example values of the demo form: obviously not a person. */
 export const DEMO_FORM_EXAMPLE = { phone: '+7 999 123-45-67', name: 'Алексей' } as const;
@@ -193,8 +198,9 @@ function Consent({
 export function CheckoutForm(props: CheckoutFormProps) {
   const router = useRouter();
   const demo = props.demo ?? null;
-  const [acceptOffer, setAcceptOffer] = useState(demo !== null);
-  const [consentPd, setConsentPd] = useState(demo !== null);
+  // Never ticked in advance, the demo included: a consent is the visitor's own act.
+  const [acceptOffer, setAcceptOffer] = useState(false);
+  const [consentPd, setConsentPd] = useState(false);
   const [pending, setPending] = useState(false);
   const [done, setDone] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<Field, string>>>({});
@@ -237,7 +243,8 @@ export function CheckoutForm(props: CheckoutFormProps) {
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (demo !== null) {
-      window.location.assign(demo.href);
+      const done = document.getElementById(DEMO_DONE_FORM_ID);
+      if (done instanceof HTMLFormElement) done.requestSubmit();
       return;
     }
     if (!canSubmit) return;
@@ -314,235 +321,248 @@ export function CheckoutForm(props: CheckoutFormProps) {
   }
 
   return (
-    <form
-      className="min-w-0 space-y-6 md:space-y-8"
-      onSubmit={(e) => void onSubmit(e)}
-      onInvalidCapture={onInvalid}
-      data-testid="checkout-form"
-    >
-      {changes !== null || schemeNotice !== null ? (
-        <div
-          ref={changesRef}
-          tabIndex={-1}
-          className="space-y-2 outline-none"
-          data-testid="checkout-stale"
-        >
-          {changes !== null && (changes.length > 0 || promise === null) ? (
-            <DiffBanner changes={changes} cartChanged />
-          ) : null}
-          {promise !== null ? (
-            <Notice tone="wait" role="status" data-testid="checkout-promise-changed">
-              Срок получения изменился: {promise.text}
-            </Notice>
-          ) : null}
-          {schemeNotice !== null ? (
-            <Notice
-              tone="wait"
-              role="status"
-              data-testid="checkout-scheme-changed"
-              title={`Способ оплаты: ${PAYMENT_SCHEME_TITLE[schemeNotice.scheme]}`}
-            >
-              {schemeNotice.explanation.map((sentence) => (
-                <p key={sentence}>{sentence}</p>
-              ))}
-            </Notice>
-          ) : null}
-          <p className="text-small font-normal text-muted">
-            {schemeNotice !== null && changes === null
-              ? 'Заказ не оформлен. Проверьте способ оплаты и отправьте форму ещё раз.'
-              : 'Заказ не оформлен. Мы обновили данные заказа — проверьте их и отправьте форму ещё раз.'}
-          </p>
-        </div>
-      ) : null}
-
-      <Step index="01" title="Контакты">
-        <div className="grid min-w-0 gap-5">
-          <div className="min-w-0">
-            <label htmlFor="checkout-phone" className={LABEL}>
-              Телефон
-            </label>
-            <input
-              id="checkout-phone"
-              name="phone"
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              required
-              maxLength={32}
-              placeholder="Ваш мобильный"
-              defaultValue={demo ? DEMO_FORM_EXAMPLE.phone : undefined}
-              aria-invalid={fieldErrors.phone ? true : undefined}
-              aria-describedby="checkout-phone-hint checkout-phone-error"
-              className={inputClass({ className: 'tabular-nums' })}
-            />
-            <p id="checkout-phone-hint" className="mt-2 text-small font-normal text-muted">
-              Мобильный, например +7 912 345-67-89: по нему выдадим заказ.
-            </p>
-            <FieldError id="checkout-phone-error" message={fieldErrors.phone} />
-          </div>
-          <div className="min-w-0">
-            <label htmlFor="checkout-name" className={LABEL}>
-              Имя
-            </label>
-            <input
-              id="checkout-name"
-              name="name"
-              type="text"
-              autoComplete="name"
-              required
-              maxLength={60}
-              placeholder="Как к вам обращаться"
-              defaultValue={demo ? DEMO_FORM_EXAMPLE.name : undefined}
-              aria-invalid={fieldErrors.name ? true : undefined}
-              aria-describedby="checkout-name-error"
-              className={inputClass()}
-            />
-            <FieldError id="checkout-name-error" message={fieldErrors.name} />
-          </div>
-          <fieldset className="min-w-0">
-            <legend className={LABEL}>Куда присылать статусы заказа</legend>
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
-              {CHANNELS.map(({ value, label, Icon, soon }) => (
-                <ChoiceCard
-                  key={value}
-                  name="channel"
-                  value={value}
-                  label={label}
-                  Icon={Icon}
-                  soon={soon}
-                  defaultChecked={demo !== null && value === 'telegram'}
-                  required
-                  describedBy="checkout-channel-error"
-                />
-              ))}
-            </div>
-            <p className="mt-2 text-small font-normal text-muted">
-              Включите одной кнопкой на странице заказа.
-            </p>
-            <FieldError id="checkout-channel-error" message={fieldErrors.channel} />
-          </fieldset>
-        </div>
-      </Step>
-
-      {props.receive ? (
-        <Step index="02" title="Получение">
-          {props.receive}
-        </Step>
-      ) : null}
-
-      {props.payment ? (
-        <Step index={props.receive ? '03' : '02'} title="Оплата">
-          {props.payment}
-        </Step>
-      ) : null}
-
-      {props.summary}
-
-      <section
-        className="min-w-0 space-y-1 rounded-tile bg-surface p-4 md:px-6"
-        aria-label="Согласия"
+    <>
+      <form
+        className="min-w-0 space-y-6 md:space-y-8"
+        onSubmit={(e) => void onSubmit(e)}
+        onInvalidCapture={onInvalid}
+        data-testid="checkout-form"
       >
-        <Consent
-          name="acceptOffer"
-          checked={acceptOffer}
-          onChange={setAcceptOffer}
-          describedBy="checkout-offer-error"
-        >
-          Принимаю условия{' '}
-          <a className={DOC_LINK} href="/docs/offer" target="_blank" rel="noopener">
-            оферты
-          </a>
-        </Consent>
-        <FieldError id="checkout-offer-error" message={fieldErrors.acceptOffer} />
-        <Consent
-          name="consentPd"
-          checked={consentPd}
-          onChange={setConsentPd}
-          describedBy="checkout-pd-error"
-        >
-          Даю{' '}
-          <a className={DOC_LINK} href="/docs/consent" target="_blank" rel="noopener">
-            согласие на обработку персональных данных
-          </a>
-        </Consent>
-        <FieldError id="checkout-pd-error" message={fieldErrors.consentPd} />
-        {props.marketingAvailable ? (
-          <Consent name="consentMarketing">
-            Хочу получать скидки (
-            <a className={DOC_LINK} href="/docs/consent-marketing" target="_blank" rel="noopener">
-              согласие
-            </a>
-            , необязательно)
-          </Consent>
+        {changes !== null || schemeNotice !== null ? (
+          <div
+            ref={changesRef}
+            tabIndex={-1}
+            className="space-y-2 outline-none"
+            data-testid="checkout-stale"
+          >
+            {changes !== null && (changes.length > 0 || promise === null) ? (
+              <DiffBanner changes={changes} cartChanged />
+            ) : null}
+            {promise !== null ? (
+              <Notice tone="wait" role="status" data-testid="checkout-promise-changed">
+                Срок получения изменился: {promise.text}
+              </Notice>
+            ) : null}
+            {schemeNotice !== null ? (
+              <Notice
+                tone="wait"
+                role="status"
+                data-testid="checkout-scheme-changed"
+                title={`Способ оплаты: ${PAYMENT_SCHEME_TITLE[schemeNotice.scheme]}`}
+              >
+                {schemeNotice.explanation.map((sentence) => (
+                  <p key={sentence}>{sentence}</p>
+                ))}
+              </Notice>
+            ) : null}
+            <p className="text-small font-normal text-muted">
+              {schemeNotice !== null && changes === null
+                ? 'Заказ не оформлен. Проверьте способ оплаты и отправьте форму ещё раз.'
+                : 'Заказ не оформлен. Мы обновили данные заказа — проверьте их и отправьте форму ещё раз.'}
+            </p>
+          </div>
         ) : null}
-      </section>
 
-      {/* Honeypot: off screen, skipped by keyboard and screen readers; people never fill it. */}
-      <div aria-hidden="true" className="absolute -left-[10000px] h-px w-px overflow-hidden">
-        <label htmlFor="checkout-website">Сайт</label>
-        <input id="checkout-website" name="website" type="text" tabIndex={-1} autoComplete="off" />
-      </div>
-      <input type="hidden" name="part" value={props.part} />
-      <input type="hidden" name="expectedTotalKop" value={expectedTotalKop} />
-      <input type="hidden" name="itemsHash" value={itemsHash} />
-      <input type="hidden" name="checkoutKey" value={props.checkoutKey} />
-      <input type="hidden" name="offerVersionId" value={props.documents.offerVersionId} />
-      <input type="hidden" name="consentPdVersionId" value={props.documents.consentPdVersionId} />
-      <input
-        type="hidden"
-        name="consentMarketingVersionId"
-        value={props.documents.consentMarketingVersionId ?? ''}
-      />
-      <input type="hidden" name="expectedScheme" value={expectedScheme} />
-      <input type="hidden" name="expectedPromisedDate" value={expectedPromisedDate ?? ''} />
+        <Step index="01" title="Контакты">
+          <div className="grid min-w-0 gap-5">
+            <div className="min-w-0">
+              <label htmlFor="checkout-phone" className={LABEL}>
+                Телефон
+              </label>
+              <input
+                id="checkout-phone"
+                name="phone"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                required
+                maxLength={32}
+                placeholder="Ваш мобильный"
+                defaultValue={demo ? DEMO_FORM_EXAMPLE.phone : undefined}
+                aria-invalid={fieldErrors.phone ? true : undefined}
+                aria-describedby="checkout-phone-hint checkout-phone-error"
+                className={inputClass({ className: 'tabular-nums' })}
+              />
+              <p id="checkout-phone-hint" className="mt-2 text-small font-normal text-muted">
+                Мобильный, например +7 912 345-67-89: по нему выдадим заказ.
+              </p>
+              <FieldError id="checkout-phone-error" message={fieldErrors.phone} />
+            </div>
+            <div className="min-w-0">
+              <label htmlFor="checkout-name" className={LABEL}>
+                Имя
+              </label>
+              <input
+                id="checkout-name"
+                name="name"
+                type="text"
+                autoComplete="name"
+                required
+                maxLength={60}
+                placeholder="Как к вам обращаться"
+                defaultValue={demo ? DEMO_FORM_EXAMPLE.name : undefined}
+                aria-invalid={fieldErrors.name ? true : undefined}
+                aria-describedby="checkout-name-error"
+                className={inputClass()}
+              />
+              <FieldError id="checkout-name-error" message={fieldErrors.name} />
+            </div>
+            <fieldset className="min-w-0">
+              <legend className={LABEL}>Куда присылать статусы заказа</legend>
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                {CHANNELS.map(({ value, label, Icon, soon }) => (
+                  <ChoiceCard
+                    key={value}
+                    name="channel"
+                    value={value}
+                    label={label}
+                    Icon={Icon}
+                    soon={soon}
+                    defaultChecked={demo !== null && value === 'telegram'}
+                    required
+                    describedBy="checkout-channel-error"
+                  />
+                ))}
+              </div>
+              <p className="mt-2 text-small font-normal text-muted">
+                Включите одной кнопкой на странице заказа.
+              </p>
+              <FieldError id="checkout-channel-error" message={fieldErrors.channel} />
+            </fieldset>
+          </div>
+        </Step>
 
-      {blocked ? <Notice tone="wait">{props.blockedMessage}</Notice> : null}
-      {formError ? (
-        <Notice tone="danger" role="alert" data-testid="checkout-error">
-          {formError}
-        </Notice>
-      ) : null}
+        {props.receive ? (
+          <Step index="02" title="Получение">
+            {props.receive}
+          </Step>
+        ) : null}
 
+        {props.payment ? (
+          <Step index={props.receive ? '03' : '02'} title="Оплата">
+            {props.payment}
+          </Step>
+        ) : null}
+
+        {props.summary}
+
+        <section
+          className="min-w-0 space-y-1 rounded-tile bg-surface p-4 md:px-6"
+          aria-label="Согласия"
+        >
+          <Consent
+            name="acceptOffer"
+            checked={acceptOffer}
+            onChange={setAcceptOffer}
+            describedBy="checkout-offer-error"
+          >
+            Принимаю условия{' '}
+            <a className={DOC_LINK} href="/docs/offer" target="_blank" rel="noopener">
+              оферты
+            </a>
+          </Consent>
+          <FieldError id="checkout-offer-error" message={fieldErrors.acceptOffer} />
+          <Consent
+            name="consentPd"
+            checked={consentPd}
+            onChange={setConsentPd}
+            describedBy="checkout-pd-error"
+          >
+            Даю{' '}
+            <a className={DOC_LINK} href="/docs/consent" target="_blank" rel="noopener">
+              согласие на обработку персональных данных
+            </a>
+          </Consent>
+          <FieldError id="checkout-pd-error" message={fieldErrors.consentPd} />
+          {props.marketingAvailable ? (
+            <Consent name="consentMarketing">
+              Хочу получать скидки (
+              <a className={DOC_LINK} href="/docs/consent-marketing" target="_blank" rel="noopener">
+                согласие
+              </a>
+              , необязательно)
+            </Consent>
+          ) : null}
+        </section>
+
+        {/* Honeypot: off screen, skipped by keyboard and screen readers; people never fill it. */}
+        <div aria-hidden="true" className="absolute -left-[10000px] h-px w-px overflow-hidden">
+          <label htmlFor="checkout-website">Сайт</label>
+          <input
+            id="checkout-website"
+            name="website"
+            type="text"
+            tabIndex={-1}
+            autoComplete="off"
+          />
+        </div>
+        <input type="hidden" name="part" value={props.part} />
+        <input type="hidden" name="expectedTotalKop" value={expectedTotalKop} />
+        <input type="hidden" name="itemsHash" value={itemsHash} />
+        <input type="hidden" name="checkoutKey" value={props.checkoutKey} />
+        <input type="hidden" name="offerVersionId" value={props.documents.offerVersionId} />
+        <input type="hidden" name="consentPdVersionId" value={props.documents.consentPdVersionId} />
+        <input
+          type="hidden"
+          name="consentMarketingVersionId"
+          value={props.documents.consentMarketingVersionId ?? ''}
+        />
+        <input type="hidden" name="expectedScheme" value={expectedScheme} />
+        <input type="hidden" name="expectedPromisedDate" value={expectedPromisedDate ?? ''} />
+
+        {blocked ? <Notice tone="wait">{props.blockedMessage}</Notice> : null}
+        {formError ? (
+          <Notice tone="danger" role="alert" data-testid="checkout-error">
+            {formError}
+          </Notice>
+        ) : null}
+
+        {demo !== null ? (
+          <div className="min-w-0 space-y-3">
+            {/* Submits the empty form after this one (the `form` attribute), not this form. */}
+            <button
+              type="submit"
+              form={DEMO_DONE_FORM_ID}
+              className={buttonClass({ variant: 'primary', size: 'lg', block: true })}
+              data-testid="demo-checkout-submit"
+            >
+              Оформить заказ
+              <IconArrowRight size={20} />
+            </button>
+            <p className="text-small font-normal text-muted">
+              Демо: заказ не создаётся, покажем пример страницы заказа.
+            </p>
+          </div>
+        ) : (
+          <div className="min-w-0 space-y-3">
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              aria-busy={pending || done || undefined}
+              className={buttonClass({ variant: 'primary', size: 'lg', block: true })}
+            >
+              {pending || done ? <Spinner /> : null}
+              {done ? 'Открываем заказ…' : pending ? 'Проверяем цены…' : 'Оформить заказ'}
+              {!done && !pending ? <IconArrowRight size={20} /> : null}
+            </button>
+            <p className="text-small font-normal text-muted">
+              {!acceptOffer || !consentPd
+                ? 'Кнопка включится, когда вы отметите оба согласия.'
+                : 'Перед заказом ещё раз сверим цену и наличие.'}
+            </p>
+          </div>
+        )}
+
+        <noscript>
+          <Notice tone="wait">
+            Для оформления включите JavaScript
+            {props.contactPhone ? ` или позвоните ${props.contactPhone}` : ' или позвоните нам'}.
+          </Notice>
+        </noscript>
+      </form>
       {demo !== null ? (
-        <div className="min-w-0 space-y-3">
-          <a
-            href={demo.href}
-            className={buttonClass({ variant: 'primary', size: 'lg', block: true })}
-            data-testid="demo-checkout-submit"
-          >
-            Оформить заказ
-            <IconArrowRight size={20} />
-          </a>
-          <p className="text-small font-normal text-muted">
-            Демо: заказ не создаётся, покажем пример страницы заказа.
-          </p>
-        </div>
-      ) : (
-        <div className="min-w-0 space-y-3">
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            aria-busy={pending || done || undefined}
-            className={buttonClass({ variant: 'primary', size: 'lg', block: true })}
-          >
-            {pending || done ? <Spinner /> : null}
-            {done ? 'Открываем заказ…' : pending ? 'Проверяем цены…' : 'Оформить заказ'}
-            {!done && !pending ? <IconArrowRight size={20} /> : null}
-          </button>
-          <p className="text-small font-normal text-muted">
-            {!acceptOffer || !consentPd
-              ? 'Кнопка включится, когда вы отметите оба согласия.'
-              : 'Перед заказом ещё раз сверим цену и наличие.'}
-          </p>
-        </div>
-      )}
-
-      <noscript>
-        <Notice tone="wait">
-          Для оформления включите JavaScript
-          {props.contactPhone ? ` или позвоните ${props.contactPhone}` : ' или позвоните нам'}.
-        </Notice>
-      </noscript>
-    </form>
+        <form id={DEMO_DONE_FORM_ID} method="post" action={demo.action} hidden />
+      ) : null}
+    </>
   );
 }

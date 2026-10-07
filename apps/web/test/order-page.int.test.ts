@@ -362,6 +362,15 @@ describe('loadOrderView', () => {
     expect(confirmed).toMatchObject({ pickupCode: null, canCancel: false });
   });
 
+  it('a ready order says until when it waits at the point (orders.expires_at)', async () => {
+    // 15 Oct 2026 23:30 in Orenburg is 18:30 UTC: the day is taken in the client zone.
+    const expiresAt = new Date('2026-10-15T18:30:00Z');
+    const ready = await viewOf((await insertOrder({ status: 'ready', expiresAt })).token);
+    expect(ready?.keepUntilText).toBe('чт 15 октября');
+    const confirmed = await viewOf((await insertOrder({ status: 'confirmed', expiresAt })).token);
+    expect(confirmed?.keepUntilText).toBeNull();
+  });
+
   it('does not offer cancellation once the latest payment succeeded', async () => {
     const order = await insertOrder();
     await insertPayment(order.id, 'canceled', new Date('2026-10-02T09:06:00Z'));
@@ -417,7 +426,7 @@ describe('order page rendering', () => {
     });
     const text = plain(html);
     expect(text).toContain('Ждёт подтверждения');
-    expect(text).toContain('Оплата при получении картой или по QR');
+    expect(text).toContain('Оплата при получении — с вашего телефона по QR-коду (СБП или карта)');
     // Phase 1B: «Подтверждаю» on the page (decision Б24).
     expect(text).toContain('Подтверждаю');
     expect(html).toContain('data-testid="order-confirm-open"');
@@ -519,7 +528,7 @@ describe('/o/[token] page', () => {
       robots: { index: false, follow: false },
     });
     const unknown = await generateMetadata({ params: Promise.resolve({ token: 'bad' }) });
-    expect(unknown).toMatchObject({ title: 'Заказ', referrer: 'no-referrer' });
+    expect(unknown).toMatchObject({ title: 'Заказ не найден', referrer: 'no-referrer' });
   });
 });
 

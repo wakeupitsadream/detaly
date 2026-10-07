@@ -1,4 +1,4 @@
-import { vinRequestHref } from '@/lib/vin-link';
+import { vinRequestFromQuery } from '@/lib/vin-link';
 import { DemoDataBanner } from './DemoDataBanner';
 import { IconSearch, IconSts } from './icons';
 import { EmptyPanel } from './page/EmptyPanel';
@@ -12,6 +12,7 @@ import { cn } from './ui/cn';
  * demo the one-line note with the articles that answer.
  */
 export function EmptyState({ query, demoData = false }: { query: string; demoData?: boolean }) {
+  const vinRequest = vinRequestFromQuery(query);
   return (
     <EmptyPanel
       icon={<IconSearch size={64} />}
@@ -20,19 +21,22 @@ export function EmptyState({ query, demoData = false }: { query: string; demoDat
       testId="empty-state"
       title={<>Ничего не нашли по «{query}»</>}
       text={
-        <>
-          {/* No-break space: the dash never starts the second line. */}
-          Проверьте артикул или пришлите VIN{'\u00a0'}— мастер подберёт деталь бесплатно.
-        </>
+        vinRequest.nearVin ? (
+          <span data-testid="empty-near-vin">
+            Похоже на VIN{'\u00a0'}— в нём 17 символов. Проверьте номер по СТС или пришлите его
+            мастеру{'\u00a0'}— подберёт деталь бесплатно.
+          </span>
+        ) : (
+          <>
+            {/* No-break space: the dash never starts the second line. */}
+            Проверьте артикул или пришлите VIN{'\u00a0'}— мастер подберёт деталь бесплатно.
+          </>
+        )
       }
       actions={
         <>
-          {/* The article goes into the request: nothing to remember and type again. */}
-          <ButtonLink
-            href={vinRequestHref({ need: `Артикул ${query}` })}
-            size="lg"
-            icon={<IconSts size={22} />}
-          >
+          {/* The query goes into the request: nothing to remember and type again. */}
+          <ButtonLink href={vinRequest.href} size="lg" icon={<IconSts size={22} />}>
             Подобрать по VIN
           </ButtonLink>
           <EditQueryLink className={cn(buttonClass({ variant: 'secondary', size: 'lg' }), 'bg-bg')}>

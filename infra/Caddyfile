@@ -58,10 +58,13 @@
 		max_size 12MB
 	}
 
+	# Referrer-Policy only as a default ("?"): Next sets it per path, no-referrer on the token
+	# pages /o, /p, /vin/sent and their APIs (next.config.ts, src/proxy.ts). A plain set here
+	# would replace it: with "-Server" in the block every operation is deferred to the response.
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
-		Referrer-Policy "strict-origin-when-cross-origin"
+		?Referrer-Policy "strict-origin-when-cross-origin"
 		-Server
 	}
 

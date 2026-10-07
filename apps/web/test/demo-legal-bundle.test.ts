@@ -55,7 +55,11 @@ describe('demoDocument', () => {
 
   it('publishes the selected version when every requisite is set', () => {
     const version = LEGAL_BUNDLE.find((source) => source.kind === 'offer')!.version;
-    const env = demoEnv({ ...REQUISITES, BRAND_NAME: 'Бренд', LEGAL_OFFER_VERSION: version });
+    // The bundled texts still carry the lawyer's draft banner: publishing them needs the
+    // explicit LEGAL_ALLOW_DRAFT_PUBLISH, otherwise the draft is shown.
+    const base = { ...REQUISITES, BRAND_NAME: 'Бренд', LEGAL_OFFER_VERSION: version };
+    expect(demoDocument('offer', demoEnv(base))?.isDraft).toBe(true);
+    const env = demoEnv({ ...base, LEGAL_ALLOW_DRAFT_PUBLISH: 'true' });
     const doc = demoDocument('offer', env);
     expect(doc).toMatchObject({ version, isDraft: false });
     expect(doc?.bodyMd).toContain(REQUISITES.SELLER_REQUISITES_INN);

@@ -26,6 +26,8 @@ const ENV_ORDER = {
   noShowLimit: 2,
   paymentTtlMin: 120,
   courierFeeKop: 30_000,
+  pickupWindowPrepaidDays: 10,
+  pickupWindowCodDays: 7,
 };
 
 describe('order settings', () => {
@@ -43,6 +45,8 @@ describe('order settings', () => {
       ['no_show.limit', 3],
       ['order.payment_ttl_min', 60],
       ['courier.fee_kop', 0],
+      ['pickup.window_prepaid_days', 14],
+      ['pickup.window_cod_days', 3],
     ]);
     expect(resolveSearchSettings(rows, env, []).order).toEqual({
       minOrderTotalKop: 0,
@@ -52,6 +56,8 @@ describe('order settings', () => {
       noShowLimit: 3,
       paymentTtlMin: 60,
       courierFeeKop: 0,
+      pickupWindowPrepaidDays: 14,
+      pickupWindowCodDays: 3,
     });
   });
 
@@ -64,6 +70,8 @@ describe('order settings', () => {
       ['no_show.limit', 0],
       ['order.payment_ttl_min', null],
       ['courier.fee_kop', { kop: 1 }],
+      ['pickup.window_prepaid_days', 0],
+      ['pickup.window_cod_days', '7'],
     ]);
     expect(resolveSearchSettings(rows, env, []).order).toEqual(ENV_ORDER);
   });

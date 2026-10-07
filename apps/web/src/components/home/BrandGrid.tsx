@@ -100,6 +100,8 @@ export function BrandGrid({ className }: { className?: string }) {
           <BrandTile
             key={brand.slug}
             brand={brand}
+            // Hidden on phones: lazy, so a phone neither preloads nor fetches these logos.
+            lazy={index >= PHONE_BRANDS_COUNT}
             className={index >= PHONE_BRANDS_COUNT ? 'max-md:hidden' : undefined}
           />
         ))}

@@ -82,7 +82,9 @@ describe('how to pay, before the order', () => {
       createElement(PaymentSchemeNote, { scheme: 'pay_on_handover', sentences: ['x'] }),
     );
     const visible = html.slice(0, html.indexOf('<details'));
-    expect(text(visible)).toContain('Картой или по QR. Наличные не принимаем.');
+    expect(text(visible)).toContain(
+      'С вашего телефона по QR-коду (СБП или карта). Наличные не принимаем.',
+    );
     const prepay = renderToStaticMarkup(
       createElement(PaymentSchemeNote, { scheme: 'prepay', sentences: ['x'] }),
     );

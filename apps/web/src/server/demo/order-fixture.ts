@@ -176,6 +176,7 @@ export async function buildDemoOrderView(deps: DemoOrderDeps): Promise<OrderView
     timeline: buildTimeline(events, undefined, itemTitles),
     preferredChannel: 'telegram',
     pickupCode: null,
+    keepUntilText: null,
     canCancel: false,
     closed: false,
     paymentsEnabled: false,

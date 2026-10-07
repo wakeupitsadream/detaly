@@ -29,6 +29,7 @@ import { promiseFor } from '../cart/summary';
 import { fetchFreshOffers, findActiveCart, persistRepricing } from '../cart-store';
 import type { CheckoutGate } from '../checkout-gate';
 import type { CheckoutSettings } from './checkout-service';
+import { storageDays } from '../settings';
 import { itemsHash } from './hash';
 import { CART_PARTS } from './input';
 import { uuidV7 } from './uuid';
@@ -61,6 +62,8 @@ export interface CheckoutPageReady {
   linePromises: Record<string, string | null>;
   /** Scheme with no-shows counted as 0; the server decides finally by the phone. */
   decision: PaymentSchemeDecision;
+  /** Days the ready order waits at the point under that scheme (pickup.window_*_days). */
+  storageDays: number;
   explanation: string[];
   minimums: OrderMinimumsResult;
   mixed: boolean;
@@ -152,6 +155,7 @@ export async function loadCheckoutPage(
     promisedDate: etaDates.length > 0 ? promisedDate(etaDates, settings.eta) : null,
     linePromises: Object.fromEntries(lines.map((l) => [l.id, promiseFor([l.etaDate], settings)])),
     decision,
+    storageDays: storageDays(settings.order, decision.scheme),
     explanation: explainPaymentScheme(decision, {
       onPickupMaxTotalKop: settings.order.onPickupMaxTotalKop,
     }),

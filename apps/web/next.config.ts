@@ -43,6 +43,9 @@ export const contentSecurityPolicy = [
   "frame-ancestors 'none'",
 ].join('; ');
 
+/** Cache-Control of the files in /public (see headers()). */
+const PUBLIC_FILE_CACHE = 'public, max-age=604800, stale-while-revalidate=86400';
+
 const securityHeaders = [
   { key: 'Content-Security-Policy', value: contentSecurityPolicy },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -123,6 +126,11 @@ const nextConfig: NextConfig = {
         source: '/api/:path*',
         headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }],
       },
+      // Files of /public (brand logos, the partner's marks, printable forms): Next sends
+      // max-age=0 unless a header is set here, so a returning visitor asked again for every
+      // logo. A week, no `immutable`: the names are not hashed and may be replaced in place.
+      { source: '/images/:path*', headers: [{ key: 'Cache-Control', value: PUBLIC_FILE_CACHE }] },
+      { source: '/print/:path*', headers: [{ key: 'Cache-Control', value: PUBLIC_FILE_CACHE }] },
     ];
   },
 };

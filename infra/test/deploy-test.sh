@@ -174,6 +174,17 @@ echo 'BACKUP_STORAGE=local' >>"$ENV"
 rc=0
 deploy ddd444 || rc=$?
 check "BACKUP_STORAGE=local does not need S3_*" test "$rc" -eq 0
+lines_before="$(wc -l <"$T/docker.log")"
+echo 'ADMIN_BASIC_AUTH=admin:short-pass' >>"$ENV"
+rc=0
+deploy ddd444 || rc=$?
+check "preflight rejects a short ADMIN_BASIC_AUTH password" test "$rc" -eq 1
+check "preflight (admin password): no docker calls" test "$(wc -l <"$T/docker.log")" -eq "$lines_before"
+check "preflight names ADMIN_BASIC_AUTH" grep -q 'ADMIN_BASIC_AUTH password too short' "$T/out.log"
+sed -i 's/^ADMIN_BASIC_AUTH=.*/ADMIN_BASIC_AUTH=admin:0123456789abcdefghij/' "$ENV"
+rc=0
+deploy ddd444 || rc=$?
+check "a 20-character ADMIN_BASIC_AUTH password passes" test "$rc" -eq 0
 
 # 7. invalid tag
 rc=0
@@ -186,6 +197,10 @@ printf 'TG_SELLER_BOT_TOKEN=prod-token\n' >"$T/root/.env.stage"
 rc=0
 deploy stage eee555 || rc=$?
 check "stage with the production bot token is refused" test "$rc" -eq 1
+printf 'TG_SELLER_BOT_TOKEN=\nADMIN_BASIC_AUTH=admin:stage\n' >"$T/root/.env.stage"
+rc=0
+deploy stage eee555 || rc=$?
+check "stage with a short ADMIN_BASIC_AUTH password is refused" test "$rc" -eq 1
 printf 'TG_SELLER_BOT_TOKEN=\n' >"$T/root/.env.stage"
 rc=0
 deploy stage eee555 || rc=$?

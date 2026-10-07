@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { BrandGrid } from '@/components/home/BrandGrid';
 import { CategoryGrid } from '@/components/home/CategoryGrid';
 import { PickupCard } from '@/components/home/PickupCard';
@@ -9,6 +10,8 @@ import { VinCtaArt } from '@/components/vin/VinCtaArt';
 import { FullBleed, Section } from '@/components/ui/Section';
 import { vinRequestHref } from '@/lib/vin-link';
 import { getBrand } from '@/server/brand';
+
+export const metadata: Metadata = { alternates: { canonical: '/' } };
 
 /**
  * Home (docs/design-v2.md, section 4 «Главная»): the search lives in the brand header, then

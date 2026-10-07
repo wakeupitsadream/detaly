@@ -68,6 +68,8 @@ function settings(order: Partial<CartSettings['order']> = {}): CartSettings {
       noShowLimit: 2,
       paymentTtlMin: 30,
       courierFeeKop: 0,
+      pickupWindowPrepaidDays: 10,
+      pickupWindowCodDays: 7,
       ...order,
     },
   };

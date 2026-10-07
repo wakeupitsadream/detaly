@@ -14,6 +14,8 @@ import { Container } from '@/components/ui/Container';
 export default function NotFound() {
   return (
     <main className="flex min-h-screen min-w-0 flex-col bg-bg text-ink">
+      {/* No metadata export for not-found: React hoists this <title> into <head>. */}
+      <title>Страница не найдена</title>
       <div className="site-header rounded-b-header bg-brand text-on-brand lg:rounded-b-header-lg">
         <Container className="pt-3 pb-4 md:py-4">
           {/* useSearchParams inside: a prerendered page needs the boundary. */}

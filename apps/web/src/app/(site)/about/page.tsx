@@ -16,7 +16,7 @@ import { FeatureRow } from '@/components/ui/FeatureRow';
 import { SectionHeading } from '@/components/ui/Section';
 import { getBrand } from '@/server/brand';
 
-export const metadata: Metadata = { title: 'О магазине' };
+export const metadata: Metadata = { title: 'О магазине', alternates: { canonical: '/about' } };
 
 /**
  * A page link at the end of a feature line. py-3: an inline box grows its target to 47 px

@@ -27,7 +27,7 @@ import { cartCountLabel } from '@/components/SiteHeader';
 import { ButtonLink } from '@/components/ui/Button';
 import { CtaCard } from '@/components/ui/CtaCard';
 import { VinCtaArt } from '@/components/vin/VinCtaArt';
-import { vinRequestHref } from '@/lib/vin-link';
+import { vinRequestFromQuery, vinRequestHref } from '@/lib/vin-link';
 import { getBrand, telHref } from '@/server/brand';
 import { requestCartCount } from '@/server/cart/count';
 import { currentCheckoutGate } from '@/server/checkout-gate';
@@ -134,10 +134,12 @@ function Results({
   orderingOpen,
   plans,
   demoData,
+  contactPhone,
 }: {
   result: SearchResponse;
   stock: StockFilter;
   demoData: boolean;
+  contactPhone: string | null;
   orderingOpen: boolean;
   plans: ReadonlyMap<string, InstallPlanView | null>;
 }) {
@@ -182,6 +184,7 @@ function Results({
             searchArticleNorm={result.articleNorm}
             orderingOpen={orderingOpen}
             plans={plans}
+            contactPhone={contactPhone}
           />
           <OfferGroup
             id="offers-cross"
@@ -193,6 +196,7 @@ function Results({
             searchArticleNorm={result.articleNorm}
             orderingOpen={orderingOpen}
             plans={plans}
+            contactPhone={contactPhone}
           />
         </>
       )}
@@ -206,7 +210,7 @@ function Results({
         art={<VinCtaArt />}
         testId="search-vin-cta"
         action={{
-          href: vinRequestHref({ need: `Артикул ${query}` }),
+          href: vinRequestFromQuery(query).href,
           label: 'Подобрать по VIN',
           icon: <IconSts size={22} />,
           prefetch: false,
@@ -286,6 +290,7 @@ export default async function SearchPage({
             orderingOpen={orderingOpen}
             plans={plans}
             demoData={brand.demoData}
+            contactPhone={brand.contactPhone}
           />
         ) : problem ? null : (
           <SearchIdle demoData={brand.demoData} />

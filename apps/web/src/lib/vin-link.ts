@@ -28,3 +28,21 @@ export function vinRequestHref({ vin, car, need }: VinRequestLink = {}): string 
   const query = params.toString();
   return query ? `/vin?${query}` : '/vin';
 }
+
+/** 16 or 18 Latin letters and digits: a VIN with a character lost or added (a VIN has 17). */
+const NEAR_VIN_RE = /^(?:[A-Za-z0-9]{16}|[A-Za-z0-9]{18})$/;
+/** Words, not an article: Cyrillic letters or a space between words. */
+const WORDS_RE = /[А-Яа-яЁё]|\S\s+\S/;
+
+/**
+ * «Подобрать по VIN» from a search query: an article goes into the request as «Артикул …»,
+ * words («масляный фильтр») go as they are, and a near-VIN (16 or 18 characters) goes into the
+ * VIN field with `nearVin` set, so the page can say that a VIN has 17 characters.
+ */
+export function vinRequestFromQuery(query: string): { href: string; nearVin: boolean } {
+  const clean = query.trim();
+  if (NEAR_VIN_RE.test(clean)) return { href: vinRequestHref({ vin: clean }), nearVin: true };
+  if (clean === '') return { href: vinRequestHref(), nearVin: false };
+  const need = WORDS_RE.test(clean) ? clean : `Артикул ${clean}`;
+  return { href: vinRequestHref({ need }), nearVin: false };
+}

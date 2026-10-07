@@ -149,6 +149,8 @@ jobs:
       LEGAL_CONSENT_PD_VERSION: 2026-10-d1
       LEGAL_CONSENT_MARKETING_VERSION: 2026-10-d1
       LEGAL_RETURN_MEMO_VERSION: 2026-10-d1
+      # The 2026-10-d1 texts still carry the lawyer's draft banner: only CI may publish them.
+      LEGAL_ALLOW_DRAFT_PUBLISH: 'true'
       # Phase 1B (docs/phase-1b-implementation.md section 23): scripts/e2e-1b.sh sets the rest
       # (YooKassa mock on :3199 as YOOKASSA_API_URL, webhook allowlist 127.0.0.1/32 with
       # TRUSTED_IP_HEADER=x-real-ip, ROSSKO_ALLOW_CHECKOUT=true on fixtures, SMS_PROVIDER=none,

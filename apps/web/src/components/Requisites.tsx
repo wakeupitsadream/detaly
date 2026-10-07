@@ -27,7 +27,7 @@ export function Requisites({ brand, compact = false }: { brand: Brand; compact?:
     ['ОГРНИП', seller.ogrnip],
     ['Адрес', seller.address],
     ['Телефон', seller.phone],
-    ['E-mail', seller.email],
+    ['Электронная почта', seller.email],
   ];
   const rows = all.filter((row): row is [string, string] => row[1] !== null);
   const partial = rows.length < all.length;

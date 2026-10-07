@@ -92,7 +92,7 @@ null` — можно; неверный `search_article_norm` → 23514; `consent
 http://127.0.0.1:3100` (иначе проверка Origin отклонит e2e), `RKN_NOTICE_NUMBER: 'E2E-TEST'`,
 `LEGAL_OFFER_VERSION`, `LEGAL_PRIVACY_VERSION`, `LEGAL_CONSENT_PD_VERSION`,
 `LEGAL_CONSENT_MARKETING_VERSION`, `LEGAL_RETURN_MEMO_VERSION` = `2026-10-d1` (сид публикует
-черновики в тестовой базе CI; standalone-сервер работает с `NODE_ENV=production`, а там нужны
+черновики в тестовой базе CI с `LEGAL_ALLOW_DRAFT_PUBLISH: 'true'`; standalone-сервер работает с `NODE_ENV=production`, а там нужны
 опубликованные версии, Д4). Job `check` не меняется: int-тесты передают `RKN_NOTICE_NUMBER`
 через `intEnv({...})`.
 
@@ -595,7 +595,7 @@ export SESSION_SECRET=local-session-secret-0123456789abcdef0123 \
   APP_BASE_URL=http://127.0.0.1:3100 RKN_NOTICE_NUMBER=E2E-TEST ROSSKO_MODE=fixtures \
   LEGAL_OFFER_VERSION=2026-10-d1 LEGAL_PRIVACY_VERSION=2026-10-d1 \
   LEGAL_CONSENT_PD_VERSION=2026-10-d1 LEGAL_CONSENT_MARKETING_VERSION=2026-10-d1 \
-  LEGAL_RETURN_MEMO_VERSION=2026-10-d1 \
+  LEGAL_RETURN_MEMO_VERSION=2026-10-d1 LEGAL_ALLOW_DRAFT_PUBLISH=true \
   SELLER_REQUISITES_NAME='Тестов Тест Тестович' SELLER_REQUISITES_INN=561234567890 \
   SELLER_REQUISITES_OGRNIP=312565800012345 SELLER_REQUISITES_ADDRESS='г. Оренбург, ул. Тестовая, 1' \
   SELLER_REQUISITES_EMAIL=seller@example.test SELLER_REQUISITES_PHONE='+7 900 000-00-00' \

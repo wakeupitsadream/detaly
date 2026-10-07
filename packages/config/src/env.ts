@@ -287,6 +287,11 @@ const envShape = {
   LEGAL_CONSENT_PD_VERSION: optionalString,
   LEGAL_CONSENT_MARKETING_VERSION: optionalString,
   LEGAL_RETURN_MEMO_VERSION: optionalString,
+  /**
+   * Lets the seed publish a text that still calls itself a draft («Черновик, требует вычитки
+   * юристом», «Для юриста:», «— уточнить»). Only for tests and e2e; never in production.
+   */
+  LEGAL_ALLOW_DRAFT_PUBLISH: bool(false),
   RKN_NOTICE_NUMBER: optionalString,
 };
 
@@ -403,6 +408,17 @@ function demoVercelBaseUrl(source: EnvSource, input: Record<string, string>): st
   return host ? `https://${host}` : null;
 }
 
+/**
+ * GIT_SHA on Vercel (the demo) when it is not set explicitly: the short commit of the build
+ * from VERCEL_GIT_COMMIT_SHA, so a log line tells which deployment wrote it. Production sets
+ * GIT_SHA itself (infra/deploy.sh).
+ */
+function vercelGitSha(source: EnvSource, input: Record<string, string>): string | null {
+  if (input.GIT_SHA !== undefined) return null;
+  const sha = source.VERCEL_GIT_COMMIT_SHA?.trim();
+  return sha && /^[0-9a-f]{7,40}$/i.test(sha) ? sha.slice(0, 7).toLowerCase() : null;
+}
+
 /** Parses an env-like record (default process.env). Throws EnvError listing bad keys. */
 export function parseEnv(source: EnvSource = process.env): Env {
   const input: Record<string, string> = {};
@@ -412,6 +428,8 @@ export function parseEnv(source: EnvSource = process.env): Env {
   }
   const vercelBaseUrl = demoVercelBaseUrl(source, input);
   if (vercelBaseUrl) input.APP_BASE_URL = vercelBaseUrl;
+  const vercelSha = vercelGitSha(source, input);
+  if (vercelSha) input.GIT_SHA = vercelSha;
   const result = envSchema.safeParse(input);
   if (!result.success) {
     throw new EnvError(

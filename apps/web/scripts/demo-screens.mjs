@@ -125,7 +125,8 @@ async function walk(browser, vp) {
   );
   await shot(page, vp, '05-checkout');
 
-  // The demo button opens the sample order without any request to /api/checkout.
+  // The demo button opens the sample order without any request to /api/checkout (it posts an
+  // empty form that only empties the demo cart).
   let posted = false;
   page.on('request', (request) => {
     if (request.url().includes('/api/checkout')) posted = true;
@@ -134,6 +135,10 @@ async function walk(browser, vp) {
   await page.waitForURL(/\/o\/demo$/);
   check(!posted, 'checkout: the demo never posts the form');
   check(await page.getByTestId('order-page').isVisible(), '/o/demo: order page');
+  check(
+    (await page.getByRole('link', { name: 'Корзина пуста' }).count()) > 0,
+    '/o/demo: the demo cart is emptied after «Оформить заказ»',
+  );
   await shot(page, vp, '06-order-demo');
 
   for (const [name, url] of [

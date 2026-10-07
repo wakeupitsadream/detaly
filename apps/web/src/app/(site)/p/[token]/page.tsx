@@ -100,7 +100,7 @@ export default async function ProposalPage({ params }: { params: Params }) {
         tone="light"
         eyebrow="Подбор по VIN"
         title="Подборка мастера"
-        lead="Мастер подобрал под вашу машину. Цены и даты — на сегодня."
+        lead="Мастер подобрал под вашу машину."
         titleTestId="proposal-title"
       />
       <PageBody>

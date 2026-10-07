@@ -30,10 +30,12 @@ import {
   type CheckoutPageData,
 } from '@/server/checkout/page-data';
 import { getDb } from '@/server/db';
+import { DEMO_CHECKOUT_DONE_PATH } from '@/server/demo/checkout-done';
 import { errorInfo, PageDataError } from '@/server/errors';
 import { serverEnv } from '@/server/env';
 import { getLogger } from '@/server/logger';
 import { isDemoMode } from '@/server/mode';
+import { storageDays } from '@/server/settings';
 import { getSupplier } from '@/server/supplier';
 
 // Personal data form and a cart-specific page: never indexed (also X-Robots-Tag from proxy).
@@ -101,8 +103,13 @@ async function DemoCheckout() {
               blockedMessage={null}
               contactPhone={brand.contactPhone}
               invalidMessages={FIELD_MESSAGES}
-              demo={{ href: '/o/demo' }}
-              receive={<PickupPoint pickup={brand.pickup} />}
+              demo={{ action: DEMO_CHECKOUT_DONE_PATH }}
+              receive={
+                <PickupPoint
+                  pickup={brand.pickup}
+                  storageDays={storageDays(settings.order, decision.scheme)}
+                />
+              }
               payment={
                 <PaymentSchemeNote
                   scheme={decision.scheme}
@@ -249,7 +256,7 @@ export default async function CheckoutPage({
             blockedMessage={data.minimums.ok ? null : data.minimums.message}
             contactPhone={brand.contactPhone}
             invalidMessages={FIELD_MESSAGES}
-            receive={<PickupPoint pickup={brand.pickup} />}
+            receive={<PickupPoint pickup={brand.pickup} storageDays={data.storageDays} />}
             payment={
               <PaymentSchemeNote scheme={data.decision.scheme} sentences={data.explanation} />
             }

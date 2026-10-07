@@ -188,6 +188,17 @@ describe('parseEnv', () => {
     expect(parseEnv(demo).APP_BASE_URL).toBe('http://localhost:3000');
   });
 
+  it('takes GIT_SHA from the Vercel build commit when GIT_SHA is not set', () => {
+    const sha = '0F1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c';
+    expect(parseEnv(minimalEnvSource({ VERCEL_GIT_COMMIT_SHA: sha })).GIT_SHA).toBe('0f1e2d3');
+    // An explicit GIT_SHA wins (production sets it in infra/deploy.sh).
+    expect(
+      parseEnv(minimalEnvSource({ VERCEL_GIT_COMMIT_SHA: sha, GIT_SHA: 'v1.2.3' })).GIT_SHA,
+    ).toBe('v1.2.3');
+    expect(parseEnv(minimalEnvSource({ VERCEL_GIT_COMMIT_SHA: 'not a sha' })).GIT_SHA).toBe('dev');
+    expect(parseEnv(minimalEnvSource()).GIT_SHA).toBe('dev');
+  });
+
   it('requires DATABASE_URL and REDIS_URL outside DEMO_MODE', () => {
     const secret = { SESSION_SECRET: 'test-session-secret-0123456789abcdef' };
     expect(() => parseEnv(secret)).toThrow(/DATABASE_URL/);

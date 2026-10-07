@@ -2,6 +2,7 @@ import { formatPromise, formatRub, safeMul, type IsoDate, type RepricedLine } fr
 import { IconCalendar, IconClock, IconPhone, IconPin } from '@/components/icons';
 import { PICKUP_ADDRESS_UNKNOWN } from '@/components/order/OrderSections';
 import { StockBadge } from '@/components/StockBadge';
+import { cn } from '@/components/ui/cn';
 import { PartTile } from '@/components/ui/PartTile';
 import { Price } from '@/components/ui/Price';
 import { plural } from '@/lib/plural';
@@ -74,7 +75,8 @@ export function CheckoutSummary({
             </div>
             {uniform ? null : (
               <div className="col-span-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 sm:col-span-1 sm:col-start-2">
-                <StockBadge isLocal={line.isLocal} />
+                {/* The scheme of the whole order is stated in «Оплата»: no payment tail here. */}
+                <StockBadge isLocal={line.isLocal} payment={false} />
                 {linePromises[line.id] ? (
                   <span
                     className="inline-flex items-center gap-1.5 text-small"
@@ -118,7 +120,14 @@ export function CheckoutSummary({
  * (brand frame and soft fill stay for the selected payment card below), the name, then address,
  * hours and phone in rows with brand icons like PickupCard, and one line about installation.
  */
-export function PickupPoint({ pickup }: { pickup: Brand['pickup'] }) {
+export function PickupPoint({
+  pickup,
+  storageDays = null,
+}: {
+  pickup: Brand['pickup'];
+  /** Days the ready order waits (settings pickup.window_*_days by the scheme shown). */
+  storageDays?: number | null;
+}) {
   return (
     <section
       className="min-w-0 rounded-tile border border-line bg-bg p-4 md:p-5"
@@ -171,7 +180,18 @@ export function PickupPoint({ pickup }: { pickup: Brand['pickup'] }) {
           ) : null}
         </dl>
       </address>
-      <p className="mt-3 border-t border-line pt-3 text-small font-normal">
+      {storageDays ? (
+        <p className="mt-3 border-t border-line pt-3 text-small" data-testid="pickup-storage">
+          Храним {storageDays} {plural(storageDays, 'день', 'дня', 'дней')} после сообщения
+          «Приехало».
+        </p>
+      ) : null}
+      <p
+        className={cn(
+          'text-small font-normal',
+          storageDays ? 'mt-2' : 'mt-3 border-t border-line pt-3',
+        )}
+      >
         Там же можно сразу поставить деталь. Установка — услуга сервиса, оплата там.
       </p>
     </section>

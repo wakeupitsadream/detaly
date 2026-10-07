@@ -69,9 +69,9 @@ const PRIVATE: Pick<Metadata, 'robots' | 'referrer'> = {
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { token } = await params;
-  if (!isOrderToken(token)) return { ...PRIVATE, title: 'Заказ' };
+  if (!isOrderToken(token)) return { ...PRIVATE, title: 'Заказ не найден' };
   const view = await getOrderView(token);
-  return { ...PRIVATE, title: view ? `Заказ ${view.number}` : 'Заказ' };
+  return { ...PRIVATE, title: view ? `Заказ ${view.number}` : 'Заказ не найден' };
 }
 
 export default async function OrderPage({

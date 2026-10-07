@@ -106,6 +106,31 @@ describe('claimKindsAvailable', () => {
     for (const status of REFUSABLE_STATUSES) expect(before({ status })).toEqual(['delay']);
   });
 
+  it('a ready order is late only when it arrived after the promised date', () => {
+    const ready = (extra: Partial<ClaimKindsInput> = {}) =>
+      claimKindsAvailable(
+        handed({
+          status: 'ready',
+          handedAt: null,
+          // promised Wednesday, arrived Tuesday, the client comes on Thursday
+          promisedDate: '2026-10-07',
+          receivedAt: at('2026-10-06', '15:00'),
+          now: at('2026-10-08', '12:00'),
+          ...extra,
+        }),
+      );
+    expect(ready()).toEqual([]);
+    expect(ready({ status: 'awaiting_handover_payment' })).toEqual([]);
+    // arrived on the promised day itself: on time
+    expect(ready({ receivedAt: at('2026-10-07', '18:30') })).toEqual([]);
+    // arrived a day late
+    expect(ready({ receivedAt: at('2026-10-08', '09:00') })).toEqual(['delay']);
+    // the arrival day is taken in the client zone (2026-10-07T20:00Z is 8 Oct in Orenburg)
+    expect(ready({ receivedAt: new Date('2026-10-07T20:00:00Z') })).toEqual(['delay']);
+    // not arrived yet (no received_at): judged by today, as before
+    expect(ready({ status: 'ordered_at_supplier', receivedAt: null })).toEqual(['delay']);
+  });
+
   it('nothing in the other statuses', () => {
     const open = new Set<string>([...REFUSABLE_STATUSES, 'handed', 'completed']);
     for (const status of ORDER_STATUSES.filter((s) => !open.has(s))) {

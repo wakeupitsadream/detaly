@@ -12,8 +12,9 @@
  * Without JavaScript it is a plain multipart post to /api/vin: errors come back as `?e=<codes>`
  * (the page passes them in as `errors`). With JavaScript the same form is sent by fetch with
  * `Accept: application/json`, so what was typed and the chosen photos stay on screen when a field
- * needs fixing. DEMO_MODE: with JavaScript nothing is sent at all; without it the post goes to
- * the proxy, which answers 303 /vin/sent?demo=1 without reading it.
+ * needs fixing. DEMO_MODE: nothing is ever sent — the form has no action and its button is a
+ * plain button that opens the sample answer page (without JavaScript it does nothing; the proxy
+ * still answers a stray POST /api/vin with 303 /vin/sent?demo=1 without reading it, С21).
  */
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent, type ReactNode } from 'react';
@@ -142,13 +143,16 @@ export function VinForm(props: VinFormProps) {
   const vinHelp = props.vinHelp ?? null;
   const onInvalid = useInvalidCapture(FIELD_OF_INPUT, props.invalidMessages, setFieldErrors);
 
+  function openDemoAnswer() {
+    setDone(true);
+    router.push('/vin/sent?demo=1');
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    // DEMO_MODE: nothing leaves the browser, the visitor sees the sample answer page (without
-    // JavaScript the post goes to the proxy, which answers the same without reading it).
+    // DEMO_MODE: nothing leaves the browser, the visitor sees the sample answer page.
     if (props.demo) {
-      setDone(true);
-      router.push('/vin/sent?demo=1');
+      openDemoAnswer();
       return;
     }
     if (pending || done) return;
@@ -192,9 +196,10 @@ export function VinForm(props: VinFormProps) {
   return (
     <form
       id="vin-form"
-      method="post"
-      action="/api/vin"
-      encType="multipart/form-data"
+      // DEMO_MODE: no action at all, so not even a form posted before hydration leaves the page.
+      {...(props.demo
+        ? {}
+        : { method: 'post', action: '/api/vin', encType: 'multipart/form-data' as const })}
       onSubmit={(event) => void onSubmit(event)}
       onInvalidCapture={onInvalid}
       className="relative min-w-0 space-y-4"
@@ -373,7 +378,8 @@ export function VinForm(props: VinFormProps) {
 
       <div className="min-w-0 space-y-3 pt-2">
         <button
-          type="submit"
+          type={props.demo ? 'button' : 'submit'}
+          onClick={props.demo ? openDemoAnswer : undefined}
           disabled={pending || done}
           aria-busy={pending || undefined}
           className={cn(buttonClass({ variant: 'primary', size: 'lg', block: true }), 'md:w-auto')}

@@ -1,10 +1,12 @@
 import type { OfferView } from '@detaly/domain';
+import { telHref } from '@/server/brand';
 import type { InstallPlanView } from '@/server/install/types';
 import { AddToCartForm } from './AddToCartForm';
-import { IconCalendar, IconWallet } from './icons';
+import { IconCalendar, IconPhone, IconWallet } from './icons';
 import { InstallLine } from './install/InstallLine';
 import { StockBadge } from './StockBadge';
 import { Badge } from './ui/Badge';
+import { buttonClass } from './ui/Button';
 import { cn } from './ui/cn';
 import { PartTile } from './ui/PartTile';
 import { Price } from './ui/Price';
@@ -23,6 +25,24 @@ export function stockCountText(offer: Pick<OfferView, 'isLocal' | 'available'>):
 }
 
 /**
+ * The visible count under the price: «Есть 6 шт.» for the Orenburg stock, «У поставщика 24 шт.»
+ * for an order (a bare «Есть 24 шт.» under «Под заказ» reads as «on the shelf here»).
+ */
+export function stockCountLine(offer: Pick<OfferView, 'isLocal' | 'available'>): string {
+  return offer.isLocal ? `Есть ${offer.available} шт.` : `У поставщика ${offer.available} шт.`;
+}
+
+/**
+ * Plain words for an excluded (marked) good: «Масла продаём только в сервисе» from the rule's
+ * reason «Маркируемый товар: масла». The reason itself stays as it is (the worker reads it).
+ */
+export function excludedClientText(reason: string | null): string {
+  const category = /^Маркируемый товар:\s*(.+)$/u.exec(reason?.trim() ?? '')?.[1]?.trim();
+  if (!category) return 'Этот товар продаём только в сервисе';
+  return `${category.charAt(0).toUpperCase()}${category.slice(1)} продаём только в сервисе`;
+}
+
+/**
  * One offer as a card (docs/design-v2.md, OfferCard): a 72 px tile with the category glyph,
  * brand and article, the name, the stock badge, the arrival date, one line of «Машина готова…»
  * when a lift window is planned, the price and «В корзину». Phones stack it with the button
@@ -36,6 +56,7 @@ export function OfferRow({
   orderingOpen = true,
   install,
   marks,
+  contactPhone = null,
 }: {
   offer: OfferView;
   /** Normalized article of the search query the offer was found by. */
@@ -49,6 +70,8 @@ export function OfferRow({
   install?: InstallPlanView | null;
   /** «Быстрее всего» / «Дешевле всего» (OfferGroup decides). */
   marks?: readonly OfferMark[];
+  /** The point's phone: the call button of an excluded good; none without a phone. */
+  contactPhone?: string | null;
 }) {
   const canAdd = orderingOpen && !offer.excluded && offer.available >= offer.multiplicity;
   const title = `${offer.brand} ${offer.article}`;
@@ -103,8 +126,8 @@ export function OfferRow({
         {offer.excluded ? (
           <>
             <Badge tone="danger">Не продаём онлайн</Badge>
-            <p className="text-small font-normal text-muted">
-              {offer.excludedReason ?? 'Маркируемый товар'} — спросите в сервисе
+            <p className="text-small font-normal text-muted" data-testid="offer-excluded-text">
+              {excludedClientText(offer.excludedReason)}
             </p>
           </>
         ) : (
@@ -129,12 +152,26 @@ export function OfferRow({
         )}
       >
         {offer.excluded ? (
-          <p className="text-small text-muted">Цена — в сервисе</p>
+          contactPhone ? (
+            <a
+              href={telHref(contactPhone)}
+              className={cn(
+                buttonClass({ variant: 'secondary', size: 'md' }),
+                'w-full whitespace-nowrap md:w-auto lg:w-full',
+              )}
+              data-testid="offer-excluded-call"
+            >
+              <IconPhone size={20} />
+              Узнать цену
+            </a>
+          ) : (
+            <p className="text-small text-muted">Цена — в сервисе</p>
+          )
         ) : (
           <div className="flex min-w-0 items-baseline justify-between gap-3 lg:flex-col lg:items-start lg:gap-1">
             <Price data-testid="offer-price">{offer.priceText}</Price>
             <span className="text-caption text-muted tabular-nums" title={stockCountText(offer)}>
-              Есть {offer.available} шт.
+              {stockCountLine(offer)}
             </span>
           </div>
         )}

@@ -91,7 +91,7 @@ function paymentLine(view: OrderView): ReactNode {
  */
 function InstallCard({ plan }: { plan: InstallPlanView | null }) {
   return (
-    <Card title="Установка" icon={<IconWrench size={26} />} testId="order-install">
+    <Card title="Установка" icon={<IconWrench size={24} />} testId="order-install">
       <div data-testid="order-car-ready">
         <InstallLine plan={plan} size="md" />
       </div>
@@ -130,7 +130,6 @@ export function OrderDetails({
   flash = null,
   demo = false,
   routes = [],
-  pickupLogo = null,
 }: {
   view: OrderView;
   pickup: PickupInfo;
@@ -149,8 +148,6 @@ export function OrderDetails({
   demo?: boolean;
   /** Route links to the pickup point (pickupRoutes(brand)). */
   routes?: readonly PickupRoute[];
-  /** The partner's colour mark (PICKUP_LOGO_SRC). */
-  pickupLogo?: string | null;
 }) {
   const check = payCheckState(view, notice, nowMs);
   const stopped = STOPPED.has(view.status);
@@ -240,12 +237,7 @@ export function OrderDetails({
 
           <div className={SIDE}>
             {view.fulfillment === 'pickup' ? (
-              <PickupBlock
-                pickup={pickup}
-                code={view.pickupCode}
-                routes={routes}
-                logoSrc={pickupLogo}
-              />
+              <PickupBlock pickup={pickup} code={view.pickupCode} routes={routes} />
             ) : view.pickupCode ? (
               <PickupCodeBlock code={view.pickupCode} />
             ) : null}
@@ -270,16 +262,6 @@ export function OrderDetails({
           />
 
           {services ? <OrderPhotos photos={services.photos} /> : null}
-
-          {services?.claims ? (
-            <ClaimBlock
-              token={view.token}
-              block={services.claims}
-              pickup={pickup}
-              contactPhone={contactPhone}
-              notice={flashFor('claim')}
-            />
-          ) : null}
 
           {messenger ? (
             <MessengerBlock
@@ -308,6 +290,18 @@ export function OrderDetails({
               ) : null}
               <RefuseBlock view={view} contactPhone={contactPhone} />
             </div>
+          ) : null}
+
+          {/* A claim is an action at the bottom of the page with cancel and refuse, not a card
+              next to the items: an order on its way must not look like something went wrong. */}
+          {services?.claims ? (
+            <ClaimBlock
+              token={view.token}
+              block={services.claims}
+              pickup={pickup}
+              contactPhone={contactPhone}
+              notice={flashFor('claim')}
+            />
           ) : null}
 
           <TimelineBlock entries={view.timeline} />

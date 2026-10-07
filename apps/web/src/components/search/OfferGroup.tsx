@@ -1,4 +1,5 @@
 import type { OfferView } from '@detaly/domain';
+import type { ReactNode } from 'react';
 import { OfferRow, type OfferMark } from '@/components/OfferRow';
 import { SectionHeading } from '@/components/ui/Section';
 import type { InstallPlanView } from '@/server/install/types';
@@ -25,7 +26,9 @@ function readyKey(offer: OfferView, plans?: ReadonlyMap<string, InstallPlanView 
 
 /**
  * «Быстрее всего» and «Дешевле всего» for the rows that earn them, among two or more sellable
- * offers (one offer is both and says nothing).
+ * offers (one offer is both and says nothing). The search page passes the whole result (exact
+ * matches first), so each mark stands on one card of the page, not one per group; on a tie the
+ * earlier offer keeps it.
  */
 export function offerMarks(
   offers: readonly OfferView[],
@@ -57,9 +60,15 @@ export function OfferGroup({
   searchArticleNorm,
   orderingOpen,
   plans,
+  marks: pageMarks,
+  subtitle,
   first = false,
 }: {
   id: string;
+  /** Marks over the whole result (offerMarks of all groups); by default within this group. */
+  marks?: ReadonlyMap<string, OfferMark[]>;
+  /** One muted line under the title («Другие бренды, подходят вместо …»). */
+  subtitle?: ReactNode;
   /** The first group under the filters: no marker on phones. */
   first?: boolean;
   title: string;
@@ -71,12 +80,13 @@ export function OfferGroup({
 }) {
   if (offers.length === 0) return null;
   const sorted = sortOffersForChoice(offers);
-  const marks = offerMarks(sorted, plans);
+  const marks = pageMarks ?? offerMarks(sorted, plans);
   return (
     <section aria-labelledby={id} className="min-w-0">
       <SectionHeading id={id} phoneMarker={!first}>
         {title} <span className="font-bold text-muted tabular-nums">{offers.length}</span>
       </SectionHeading>
+      {subtitle ? <p className="mt-2 text-small text-muted">{subtitle}</p> : null}
       <ul className="mt-5 space-y-3 md:mt-6 md:space-y-4">
         {sorted.map((offer) => (
           <OfferRow

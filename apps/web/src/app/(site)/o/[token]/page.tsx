@@ -117,7 +117,6 @@ export default async function OrderPage({
       flash={flash}
       pickup={brand.pickup}
       routes={pickupRoutes(brand)}
-      pickupLogo={brand.pickupLogo?.color ?? null}
       contactPhone={brand.contactPhone}
       cartReminder={cartReminder}
       notice={notice}

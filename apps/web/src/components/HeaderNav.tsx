@@ -31,7 +31,8 @@ export function HeaderNavLinks({ items }: { items: readonly NavItem[] }) {
               href={item.href}
               aria-current={current ? 'page' : undefined}
               className={cn(
-                'inline-flex min-h-11 items-center underline-offset-4 hover:underline',
+                // -mx-2 px-2: room for the focus ring drawn inside the link (globals.css).
+                '-mx-2 inline-flex min-h-11 items-center px-2 underline-offset-4 hover:underline',
                 current && 'font-bold underline decoration-2',
               )}
             >
@@ -48,7 +49,8 @@ export function HeaderNavLinks({ items }: { items: readonly NavItem[] }) {
 export function HeaderNavChips({ items }: { items: readonly NavItem[] }) {
   const pathname = usePathname();
   return (
-    <ul className="flex items-center gap-2 whitespace-nowrap">
+    // Under 375 px a little tighter, so the three chips fit 328 px without one cut at the edge.
+    <ul className="flex items-center gap-2 whitespace-nowrap max-[374px]:gap-1.5">
       {items.map((item, index) => {
         const current = isCurrent(pathname, item.href);
         return (
@@ -57,7 +59,7 @@ export function HeaderNavChips({ items }: { items: readonly NavItem[] }) {
               href={item.href}
               aria-current={current ? 'page' : undefined}
               className={cn(
-                'inline-flex h-11 items-center gap-0.5 rounded-full px-4 text-[0.9375rem] font-semibold',
+                'inline-flex h-11 items-center gap-0.5 rounded-full px-4 text-[0.9375rem] font-semibold max-[374px]:px-3.5',
                 current ? 'bg-on-brand text-brand' : 'bg-on-brand/15 hover:bg-on-brand/25',
               )}
             >

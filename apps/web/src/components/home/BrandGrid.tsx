@@ -21,7 +21,8 @@ export function phoneBrandName(brand: Pick<CarBrand, 'slug' | 'name'>): string {
   return PHONE_NAME[brand.slug] ?? brand.name;
 }
 
-const GRID = 'grid min-w-0 grid-cols-4 gap-2 md:grid-cols-6 md:gap-3 lg:grid-cols-8';
+const GRID =
+  'grid min-w-0 grid-cols-4 gap-2 max-[374px]:gap-1.5 md:grid-cols-6 md:gap-3 lg:grid-cols-8';
 
 /**
  * One make (docs/design-v2.md, BrandTile): a white card with a `line` border, the logo in a
@@ -44,7 +45,7 @@ export function BrandTile({
         prefetch={false}
         data-testid={`home-brand-${brand.slug}`}
         className={cn(
-          'flex h-full min-h-24 min-w-0 flex-col items-center justify-center gap-2 rounded-tile border border-line bg-bg px-0.5 pt-3 pb-2.5 text-center text-ink md:px-1',
+          'flex h-full min-h-24 min-w-0 flex-col items-center justify-center gap-2 rounded-tile border border-line bg-bg px-0.5 pt-3 pb-2.5 text-center text-ink max-[374px]:px-0 md:px-1',
           'transition-[border-color,transform] duration-150 hover:-translate-y-0.5 hover:border-line-strong',
           'md:min-h-28 md:gap-2.5 md:pt-4 md:pb-3',
         )}
@@ -60,8 +61,9 @@ export function BrandTile({
           decoding="async"
           className="h-10 w-[4.5rem] max-w-full object-contain md:h-12 md:w-24"
         />
-        {/* 14 px on phones, 15 px from md; wrap-anywhere only guards a future longer name. */}
-        <span className="max-w-full text-[0.875rem] leading-[1.125rem] font-semibold tracking-[-0.01em] wrap-anywhere md:text-[0.9375rem]">
+        {/* 14 px on phones, 15 px from md; never broken inside a word («Mitsubish / i»): a
+            little tighter tracking under 375 px keeps «Mitsubishi» and «Chevrolet» whole. */}
+        <span className="max-w-full text-[0.875rem] leading-[1.125rem] font-semibold tracking-[-0.01em] break-normal hyphens-none max-[374px]:tracking-[-0.02em] md:text-[0.9375rem]">
           {phoneName !== brand.name ? (
             <>
               <span className="md:hidden">{phoneName}</span>
@@ -87,7 +89,9 @@ export function BrandGrid({ className }: { className?: string }) {
   return (
     <div className={cn('min-w-0', className)}>
       <SectionHeading id="brands-title">Выберите марку</SectionHeading>
-      <ul className={cn(GRID, 'mt-6 md:mt-8')} data-testid="home-brands">
+      {/* The tiles lead to the request to the master, not to a catalogue: said up front. */}
+      <p className="mt-2 text-small text-muted">Подберём по VIN — бесплатно</p>
+      <ul className={cn(GRID, 'mt-5 md:mt-6')} data-testid="home-brands">
         {featured.map((brand, index) => (
           <BrandTile
             key={brand.slug}

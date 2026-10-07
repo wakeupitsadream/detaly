@@ -21,7 +21,7 @@ import {
   searchHref,
   type StockFilter,
 } from '@/components/search/FilterChips';
-import { OfferGroup } from '@/components/search/OfferGroup';
+import { OfferGroup, offerMarks, sortOffersForChoice } from '@/components/search/OfferGroup';
 import { ResultsHeader } from '@/components/search/ResultsHeader';
 import { cartCountLabel } from '@/components/SiteHeader';
 import { ButtonLink } from '@/components/ui/Button';
@@ -145,6 +145,8 @@ function Results({
   const offers = filterByStock(result.offers, stock);
   const exact = offers.filter((offer) => !offer.isCross);
   const crosses = offers.filter((offer) => offer.isCross);
+  // «Быстрее всего» / «Дешевле всего» once per page: exact matches first win a tie.
+  const marks = offerMarks([...sortOffersForChoice(exact), ...sortOffersForChoice(crosses)], plans);
   return (
     <div className="min-w-0 space-y-7 md:space-y-14">
       <div className="min-w-0 space-y-5">
@@ -174,6 +176,7 @@ function Results({
             id="offers-exact"
             title="Точное совпадение"
             first
+            marks={marks}
             offers={exact}
             searchArticleNorm={result.articleNorm}
             orderingOpen={orderingOpen}
@@ -183,6 +186,8 @@ function Results({
             id="offers-cross"
             title="Аналоги"
             first={exact.length === 0}
+            marks={marks}
+            subtitle={`Другие бренды, подходят вместо ${query.toUpperCase()}`}
             offers={crosses}
             searchArticleNorm={result.articleNorm}
             orderingOpen={orderingOpen}

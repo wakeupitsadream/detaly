@@ -37,31 +37,37 @@ const STATUS_TEXT: Record<Exclude<ProposalLineView['status'], 'ok'>, string> = {
   excluded: 'Не продаём онлайн — спросите в сервисе',
 };
 
-/** One line as an offer card: tile | brand, article, name, badge, date | price. */
+/**
+ * One line as an offer card: tile | brand, article, name | price, the badge and the date under
+ * the name. On phones the badge row takes the card's full width (as in OfferRow), so «В
+ * Оренбурге — оплата при получении» stays on one line.
+ */
 function ProposalLine({ line }: { line: ProposalLineView }) {
   const off = line.status !== 'ok';
   return (
     <li
       className={cn(
-        'grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] gap-x-4 gap-y-4 rounded-tile border border-line p-4',
-        'md:grid-cols-[4.5rem_minmax(0,1fr)_auto] md:items-center md:gap-x-6 md:p-5',
+        'grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] gap-x-4 gap-y-3 rounded-tile border border-line p-4',
+        'md:grid-cols-[4.5rem_minmax(0,1fr)_auto] md:gap-x-6 md:p-5',
         off ? 'bg-surface' : 'bg-bg',
       )}
       data-testid="proposal-line"
       data-status={line.status}
     >
-      <PartTile name={line.name} size="sm" className="md:size-18 md:rounded-tile" />
-      <div className="min-w-0">
+      <PartTile name={line.name} size="sm" className="md:row-span-2 md:size-18 md:rounded-tile" />
+      <div className="min-w-0 self-center">
         <p className="text-[1.0625rem] leading-snug font-bold wrap-anywhere">
           {line.brand} <span className="tabular-nums">{line.article}</span>
         </p>
         <p className="mt-1 line-clamp-2 text-small font-normal text-muted wrap-anywhere">
           {line.name}
         </p>
+      </div>
+      <div className="col-span-2 min-w-0 md:col-span-1 md:col-start-2">
         {line.status !== 'ok' ? (
-          <p className="mt-3 text-small font-semibold text-danger">{STATUS_TEXT[line.status]}</p>
+          <p className="text-small font-semibold text-danger">{STATUS_TEXT[line.status]}</p>
         ) : (
-          <div className="mt-3 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
             <StockBadge isLocal={line.isLocal} />
             {line.promiseText ? (
               <span
@@ -77,7 +83,7 @@ function ProposalLine({ line }: { line: ProposalLineView }) {
           </div>
         )}
       </div>
-      <div className="col-span-2 flex min-w-0 items-center justify-between gap-4 border-t border-line pt-3 md:col-span-1 md:flex-col md:items-end md:justify-start md:gap-1 md:border-0 md:pt-0 md:text-right">
+      <div className="col-span-2 flex min-w-0 items-center justify-between gap-4 border-t border-line pt-3 md:col-span-1 md:col-start-3 md:row-span-2 md:row-start-1 md:flex-col md:items-end md:justify-center md:gap-1 md:border-0 md:pt-0 md:text-right">
         <p className="text-small font-normal text-muted tabular-nums md:order-2">
           {line.qty} шт. × <span className="whitespace-nowrap">{line.priceText}</span>
         </p>
@@ -224,7 +230,8 @@ export function ProposalSheet({
             </p>
           ) : null}
           <p className="mt-2 text-small font-normal text-muted">
-            {mode.kind === 'expired' ? 'Действовала' : 'Действует'} {view.expiresText}
+            {mode.kind === 'expired' ? 'Цены действовали до' : 'Цены действуют до'}{' '}
+            <span className="whitespace-nowrap">{view.expiresText}</span>
           </p>
           {view.stale && mode.kind === 'live' ? (
             <p className="mt-1 text-small font-normal text-muted">
@@ -265,11 +272,12 @@ export function ProposalSheet({
       {canTake ? (
         <>
           {/* The footer makes room for the bar (`.mobile-cart-bar` in globals.css). */}
+          {/* The same floating card as MobileCartBar on the other pages. */}
           <div
-            className="mobile-cart-bar fixed inset-x-0 bottom-0 z-50 border-t border-line bg-bg pb-[env(safe-area-inset-bottom)] shadow-float md:hidden"
+            className="mobile-cart-bar fixed inset-x-0 bottom-0 z-50 px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:hidden"
             data-testid="proposal-bar"
           >
-            <div className="flex h-20 items-center justify-between gap-3 px-4">
+            <div className="flex h-15 items-center justify-between gap-3 rounded-tile border border-line bg-bg pr-1.5 pl-4 shadow-float">
               <p className="min-w-0">
                 <span className="block text-[1.375rem] leading-none font-extrabold whitespace-nowrap tabular-nums">
                   {view.totalText}

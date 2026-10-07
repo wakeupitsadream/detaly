@@ -20,6 +20,7 @@ import {
   CLAIM_PHOTOS_MAX,
   CLAIM_TEXT_MAX,
   claimDeadline,
+  claimKindsAvailable,
   formatPromise,
   promisedDate as promisedDateOf,
   safeMul,
@@ -295,4 +296,29 @@ export function buildDemoOrderServices(input: DemoServicesInput): OrderServicesV
     photos: [{ id: 'demo-packaging', kind: 'packaging', url: null }],
     demo: true,
   };
+}
+
+/**
+ * The claim card of the sample order only where a real order would have one: the same
+ * claimKindsAvailable as /o/<token> (order-services), by the sample's status. The sample is
+ * «Заказан у поставщика», so the page shows no «Претензия» — an order on its way must not look
+ * as if something went wrong. `?demo=claim` (the answer to a claim posted from elsewhere) keeps
+ * its accepted claim.
+ */
+export function claimsByStatus(
+  services: OrderServicesView,
+  input: { view: OrderView; screen: DemoScreen; now: Date },
+): OrderServicesView {
+  const { view, screen, now } = input;
+  if (screen === 'claim') return services;
+  const kinds = claimKindsAvailable({
+    status: view.status,
+    scheme: view.scheme,
+    moneyHeld: view.moneyHeld,
+    // The sample is never handed over.
+    handedAt: null,
+    promisedDate: view.promisedDate,
+    now,
+  });
+  return kinds.length > 0 ? services : { ...services, claims: null };
 }

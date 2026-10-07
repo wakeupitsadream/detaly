@@ -23,7 +23,7 @@ import {
 import { Notice } from '@/components/page/Notice';
 import { SheetTitle } from '@/components/page/SheetTitle';
 import { buttonClass, Spinner } from '@/components/ui/Button';
-import { cn } from '@/components/ui/cn';
+import { ChoiceCard } from '@/components/ui/ChoiceCard';
 import { inputClass } from '@/components/ui/Input';
 import { PAYMENT_SCHEME_TITLE } from './scheme-text';
 
@@ -65,10 +65,15 @@ export interface CheckoutFormProps {
 /** Example values of the demo form: obviously not a person. */
 export const DEMO_FORM_EXAMPLE = { phone: '+7 999 123-45-67', name: 'Алексей' } as const;
 
-const CHANNELS: readonly { value: string; label: string; Icon: IconComponent }[] = [
-  { value: 'max', label: 'MAX', Icon: IconMax },
-  { value: 'telegram', label: 'Telegram', Icon: IconTelegram },
-  { value: 'sms', label: 'SMS', Icon: IconMessage },
+/**
+ * The same order and look as «Куда прислать ответ» of /vin. MAX is «скоро» as on the order page
+ * (MessengerBlock draws it as an inactive stub until phase 2): no one picks a channel that never
+ * sends a status.
+ */
+const CHANNELS: readonly { value: string; label: string; Icon: IconComponent; soon: boolean }[] = [
+  { value: 'telegram', label: 'Telegram', Icon: IconTelegram, soon: false },
+  { value: 'sms', label: 'SMS', Icon: IconMessage, soon: false },
+  { value: 'max', label: 'MAX', Icon: IconMax, soon: true },
 ];
 
 const GENERIC_ERROR = 'Не удалось оформить заказ — попробуйте ещё раз';
@@ -148,7 +153,7 @@ function Consent({
         <input
           type="checkbox"
           name={name}
-          className="peer size-6 cursor-pointer appearance-none rounded-[7px] border-2 border-line-strong bg-bg transition-colors hover:border-muted checked:border-brand checked:bg-brand focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-brand"
+          className="peer size-6 cursor-pointer appearance-none rounded-[7px] border-2 border-muted bg-bg transition-colors hover:border-muted checked:border-brand checked:bg-brand focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-brand"
           aria-describedby={describedBy}
           {...controlled}
         />
@@ -346,14 +351,14 @@ export function CheckoutForm(props: CheckoutFormProps) {
               autoComplete="tel"
               required
               maxLength={32}
-              placeholder="+7 912 345-67-89"
+              placeholder="Ваш мобильный"
               defaultValue={demo ? DEMO_FORM_EXAMPLE.phone : undefined}
               aria-invalid={fieldErrors.phone ? true : undefined}
               aria-describedby="checkout-phone-hint checkout-phone-error"
               className={inputClass({ className: 'tabular-nums' })}
             />
             <p id="checkout-phone-hint" className="mt-2 text-small font-normal text-muted">
-              Мобильный: по нему выдадим заказ.
+              Мобильный, например +7 912 345-67-89: по нему выдадим заказ.
             </p>
             <FieldError id="checkout-phone-error" message={fieldErrors.phone} />
           </div>
@@ -378,27 +383,19 @@ export function CheckoutForm(props: CheckoutFormProps) {
           </div>
           <fieldset className="min-w-0">
             <legend className={LABEL}>Куда присылать статусы заказа</legend>
-            <div className="grid grid-cols-3 gap-2">
-              {CHANNELS.map(({ value, label, Icon }) => (
-                <label
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+              {CHANNELS.map(({ value, label, Icon, soon }) => (
+                <ChoiceCard
                   key={value}
-                  className={cn(
-                    'relative flex min-h-20 min-w-0 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-control border-[1.5px] border-line-strong bg-bg px-2 pt-3 pb-2.5 font-semibold transition-colors',
-                    'hover:border-muted has-[:checked]:border-brand has-[:checked]:bg-brand-soft',
-                    'has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-brand',
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="channel"
-                    value={value}
-                    defaultChecked={demo !== null && value === 'telegram'}
-                    required
-                    className="absolute top-2 right-2 size-5 shrink-0 cursor-pointer appearance-none rounded-full border-2 border-line-strong bg-bg transition-[border-width,border-color] checked:border-[6px] checked:border-brand focus-visible:outline-none"
-                  />
-                  <Icon size={26} className="text-brand" />
-                  <span className="whitespace-nowrap">{label}</span>
-                </label>
+                  name="channel"
+                  value={value}
+                  label={label}
+                  Icon={Icon}
+                  soon={soon}
+                  defaultChecked={demo !== null && value === 'telegram'}
+                  required
+                  describedBy="checkout-channel-error"
+                />
               ))}
             </div>
             <p className="mt-2 text-small font-normal text-muted">

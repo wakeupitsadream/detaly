@@ -30,6 +30,7 @@ import {
 import { Notice } from '@/components/page/Notice';
 import { SheetTitle } from '@/components/page/SheetTitle';
 import { Spinner, buttonClass } from '@/components/ui/Button';
+import { ChoiceCard } from '@/components/ui/ChoiceCard';
 import { cn } from '@/components/ui/cn';
 import { inputClass } from '@/components/ui/Input';
 import type { VinFormField } from '@/server/vin/form';
@@ -64,9 +65,9 @@ const HINT = 'mt-2 text-small font-normal text-muted';
 const DOC_LINK =
   'font-semibold text-brand underline decoration-1 underline-offset-4 hover:text-brand-hover hover:decoration-2';
 const TEXTAREA = cn(
-  'block min-h-32 w-full min-w-0 resize-y rounded-control border-[1.5px] border-line-strong bg-surface px-4 py-3 text-[1.0625rem] leading-relaxed text-ink',
+  'block min-h-32 w-full min-w-0 resize-y rounded-control border-[1.5px] border-faint bg-surface px-4 py-3 text-[1.0625rem] leading-relaxed text-ink',
   'transition-[border-color,box-shadow,background-color] duration-150 placeholder:text-muted hover:border-muted',
-  'focus:border-brand focus:bg-bg focus:shadow-[0_0_0_3px_var(--color-brand-soft)] focus-visible:outline-none',
+  'focus:border-brand focus:bg-bg focus-visible:shadow-[0_0_0_2px_var(--color-bg),0_0_0_5px_var(--color-brand)] focus-visible:outline-none',
   'aria-invalid:border-danger',
 );
 const GENERIC_ERROR = 'Не удалось отправить заявку — попробуйте ещё раз';
@@ -202,6 +203,7 @@ export function VinForm(props: VinFormProps) {
             autoCapitalize="characters"
             spellCheck={false}
             defaultValue={initial.vin}
+            placeholder="VIN из СТС"
             aria-invalid={invalid('vin')}
             aria-describedby="vin-vin-hint vin-vin-error"
             className={inputClass({
@@ -212,7 +214,7 @@ export function VinForm(props: VinFormProps) {
             })}
           />
           <p id="vin-vin-hint" className={HINT}>
-            17 символов, есть в СТС. Букв O, I и Q в VIN не бывает.
+            17 символов, например XTA21099012345678. Букв O, I и Q в VIN не бывает.
           </p>
           <FieldError id="vin-vin-error" message={err.vin} />
           {vinHelp}
@@ -282,7 +284,7 @@ export function VinForm(props: VinFormProps) {
             autoComplete="tel"
             required
             maxLength={24}
-            placeholder="+7 900 000-00-00"
+            placeholder="Ваш мобильный"
             aria-invalid={invalid('phone')}
             aria-describedby="vin-phone-error"
             className={inputClass({ className: 'tabular-nums' })}
@@ -290,53 +292,22 @@ export function VinForm(props: VinFormProps) {
           <FieldError id="vin-phone-error" message={err.phone} />
         </div>
         <fieldset className="min-w-0" aria-describedby="vin-channel-error">
-          <legend className={LABEL}>Куда прислать ответ</legend>
+          <legend className={LABEL}>Мессенджер</legend>
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
-            {CHANNELS.map((channel) => {
-              const disabled =
-                channel.value === 'max' || (channel.value === 'telegram' && !props.telegram);
-              return (
-                <label
-                  key={channel.value}
-                  className={cn(
-                    'relative flex min-h-24 min-w-0 flex-col items-center justify-center gap-1.5 rounded-control border-[1.5px] px-2 py-3 text-center font-semibold transition-colors',
-                    disabled
-                      ? 'cursor-not-allowed border-line bg-surface text-muted'
-                      : 'cursor-pointer border-line-strong bg-bg text-ink hover:border-muted has-[:checked]:border-brand has-[:checked]:bg-brand-soft',
-                    'has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-brand',
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="channel"
-                    value={channel.value}
-                    disabled={disabled}
-                    required
-                    defaultChecked={
-                      props.telegram ? channel.value === 'telegram' : channel.value === 'sms'
-                    }
-                    className="peer sr-only"
-                  />
-                  <channel.Icon
-                    size={28}
-                    className={disabled ? 'text-faint' : 'text-brand'}
-                    strokeWidth={1.75}
-                  />
-                  <span className="max-w-full text-base leading-tight wrap-anywhere">
-                    {channel.label}
-                  </span>
-                  {disabled ? (
-                    <span className="text-caption font-medium text-muted">скоро</span>
-                  ) : null}
-                  <span
-                    aria-hidden
-                    className="absolute top-2 right-2 hidden size-6 place-items-center rounded-full bg-brand text-on-brand peer-checked:grid"
-                  >
-                    <IconCheck size={16} strokeWidth={2.5} />
-                  </span>
-                </label>
-              );
-            })}
+            {CHANNELS.map((channel) => (
+              <ChoiceCard
+                key={channel.value}
+                name="channel"
+                value={channel.value}
+                label={channel.label}
+                Icon={channel.Icon}
+                soon={channel.value === 'max' || (channel.value === 'telegram' && !props.telegram)}
+                required
+                defaultChecked={
+                  props.telegram ? channel.value === 'telegram' : channel.value === 'sms'
+                }
+              />
+            ))}
           </div>
           <FieldError id="vin-channel-error" message={err.channel} />
         </fieldset>
@@ -352,7 +323,7 @@ export function VinForm(props: VinFormProps) {
               required
               aria-invalid={invalid('consent')}
               aria-describedby="vin-consent-error"
-              className="peer size-6 cursor-pointer appearance-none rounded-md border-2 border-line-strong bg-bg transition-colors hover:border-muted checked:border-brand checked:bg-brand aria-invalid:border-danger"
+              className="peer size-6 cursor-pointer appearance-none rounded-md border-2 border-muted bg-bg transition-colors hover:border-muted checked:border-brand checked:bg-brand aria-invalid:border-danger"
             />
             <IconCheck
               size={18}

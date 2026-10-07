@@ -4,7 +4,11 @@ import { OrderDetails } from '@/components/order/OrderDetails';
 import { pickupRoutes } from '@/components/PickupRouteLinks';
 import { FullBleed } from '@/components/ui/Section';
 import { getBrand } from '@/server/brand';
-import { buildDemoOrderServices, buildDemoOrderView } from '@/server/demo/order-fixture';
+import {
+  buildDemoOrderServices,
+  buildDemoOrderView,
+  claimsByStatus,
+} from '@/server/demo/order-fixture';
 import { serverEnv } from '@/server/env';
 import { planInstallForDate } from '@/server/install';
 import { isDemoMode } from '@/server/mode';
@@ -45,7 +49,7 @@ export default async function DemoOrderPage({ searchParams }: { searchParams?: S
   });
   const brand = getBrand();
   const screen = parseDemoScreen((await searchParams) ?? {});
-  const services = buildDemoOrderServices({
+  const all = buildDemoOrderServices({
     view,
     screen,
     hours: brand.pickup.hours,
@@ -55,6 +59,8 @@ export default async function DemoOrderPage({ searchParams }: { searchParams?: S
       (brand.pickup.name ? { name: brand.pickup.name, requisites: null } : null),
     now,
   });
+  // «Претензия» only when the status allows one, as on a real order page.
+  const services = claimsByStatus(all, { view, screen, now });
   let flash: OrderFlash | null = null;
   if (screen !== null) {
     const code = DEMO_FLASH[screen];
@@ -73,7 +79,6 @@ export default async function DemoOrderPage({ searchParams }: { searchParams?: S
         flash={flash}
         pickup={brand.pickup}
         routes={pickupRoutes(brand)}
-        pickupLogo={brand.pickupLogo?.color ?? null}
         contactPhone={brand.contactPhone}
         cartReminder={null}
         demo

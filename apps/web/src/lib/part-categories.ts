@@ -27,7 +27,9 @@ export const PART_CATEGORIES: readonly PartCategoryTile[] = [
     need: 'Фильтры для ТО: масляный, воздушный, салонный',
     icon: 'filter',
   },
-  { key: 'brakes', title: 'Тормоза', need: 'Тормозные колодки и диски', icon: 'disc' },
+  // The pad glyph, as on the pads' offer cards: three round glyphs (disc, hub, clutch) side by
+  // side could not be told apart.
+  { key: 'brakes', title: 'Тормоза', need: 'Тормозные колодки и диски', icon: 'pads' },
   {
     key: 'suspension',
     title: 'Подвеска',

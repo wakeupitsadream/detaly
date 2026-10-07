@@ -5,15 +5,17 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { Footer } from '@/components/Footer';
 import { headerSearchTarget } from '@/components/HeaderSearch';
-import { CATEGORY_LABEL } from '@/components/icons';
+import { CATEGORY_LABEL, IconMax, IconTelegram } from '@/components/icons';
 import { installDateText } from '@/components/install/InstallLine';
 import { PageBand } from '@/components/page/PageBand';
 import { SiteHeader } from '@/components/SiteHeader';
 import { InfoCard } from '@/components/ui/Card';
+import { ChoiceCard } from '@/components/ui/ChoiceCard';
 import { CtaCard } from '@/components/ui/CtaCard';
 import { FeatureRow } from '@/components/ui/FeatureRow';
 import { SectionHeading } from '@/components/ui/Section';
 import { Tile } from '@/components/ui/Tile';
+import { Wordmark, wordmarkInitial } from '@/components/ui/Wordmark';
 import { PART_CATEGORIES, partCategoryHref } from '@/lib/part-categories';
 import { vinRequestHref } from '@/lib/vin-link';
 import { brandFromEnv, type Brand } from '@/server/brand';
@@ -171,10 +173,11 @@ describe('header search', () => {
 });
 
 describe('footer v2', () => {
-  it('phone, pickup point with the partner logo, messengers and requisites', () => {
+  it('phone, pickup point, messengers and requisites', () => {
     const html = renderToStaticMarkup(createElement(Footer, { brand: BRAND, year: 2026 }));
     expect(html).toContain('href="tel:+73532111111"');
-    expect(html).toContain('src="/images/partner/test-color.webp"');
+    // The partner's full logo stays on the pickup card only: a pin marks the point here.
+    expect(html).not.toContain('src="/images/partner/test-color.webp"');
     expect(text(html)).toContain('Оренбург, ул. Тестовая, 1');
     expect(html).toContain('aria-label="Написать в Telegram"');
     expect(html).toContain('href="https://t.me/test_point"');
@@ -306,5 +309,50 @@ describe('partner logo env', () => {
     ]) {
       expect(() => parseEnv({ ...base, PICKUP_LOGO_SRC: bad }), bad).toThrow(/PICKUP_LOGO_SRC/);
     }
+  });
+});
+
+describe('round 2 shared pieces', () => {
+  it('Wordmark: the first letter of BRAND_NAME in a token tile and the name, linking home', () => {
+    expect(wordmarkInitial(' тестовый бренд')).toBe('Т');
+    expect(wordmarkInitial('')).toBe('');
+    const html = renderToStaticMarkup(
+      createElement(Wordmark, { name: 'Тестовый бренд', tone: 'onBrand' }),
+    );
+    expect(html).toContain('href="/"');
+    expect(html).toContain('bg-on-brand text-brand');
+    expect(text(html)).toBe('Т Тестовый бренд');
+    const light = renderToStaticMarkup(
+      createElement(Wordmark, { name: 'Тестовый бренд', tone: 'onLight' }),
+    );
+    expect(light).toContain('bg-brand text-on-brand');
+  });
+
+  it('ChoiceCard: «скоро» is disabled and never checked; a live card has a 3:1 frame', () => {
+    const soon = renderToStaticMarkup(
+      createElement(ChoiceCard, {
+        name: 'channel',
+        value: 'max',
+        label: 'MAX',
+        Icon: IconMax,
+        soon: true,
+        defaultChecked: true,
+      }),
+    );
+    expect(soon).toMatch(/<input[^>]*disabled=""/);
+    expect(soon).not.toMatch(/<input[^>]*checked=""/);
+    expect(text(soon)).toBe('MAX скоро');
+    const live = renderToStaticMarkup(
+      createElement(ChoiceCard, {
+        name: 'channel',
+        value: 'telegram',
+        label: 'Telegram',
+        Icon: IconTelegram,
+        defaultChecked: true,
+      }),
+    );
+    expect(live).toMatch(/<input[^>]*checked=""/);
+    expect(live).toContain('border-faint');
+    expect(live).not.toContain('border-line-strong');
   });
 });

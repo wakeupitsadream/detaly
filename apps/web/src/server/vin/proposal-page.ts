@@ -70,14 +70,19 @@ export interface ProposalPageDeps {
   now?: Date;
 }
 
-const EXPIRES = new Intl.DateTimeFormat('ru-RU', {
+const EXPIRES_DAY = new Intl.DateTimeFormat('ru-RU', {
   timeZone: CLIENT_TIME_ZONE,
   day: 'numeric',
   month: 'long',
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
 });
+
+/**
+ * «14 октября» for «Цены действуют до …»: the day the proposal ends, no clock time (a machine-like
+ * «04:44» scared buyers). «До» the day of the end never promises more than the proposal holds.
+ */
+export function expiresTextOf(at: Date): string {
+  return EXPIRES_DAY.format(at);
+}
 
 function lineView(line: RepricedLine, settings: CartSettings): ProposalLineView {
   return {
@@ -116,7 +121,7 @@ export function buildProposalPageView(
       settings,
     ),
     expired: source.expired,
-    expiresText: EXPIRES.format(source.expiresAt),
+    expiresText: expiresTextOf(source.expiresAt),
     stale: repriced.some((line) => line.stale),
     changed: changes > 0,
     unavailable: repriced.length - live.length,

@@ -256,9 +256,8 @@ test.describe('the sample order /o/demo', () => {
     const response = await page.goto(`${base}/o/demo`);
     expect(response?.status()).toBe(200);
     await expect(page.getByTestId('order-install-booking')).toBeVisible();
-    await expect(page.getByTestId('claim-form')).toBeHidden();
-    await page.getByTestId('claim-open').click();
-    await expect(page.getByTestId('claim-form')).toBeVisible();
+    // The sample is still at the supplier: no claim is possible yet, so no «Претензия» card.
+    await expect(page.getByTestId('order-claims')).toHaveCount(0);
     // The sample has no packaging photo file: the block is not drawn.
     await expect(page.getByTestId('order-photos')).toHaveCount(0);
     await expectNoHorizontalScroll(page, '/o/demo');
@@ -268,10 +267,8 @@ test.describe('the sample order /o/demo', () => {
     await page.getByTestId('install-submit').click();
     await expect(page).toHaveURL(/\/o\/demo\?demo=install/);
     await expect(page.getByTestId('install-booking')).toBeVisible();
-    await page.getByTestId('claim-open').click();
-    await page.getByTestId('claim-kind-defect').check();
-    await page.getByTestId('claim-submit').click();
-    await expect(page).toHaveURL(/\/o\/demo\?demo=claim/);
+    // A claim posted from elsewhere is answered with the accepted-claim screen.
+    await page.goto(`${base}/o/demo?demo=claim`);
     await expect(page.getByTestId('claim-card')).toBeVisible();
     await expectNoHorizontalScroll(page, '/o/demo?demo=claim');
     await screenshot(page, project, 'order-1c-demo-claim');

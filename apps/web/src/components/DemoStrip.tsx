@@ -39,7 +39,7 @@ export function DemoStrip({ demoMode }: { demoMode: boolean }) {
   const text = message(pathname, demoMode);
   return (
     <div className="bg-wait-soft text-ink" role="note" data-testid="demo-strip">
-      <Container className="flex h-10 min-w-0 items-center gap-3 text-caption">
+      <Container className="flex h-11 min-w-0 items-center gap-3 text-caption">
         <span className="inline-flex h-6 shrink-0 items-center rounded-full bg-wait px-2.5 font-bold text-on-brand">
           Демо
         </span>
@@ -51,7 +51,9 @@ export function DemoStrip({ demoMode }: { demoMode: boolean }) {
             <a
               key={example.q}
               href={`/search?q=${example.q}`}
-              className="-my-1 inline-flex h-11 items-center font-bold tabular-nums underline decoration-1 underline-offset-4 hover:decoration-2"
+              // The ring goes inside: the strip is the link's height, the window edge and the
+              // brand plate would cover a ring drawn outside.
+              className="-mx-1.5 inline-flex h-11 items-center rounded-md px-1.5 font-bold tabular-nums underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-offset-[-3px]"
             >
               {example.article}
             </a>

@@ -100,7 +100,7 @@ async function DemoCheckout() {
               blockedMessage={null}
               contactPhone={brand.contactPhone}
               demo={{ href: '/o/demo' }}
-              receive={<PickupPoint pickup={brand.pickup} logoSrc={brand.pickupLogo?.color} />}
+              receive={<PickupPoint pickup={brand.pickup} />}
               payment={
                 <PaymentSchemeNote
                   scheme={decision.scheme}
@@ -246,7 +246,7 @@ export default async function CheckoutPage({
             marketingAvailable={data.marketingAvailable}
             blockedMessage={data.minimums.ok ? null : data.minimums.message}
             contactPhone={brand.contactPhone}
-            receive={<PickupPoint pickup={brand.pickup} logoSrc={brand.pickupLogo?.color} />}
+            receive={<PickupPoint pickup={brand.pickup} />}
             payment={
               <PaymentSchemeNote scheme={data.decision.scheme} sentences={data.explanation} />
             }

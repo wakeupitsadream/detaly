@@ -45,7 +45,7 @@ export function InstallBookingBlock({
   return (
     <Card
       title="Запись на установку"
-      icon={<IconWrench size={26} />}
+      icon={<IconWrench size={24} />}
       testId="order-install-booking"
       id="install"
     >

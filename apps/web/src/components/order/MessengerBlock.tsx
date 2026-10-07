@@ -130,7 +130,7 @@ export function MessengerBlock({
   return (
     <Card
       title="Статусы заказа"
-      icon={<IconMessage size={26} />}
+      icon={<IconMessage size={24} />}
       testId="order-messengers"
       id="notify"
     >

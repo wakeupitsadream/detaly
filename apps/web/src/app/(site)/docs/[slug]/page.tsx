@@ -66,7 +66,7 @@ function Questions({ phone }: { phone: string | null }) {
       {phone ? (
         <a
           href={telHref(phone)}
-          className="flex items-center gap-2 text-[1.25rem] font-extrabold whitespace-nowrap tabular-nums hover:text-brand"
+          className="inline-flex min-h-11 items-center gap-2 text-[1.25rem] font-extrabold whitespace-nowrap tabular-nums hover:text-brand"
         >
           <IconPhone size={24} className="shrink-0 text-brand" />
           {phone}

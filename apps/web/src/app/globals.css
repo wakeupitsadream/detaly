@@ -137,16 +137,23 @@
   .site-header form :focus-visible {
     outline-color: var(--color-brand);
   }
+  /* Links of the plate sit in tight rows next to the sticky search and the demo strip, which
+     cover a ring drawn outside them: the ring goes inside the target instead. The search form
+     keeps its own ring. */
+  .site-header a:not(form a):focus-visible {
+    outline-offset: -3px;
+    border-radius: 10px;
+  }
 
   /* A floating bottom bar (MobileCartBar, CartCheckoutBar, the proposal bar; below md only):
      a focused element is scrolled clear of it, and the footer ends above it, so «©» and the
      last links are never under the bar. */
   @media (width < 48rem) {
     html:has(.mobile-cart-bar) {
-      scroll-padding-bottom: 6.5rem;
+      scroll-padding-bottom: 5.5rem;
     }
     html:has(.mobile-cart-bar) .site-footer {
-      padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+      padding-bottom: calc(5rem + env(safe-area-inset-bottom));
     }
   }
 
@@ -260,13 +267,20 @@
 /* ------------------------------------------------------------------------------------------ */
 
 @layer components {
-  /* Horizontally scrolling chip row on phones, fading out at the right edge. */
+  /* Horizontally scrolling chip row on phones, fading out at the right edge. The 6 px of
+     padding around the chips (taken back by negative margins) keep the 3 + 2 px focus ring
+     inside the scroll box, and the 2rem at the end lets the last chip scroll clear of the
+     fade. */
   .chip-row {
     display: flex;
     gap: 0.5rem;
     overflow-x: auto;
     scrollbar-width: none;
-    padding-bottom: 2px;
+    padding-block: 6px;
+    margin-block: -6px;
+    padding-inline: 6px 2rem;
+    margin-inline-start: -6px;
+    scroll-padding-inline: 1rem;
     mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
   }
   .chip-row::-webkit-scrollbar {
@@ -276,6 +290,8 @@
     .chip-row {
       flex-wrap: wrap;
       overflow: visible;
+      padding: 0;
+      margin: 0;
       mask-image: none;
     }
   }

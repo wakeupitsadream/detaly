@@ -5,7 +5,16 @@
  * /api/orders/<token>/actions (ClientActionForm).
  */
 import { formatRub } from '@detaly/domain';
-import { IconAlert, IconCard, IconCheck, IconInfo, IconWallet } from '@/components/icons';
+import {
+  IconAlert,
+  IconBox,
+  IconCard,
+  IconCheck,
+  IconInfo,
+  IconReceipt,
+  IconReturn,
+  IconWallet,
+} from '@/components/icons';
 import { buttonClass } from '@/components/ui/Button';
 import { cn } from '@/components/ui/cn';
 import type { OrderView } from '@/server/orders/order-view';
@@ -96,7 +105,7 @@ export function PaymentBlock({
   if (scheme === 'prepay') {
     const waiting = status === 'awaiting_payment';
     return (
-      <Card title="Оплата" testId="order-payment">
+      <Card title="Оплата" icon={<IconReceipt size={24} />} testId="order-payment">
         <SchemeLine prepay>Предоплата 100% онлайн</SchemeLine>
         {check?.kind === 'checking' ? (
           <>
@@ -150,7 +159,7 @@ export function PaymentBlock({
   // Nothing to decide here: the head of the order says how it is paid already.
   if (!(status === 'awaiting_confirmation' || actions.prepayNow)) return null;
   return (
-    <Card title="Оплата" testId="order-payment">
+    <Card title="Оплата" icon={<IconReceipt size={24} />} testId="order-payment">
       <SchemeLine prepay={false}>Оплата при получении картой или по QR</SchemeLine>
       {status === 'awaiting_confirmation' && actions.confirm ? (
         <div className="mt-3 space-y-3">
@@ -223,7 +232,7 @@ export function ApprovalBlock({
   return (
     <Card
       title="Нужно ваше решение"
-      icon={<IconAlert size={26} />}
+      icon={<IconAlert size={24} />}
       testId="order-approval"
       id="decision"
       attention
@@ -307,7 +316,7 @@ export function PartialArrivalBlock({
   const cancellable = waiting.filter((item) => item.canCancel);
   const until = view.partialArrival.waitUntilText;
   return (
-    <Card title="Часть заказа уже приехала" testId="order-partial">
+    <Card title="Часть заказа уже приехала" icon={<IconBox size={24} />} testId="order-partial">
       <p className="text-body font-bold" data-testid="order-wait-until">
         {until ? `Жду до ${until}` : 'Жду остальное'}
       </p>
@@ -384,7 +393,7 @@ export function RefundBlock({ view }: { view: OrderView }) {
   const refund = view.refund;
   if (refund === null || (refund.pendingKop === 0 && refund.sentKop === 0)) return null;
   return (
-    <Card title="Возврат денег" testId="order-refund">
+    <Card title="Возврат денег" icon={<IconReturn size={24} />} testId="order-refund">
       {refund.pendingKop > 0 ? (
         <p data-testid="refund-pending">
           Возвращаем <span className="font-semibold">{formatRub(refund.pendingKop)}</span>.

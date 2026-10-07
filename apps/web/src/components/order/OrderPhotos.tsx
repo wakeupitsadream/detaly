@@ -18,7 +18,7 @@ export function OrderPhotos({ photos }: { photos: OrderPhotoItem[] }) {
   const shown = photos.filter((photo) => photo.url);
   if (shown.length === 0) return null;
   return (
-    <Card title="Фото упаковки" icon={<IconBox size={26} />} testId="order-photos">
+    <Card title="Фото упаковки" icon={<IconBox size={24} />} testId="order-photos">
       <ul className="grid grid-cols-3 gap-2">
         {shown.map((photo, index) => (
           <li key={photo.id} className="min-w-0">

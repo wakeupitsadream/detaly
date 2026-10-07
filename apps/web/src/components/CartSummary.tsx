@@ -149,10 +149,10 @@ export function CartCheckoutBar({
 }) {
   return (
     <div
-      className="mobile-cart-bar fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:hidden"
+      className="mobile-cart-bar fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:hidden"
       data-testid="cart-checkout-bar"
     >
-      <div className="flex h-17 items-center justify-between gap-3 rounded-tile border border-line bg-bg pr-2.5 pl-4 text-ink shadow-float">
+      <div className="flex h-15 items-center justify-between gap-3 rounded-tile border border-line bg-bg pr-1.5 pl-4 text-ink shadow-float">
         <p className="min-w-0">
           <span className="block text-[1.25rem] leading-tight font-extrabold whitespace-nowrap tabular-nums">
             {totalText}

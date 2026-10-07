@@ -64,7 +64,7 @@ const OPTION =
 
 /** A 22 px radio: a brand ring when checked. */
 const RADIO =
-  'mt-0.5 size-[22px] shrink-0 cursor-pointer appearance-none rounded-full border-2 border-line-strong bg-bg transition-[border-width,border-color] checked:border-[7px] checked:border-brand focus-visible:outline-none';
+  'mt-0.5 size-[22px] shrink-0 cursor-pointer appearance-none rounded-full border-2 border-muted bg-bg transition-[border-width,border-color] checked:border-[7px] checked:border-brand focus-visible:outline-none';
 
 const LABEL = 'mb-2 block text-[0.9375rem] leading-snug font-semibold';
 

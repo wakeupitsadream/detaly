@@ -134,7 +134,7 @@ export function ClaimBlock({
   return (
     <Card
       title="Претензия или возврат"
-      icon={<IconReturn size={26} />}
+      icon={<IconReturn size={24} />}
       testId="order-claims"
       id="claim"
     >

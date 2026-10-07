@@ -4,6 +4,7 @@ import { HeaderNavChips, HeaderNavLinks, HeaderTail } from './HeaderNav';
 import { HeaderSearch, HomeSearchHint } from './HeaderSearch';
 import { IconCart, IconChevron, IconClock, IconPhone, IconPin } from './icons';
 import { Container } from './ui/Container';
+import { Wordmark } from './ui/Wordmark';
 import { cn } from './ui/cn';
 
 export { cartCountLabel };
@@ -34,20 +35,6 @@ export interface SiteHeaderProps {
   pickupName?: string | null;
   /** PICKUP_EMBLEM_WHITE_SRC: the partner's white emblem; a pin without it. */
   emblemSrc?: string | null;
-}
-
-function Wordmark({ name, className }: { name: string; className?: string }) {
-  return (
-    <Link
-      href="/"
-      className={cn(
-        'min-h-11 min-w-0 items-center truncate text-[1.375rem] leading-none font-extrabold tracking-[-0.02em] text-on-brand lg:text-[1.625rem]',
-        className,
-      )}
-    >
-      {name}
-    </Link>
-  );
 }
 
 function CartCount({ count }: { count: number }) {
@@ -98,7 +85,7 @@ function PickupLine({
       </span>
       <Link
         href="/about#pickup"
-        className="ml-auto inline-flex min-h-11 shrink-0 items-center text-sm font-semibold whitespace-nowrap underline-offset-4 hover:underline md:ml-4 md:text-[0.9375rem]"
+        className="ml-auto -mr-2 inline-flex min-h-11 shrink-0 items-center px-2 text-sm font-semibold whitespace-nowrap underline-offset-4 hover:underline md:ml-2 md:text-[0.9375rem]"
       >
         Как добраться
         <IconChevron size={16} />
@@ -135,7 +122,7 @@ export function SiteHeader({
         {/* Phones. */}
         <Container className="md:hidden">
           <div className="flex h-14 min-w-0 items-center gap-1">
-            <Wordmark name={brandName} className="mr-auto inline-flex" />
+            <Wordmark name={brandName} tone="onBrand" className="mr-auto inline-flex" />
             {callHref ? (
               <a
                 href={callHref}
@@ -179,7 +166,7 @@ export function SiteHeader({
             {callHref ? (
               <a
                 href={callHref}
-                className="inline-flex min-h-11 items-center gap-1.5 font-bold tabular-nums underline-offset-4 hover:underline"
+                className="-mx-2 inline-flex min-h-11 items-center gap-1.5 px-2 font-bold tabular-nums underline-offset-4 hover:underline"
               >
                 <IconPhone size={18} />
                 {phone}
@@ -194,7 +181,7 @@ export function SiteHeader({
         data-testid="header-search-bar"
       >
         <Container className="flex items-center gap-6 pt-2 pb-3 md:py-3">
-          <Wordmark name={brandName} className="hidden shrink-0 md:inline-flex" />
+          <Wordmark name={brandName} tone="onBrand" className="hidden shrink-0 md:inline-flex" />
           <HeaderSearch className="flex-1" />
           <Link
             href="/cart"

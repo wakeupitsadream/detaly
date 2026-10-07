@@ -164,7 +164,7 @@ test('mixed cart: prepayment order from search to the order page', async ({ page
   await expect(page.getByTestId('order-items').getByTestId('order-item')).toHaveCount(2);
   await expect(page.getByTestId('order-total')).toHaveText(totalText);
   await expect(page.getByTestId('order-timeline')).toContainText('Заказ оформлен');
-  await expect(page.getByTestId('messenger-max')).toHaveAttribute('data-selected', 'true');
+  await expect(page.getByTestId('messenger-telegram')).toHaveAttribute('data-selected', 'true');
   await expect(page.getByTestId('cart-reminder')).toHaveCount(0);
   await expect(page.getByTestId('cancel-open')).toBeVisible();
   // The order page never shows the client's phone or name.

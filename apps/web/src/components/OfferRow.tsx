@@ -111,7 +111,7 @@ export function OfferRow({
             <p className="flex min-w-0 items-start gap-2 text-small font-normal">
               <IconCalendar size={20} className="shrink-0 text-brand" />
               <span className="min-w-0">
-                Привезём <span className="font-bold whitespace-nowrap">{offer.promiseText}</span>
+                Получение <span className="font-bold whitespace-nowrap">{offer.promiseText}</span>
               </span>
             </p>
             {install ? <InstallLine plan={install} /> : null}

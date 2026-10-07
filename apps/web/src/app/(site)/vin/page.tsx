@@ -10,7 +10,6 @@ import {
   IconSts,
   IconWrench,
 } from '@/components/icons';
-import { Notice } from '@/components/page/Notice';
 import { PICKUP_ADDRESS_PENDING } from '@/components/PickupCard';
 import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
 import { buttonClass } from '@/components/ui/Button';
@@ -35,6 +34,21 @@ export const dynamic = 'force-dynamic';
 
 const TITLE = 'Подбор по VIN';
 const LEAD = 'Мастер подберёт деталь и пришлёт цены. Бесплатно.';
+
+/**
+ * The lead line: with a make or a category from the home tiles (?car=, ?need=) it names the
+ * choice — «Марка: Kia · Нужно: Фильтры …» — and what is left to do, so the tap never looks
+ * lost on a VIN form.
+ */
+function leadOf(initial: VinFormInitial): string {
+  const chosen = [
+    initial.car ? `Марка: ${initial.car}` : null,
+    initial.need ? `Нужно: ${initial.need}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  return chosen ? `${chosen}. Впишите VIN — мастер подберёт деталь бесплатно.` : LEAD;
+}
 
 /** Steps while there is no online form (phase 0 and a closed gate). */
 const CALL_STEPS: readonly VinStep[] = [
@@ -106,7 +120,7 @@ function PhoneNumber({ phone }: { phone: string | null }) {
   if (!phone) return null;
   return (
     <a
-      className="block text-h2 whitespace-nowrap tabular-nums hover:text-brand"
+      className="inline-flex min-h-11 items-center text-h2 whitespace-nowrap tabular-nums hover:text-brand"
       href={telHref(phone)}
       data-testid="vin-phone"
     >
@@ -188,7 +202,7 @@ export default async function VinPage({ searchParams }: { searchParams: SearchPa
     const telegram = telegramWithText(brand.pickupLinks?.telegram ?? null);
     return (
       <InnerPage>
-        <PageBand tone="light" title={TITLE} lead={LEAD} />
+        <PageBand tone="light" title={TITLE} lead={leadOf(initial)} />
         <PageBody className="space-y-12 md:space-y-16">
           <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_26rem] lg:gap-8">
             <InfoCard
@@ -242,15 +256,12 @@ export default async function VinPage({ searchParams }: { searchParams: SearchPa
   const env = serverEnv();
   return (
     <InnerPage>
-      <PageBand tone="light" title={TITLE} lead={LEAD} />
+      <PageBand tone="light" title={TITLE} lead={leadOf(initial)} />
       <PageBody className="space-y-12 md:space-y-16">
         <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_26rem] lg:gap-10">
           <div className="min-w-0 space-y-4">
-            {demo ? (
-              <Notice tone="info" data-testid="vin-demo">
-                Демо: заявка не уходит мастеру, покажем пример ответа.
-              </Notice>
-            ) : null}
+            {/* The demo is marked by the DemoDataBanner strip and the line under the submit
+                button: no third note here. */}
             <h2 className="sr-only">Заявка на подбор</h2>
             <VinForm
               consentPdVersionId={gate.docs.consentPd.id}

@@ -37,7 +37,9 @@ export default async function SiteLayout({ children }: { children: ReactNode }) 
     <div className="flex min-h-screen min-w-0 flex-col">
       <a
         href="#main"
-        className="sr-only z-50 rounded-control bg-bg px-4 py-3 font-semibold text-ink shadow-float focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+        // Off screen until focused, then a full 48 px button (focus:not-sr-only zeroed the
+        // padding). No slide: reduced motion or not, it just appears.
+        className="fixed top-2 left-2 z-50 inline-flex min-h-12 -translate-y-[200%] items-center rounded-control bg-bg px-4 py-3 font-semibold text-ink shadow-float focus:translate-y-0"
       >
         К содержимому
       </a>

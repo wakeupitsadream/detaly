@@ -19,10 +19,21 @@ function telHref(phone: string): string {
   return `tel:${phone.replace(/[^\d+]/g, '')}`;
 }
 
-function Row({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
+function Row({
+  icon,
+  label,
+  center = false,
+  children,
+}: {
+  icon: ReactNode;
+  label: string;
+  /** Centre the icon on a 44 px link (the phone) instead of the first text line. */
+  center?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <div className="flex min-w-0 items-start gap-3">
-      <dt className="mt-0.5 shrink-0 text-brand">
+    <div className={cn('flex min-w-0 gap-3', center ? 'items-center' : 'items-start')}>
+      <dt className={cn('shrink-0 text-brand', !center && 'mt-0.5')}>
         <span aria-hidden>{icon}</span>
         <span className="sr-only">{label}</span>
       </dt>
@@ -39,7 +50,8 @@ function Row({ icon, label, children }: { icon: ReactNode; label: string; childr
  *
  * `wide` (home, /about, /returns): the logo on a white plate beside the lines from md, above
  * them on phones; without a logo there is no empty plate, the point is named in text instead.
- * `stack` (the order page's side column): the logo small at the title, the name in the lines.
+ * `stack` (the order page's side column): an h3 title without the marker, no logo (its
+ * lettering is unreadable that small), the name in the lines.
  * `children` go right under the title (the pickup code of an order); `extra` after the lines.
  */
 export function PickupCard({
@@ -103,7 +115,7 @@ export function PickupCard({
             </Row>
           ) : null}
           {phone ? (
-            <Row icon={<IconPhone size={24} />} label="Телефон">
+            <Row icon={<IconPhone size={24} />} label="Телефон" center>
               <a
                 href={telHref(phone)}
                 className="inline-flex min-h-11 items-center font-bold whitespace-nowrap tabular-nums underline decoration-line-strong underline-offset-4 hover:decoration-brand"
@@ -124,29 +136,28 @@ export function PickupCard({
       aria-labelledby={titleId}
       data-testid={testId}
       className={cn(
-        'min-w-0 scroll-mt-28 rounded-panel bg-surface text-ink',
-        wide ? 'p-6 md:p-8' : 'p-5 md:p-6',
+        'min-w-0 scroll-mt-28 text-ink',
+        // The page-wide card is a grey panel; in the order's column it is a white card like
+        // its neighbours (the same frame, padding and h3 heading).
+        wide
+          ? 'rounded-panel bg-surface p-6 md:p-8'
+          : 'rounded-tile border border-line bg-bg p-4 md:p-6',
         className,
       )}
     >
-      <MarkerBar className="mb-4 md:mb-5" />
-      <div className="flex min-w-0 items-center justify-between gap-4">
+      {/* The marker and the large title only on the page-wide card: in the order's side
+          column the card is one of several and takes the same h3 heading as its neighbours. */}
+      {wide ? <MarkerBar className="mb-4 md:mb-5" /> : null}
+      {wide ? (
         <h2 id={titleId} className="min-w-0 text-h2">
           {title}
         </h2>
-        {logo && !wide ? (
-          // A plain img: the partner's small WebP from public/, no optimizer needed.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={logo}
-            alt={logoAlt}
-            width={72}
-            height={63}
-            decoding="async"
-            className="h-14 w-16 shrink-0 object-contain"
-          />
-        ) : null}
-      </div>
+      ) : (
+        <h2 id={titleId} className="flex min-w-0 items-center gap-3 text-h3">
+          <IconPin size={24} className="shrink-0 text-brand" />
+          <span className="min-w-0">{title}</span>
+        </h2>
+      )}
       {children ? <div className="mt-4 min-w-0">{children}</div> : null}
       {logo && wide ? (
         <div className="mt-5 grid min-w-0 gap-6 md:grid-cols-[minmax(0,1fr)_15rem] md:items-center md:gap-10 lg:grid-cols-[minmax(0,1fr)_18rem]">

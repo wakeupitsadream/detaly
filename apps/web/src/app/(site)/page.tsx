@@ -27,11 +27,7 @@ export default function HomePage() {
         <CategoryGrid />
       </Section>
       <Container className="grid gap-12 pb-12 lg:gap-[4.5rem] lg:pb-[4.5rem]">
-        <WhyUs
-          brandName={brand.name}
-          pickupName={brand.pickup.name}
-          emblemSrc={brand.pickupLogo?.emblemWhite ?? null}
-        />
+        <WhyUs brandName={brand.name} pickupName={brand.pickup.name} />
         <PickupCard brand={brand} />
         <CtaCard
           title="Не знаете артикул?"

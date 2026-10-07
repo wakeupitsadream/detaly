@@ -11,6 +11,7 @@ import { createDemoSupplier } from '@/server/demo/supplier';
 import {
   buildDemoOrderServices,
   buildDemoOrderView,
+  claimsByStatus,
   DEMO_ORDER_NUMBER,
   DEMO_ORDER_TOKEN,
   type DemoScreen,
@@ -187,6 +188,43 @@ describe('demo order: phase 1C blocks (decision С21)', () => {
     expect(claim.html).toContain('data-testid="claim-card"');
     expect(claim.html).toContain('Принесите деталь в упаковке');
     expect(claim.html).not.toContain('data-testid="claim-form"');
+  });
+
+  it('shows «Претензия» only when the status allows one (claimKindsAvailable)', async () => {
+    const view = await build();
+    const input = { view, screen: null, hours: HOURS, partner: null, now: NOW } as const;
+    const page = claimsByStatus(buildDemoOrderServices(input), { view, screen: null, now: NOW });
+    // At the supplier: no claim yet, so no card next to the items.
+    expect(page.claims).toBeNull();
+    expect(page.install).not.toBeNull();
+    const html = renderToStaticMarkup(
+      createElement(OrderDetails, {
+        view,
+        services: page,
+        pickup,
+        contactPhone: null,
+        cartReminder: null,
+        nowMs: NOW.getTime(),
+        demo: true,
+      }),
+    );
+    expect(html).not.toContain('data-testid="order-claims"');
+    // The answer to a claim posted from elsewhere keeps its accepted claim.
+    const claimInput = { ...input, screen: 'claim' as const };
+    const claimPage = claimsByStatus(buildDemoOrderServices(claimInput), {
+      view,
+      screen: 'claim',
+      now: NOW,
+    });
+    expect(claimPage.claims?.claims).toHaveLength(1);
+    // A paid order past its date may claim a delay: the same rule as a real order page.
+    const overdue = { ...view, moneyHeld: true, promisedDate: '2026-09-30' as IsoDate };
+    const late = claimsByStatus(buildDemoOrderServices(input), {
+      view: overdue,
+      screen: null,
+      now: NOW,
+    });
+    expect(late.claims).not.toBeNull();
   });
 
   it('is pure: the same input gives the same blocks', async () => {

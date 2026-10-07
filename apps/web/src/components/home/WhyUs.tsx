@@ -21,7 +21,7 @@ const ICON = { size: 40, strokeWidth: 1.5, className: 'lg:size-12' } as const;
 /** No-break space: «по VIN», «при получении», «в Сервис56» never part at the line end. */
 const NB = '\u00a0';
 
-function advantages(pickupName: string | null, emblemSrc: string | null): Advantage[] {
+function advantages(pickupName: string | null): Advantage[] {
   return [
     // The condition (only for parts in Orenburg) is on every stock badge; the tile stays short.
     { key: 'cod', icon: <IconWallet {...ICON} />, title: `Оплата при${NB}получении` },
@@ -29,22 +29,10 @@ function advantages(pickupName: string | null, emblemSrc: string | null): Advant
     { key: 'vin', icon: <IconSts {...ICON} />, title: `Подбор по${NB}VIN бесплатно` },
     {
       key: 'install',
-      icon: emblemSrc ? (
-        // A plain img: the partner's white emblem, a small WebP from public/.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={emblemSrc}
-          alt=""
-          width={240}
-          height={146}
-          loading="lazy"
-          decoding="async"
-          className="size-10 object-contain lg:size-12"
-        />
-      ) : (
-        <IconWrench {...ICON} />
-      ),
-      title: pickupName ? `Установка в${NB}${pickupName}` : 'Установка в автосервисе',
+      // A wrench like the other line glyphs (installation is a wrench everywhere): the
+      // partner's filled emblem stood out of the row.
+      icon: <IconWrench {...ICON} />,
+      title: pickupName ? `Установка в${NB}${pickupName}` : `Установка в${NB}автосервисе`,
     },
     { key: 'return', icon: <IconReturn {...ICON} />, title: 'Возврат 7 дней' },
     { key: 'receipt', icon: <IconReceipt {...ICON} />, title: 'Чек на каждую покупку' },
@@ -60,12 +48,10 @@ function advantages(pickupName: string | null, emblemSrc: string | null): Advant
 export function WhyUs({
   brandName,
   pickupName,
-  emblemSrc,
   className,
 }: {
   brandName: string;
   pickupName: string | null;
-  emblemSrc: string | null;
   className?: string;
 }) {
   return (
@@ -85,7 +71,7 @@ export function WhyUs({
         запчасти от тех, кто их ставит
       </h2>
       <ul className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 md:gap-3">
-        {advantages(pickupName, emblemSrc).map((item) => (
+        {advantages(pickupName).map((item) => (
           <li
             key={item.key}
             data-testid={`home-why-${item.key}`}

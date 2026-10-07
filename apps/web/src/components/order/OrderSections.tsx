@@ -1,7 +1,13 @@
 import { formatRub } from '@detaly/domain';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { IconArrowRight, IconChevronDown, IconClock, IconMessage } from '@/components/icons';
+import {
+  IconArrowRight,
+  IconCart,
+  IconChevronDown,
+  IconClock,
+  IconMessage,
+} from '@/components/icons';
 import { PickupCard } from '@/components/PickupCard';
 import type { PickupRoute } from '@/components/PickupRouteLinks';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
@@ -111,13 +117,13 @@ export function phoneHref(phone: string): string {
 export const PICKUP_ADDRESS_UNKNOWN = 'Адрес пункта выдачи уточните по телефону магазина.';
 
 /**
- * The code the client names at the pickup point: 40 px, extra bold, spaced digits on a white
- * plate (docs/design-v2.md, PickupCode).
+ * The code the client names at the pickup point: 40 px, extra bold, spaced digits on a grey
+ * `surface` plate (docs/design-v2.md, PickupCode).
  */
 export function PickupCodeBlock({ code }: { code: string }) {
   return (
     <section
-      className="min-w-0 rounded-tile border border-line bg-bg px-5 py-4 text-center"
+      className="min-w-0 rounded-tile bg-surface px-5 py-4 text-center"
       data-testid="order-pickup-code"
     >
       <h2 className="text-body font-bold">Код выдачи</h2>
@@ -132,13 +138,13 @@ export function PickupCodeBlock({ code }: { code: string }) {
 /**
  * Where to collect the order (docs/design-v2.md, «Заказ»): the shared PickupCard (the same as on
  * the home page, /about and /returns) titled «Где забрать», with the pickup code under the title
- * when there is one, the partner's mark small at the title.
+ * when there is one. The partner's full logo is left to the page-wide card: at the title's size
+ * its lettering cannot be read.
  */
 export function PickupBlock({
   pickup,
   code = null,
   routes = [],
-  logoSrc = null,
   className,
 }: {
   className?: string;
@@ -146,7 +152,6 @@ export function PickupBlock({
   /** The pickup code (from `ready` on). */
   code?: string | null;
   routes?: readonly PickupRoute[];
-  logoSrc?: string | null;
 }) {
   return (
     <PickupCard
@@ -156,7 +161,6 @@ export function PickupBlock({
       testId="order-pickup"
       pickup={pickup}
       routes={routes}
-      logo={logoSrc}
       fallback={PICKUP_ADDRESS_UNKNOWN}
       className={className}
     >
@@ -231,6 +235,7 @@ export function ItemsBlock({
   return (
     <Card
       title="Состав заказа"
+      icon={<IconCart size={24} />}
       testId="order-items"
       tight
       aside={<span className="text-small text-muted">{items.length} поз.</span>}
@@ -362,7 +367,7 @@ export function MessengerPreview({
     );
   }
   return (
-    <Card title="Уведомления о статусе" testId="order-messengers">
+    <Card title="Уведомления о статусе" icon={<IconMessage size={24} />} testId="order-messengers">
       {body}
     </Card>
   );

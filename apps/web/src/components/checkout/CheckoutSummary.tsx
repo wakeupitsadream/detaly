@@ -11,7 +11,9 @@ import { telHref } from '@/server/brand';
 /**
  * Lines of the order being checked out with client prices only (supplier prices never reach
  * the markup), the total and the date: a white card with a compact list and the total on a
- * grey strip at the bottom.
+ * grey strip at the bottom. The stock badge and the date stand on each line only in a mixed
+ * order; when every line has the same stock and date they are said once (the payment card of
+ * step 3 and «Получение к …» at the total), not repeated line by line.
  */
 export function CheckoutSummary({
   lines,
@@ -25,6 +27,14 @@ export function CheckoutSummary({
   /** «к …» per line id with the eta buffer (page data), never the raw supplier date. */
   linePromises: Readonly<Record<string, string | null>>;
 }) {
+  const first = lines[0];
+  const uniform =
+    first !== undefined &&
+    lines.every(
+      (line) =>
+        line.isLocal === first.isLocal &&
+        (linePromises[line.id] ?? null) === (linePromises[first.id] ?? null),
+    );
   return (
     <section
       className="min-w-0 overflow-hidden rounded-tile border border-line bg-bg"
@@ -62,18 +72,23 @@ export function CheckoutSummary({
                 {line.qty} × {formatRub(line.priceClientKop)}
               </p>
             </div>
-            <div className="col-span-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 sm:col-span-1 sm:col-start-2">
-              <StockBadge isLocal={line.isLocal} />
-              {linePromises[line.id] ? (
-                <span
-                  className="inline-flex items-center gap-1.5 text-small"
-                  data-testid="checkout-line-promise"
-                >
-                  <IconCalendar size={18} className="shrink-0 text-brand" />
-                  {linePromises[line.id]}
-                </span>
-              ) : null}
-            </div>
+            {uniform ? null : (
+              <div className="col-span-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 sm:col-span-1 sm:col-start-2">
+                <StockBadge isLocal={line.isLocal} />
+                {linePromises[line.id] ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 text-small"
+                    data-testid="checkout-line-promise"
+                  >
+                    <IconCalendar size={18} className="shrink-0 text-brand" />
+                    <span>
+                      Получение{' '}
+                      <span className="font-bold whitespace-nowrap">{linePromises[line.id]}</span>
+                    </span>
+                  </span>
+                ) : null}
+              </div>
+            )}
           </li>
         ))}
       </ul>
@@ -102,14 +117,7 @@ export function CheckoutSummary({
  * card of the «Получение» step: a pin with the name and address, hours, the phone and one line
  * about the installation right there.
  */
-export function PickupPoint({
-  pickup,
-  logoSrc = null,
-}: {
-  pickup: Brand['pickup'];
-  /** The partner's colour mark (PICKUP_LOGO_SRC); null: the pin alone. */
-  logoSrc?: string | null;
-}) {
+export function PickupPoint({ pickup }: { pickup: Brand['pickup'] }) {
   return (
     <section
       className="min-w-0 rounded-tile border-2 border-brand bg-brand-soft/40 p-4 md:p-5"
@@ -117,13 +125,9 @@ export function PickupPoint({
       data-testid="pickup-point"
     >
       <div className="flex min-w-0 items-start gap-3">
-        <span className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-full bg-bg text-brand">
-          {logoSrc ? (
-            // eslint-disable-next-line @next/next/no-img-element -- a small static mark from env
-            <img src={logoSrc} alt="" width={44} height={38} className="h-10 w-11 object-contain" />
-          ) : (
-            <IconPin size={28} />
-          )}
+        {/* A pin, not the partner's logo: its lettering is unreadable at 56 px. */}
+        <span className="grid size-14 shrink-0 place-items-center rounded-control bg-bg text-brand">
+          <IconPin size={28} />
         </span>
         <div className="min-w-0 flex-1 space-y-1">
           <p className="text-small text-muted">Самовывоз</p>

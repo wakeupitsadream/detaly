@@ -13,8 +13,10 @@ export function CategoryGrid({ className }: { className?: string }) {
       <SectionHeading id="categories-title" center>
         Популярные категории
       </SectionHeading>
+      {/* Like the makes: the tiles lead to the request to the master, not to a catalogue. */}
+      <p className="mt-2 text-center text-small text-muted">Подберём по VIN — бесплатно</p>
       <ul
-        className="mt-6 grid min-w-0 grid-cols-3 gap-2 md:mt-8 md:grid-cols-4 md:gap-3 lg:grid-cols-6 lg:gap-4"
+        className="mt-5 grid min-w-0 grid-cols-3 gap-2 md:mt-8 md:grid-cols-4 md:gap-3 lg:grid-cols-6 lg:gap-4"
         data-testid="home-categories"
       >
         {PART_CATEGORIES.map((category) => (

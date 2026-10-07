@@ -6,6 +6,7 @@ import { CartCheckoutBar, CartSummary, type CartPaymentMode } from '@/components
 import { CheckoutSteps } from '@/components/checkout/CheckoutSteps';
 import { DiffBanner } from '@/components/DiffBanner';
 import { IconCart, IconPlus, IconSearch, IconSts } from '@/components/icons';
+import { EmptyPanel } from '@/components/page/EmptyPanel';
 import { Notice } from '@/components/page/Notice';
 import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
 import { PaymentModeNotice } from '@/components/PaymentModeNotice';
@@ -38,30 +39,26 @@ function first(value: string | string[] | undefined): string {
 /** An empty cart: a large cart icon, one line and the two ways to find a part. */
 function EmptyCart() {
   return (
-    <div
-      className="mx-auto flex max-w-xl min-w-0 flex-col items-center rounded-panel bg-surface px-6 py-10 text-center md:py-14"
-      data-testid="cart-empty"
-    >
-      <div aria-hidden className="grid size-28 place-items-center rounded-full bg-bg text-brand">
-        <IconCart size={64} strokeWidth={1.5} />
-      </div>
-      <h2 className="mt-6 text-h2">Корзина пуста</h2>
-      <p className="mt-2 text-body text-muted">
-        Найдите деталь по артикулу или отдайте подбор мастеру.
-      </p>
-      <div className="mt-7 grid w-full max-w-sm gap-3">
-        <FindByArticleLink icon={<IconSearch size={22} />}>Найти по артикулу</FindByArticleLink>
-        <ButtonLink
-          href={vinRequestHref()}
-          variant="secondary"
-          size="lg"
-          block
-          icon={<IconSts size={22} className="text-brand" />}
-        >
-          Подобрать по VIN
-        </ButtonLink>
-      </div>
-    </div>
+    <EmptyPanel
+      icon={<IconCart size={64} strokeWidth={1.5} />}
+      title="Корзина пуста"
+      testId="cart-empty"
+      text="Найдите деталь по артикулу или отдайте подбор мастеру."
+      actions={
+        <>
+          <FindByArticleLink icon={<IconSearch size={22} />}>Найти по артикулу</FindByArticleLink>
+          <ButtonLink
+            href={vinRequestHref()}
+            variant="secondary"
+            size="lg"
+            className="bg-bg"
+            icon={<IconSts size={22} className="text-brand" />}
+          >
+            Подобрать по VIN
+          </ButtonLink>
+        </>
+      }
+    />
   );
 }
 

@@ -28,7 +28,8 @@ const CURRENT_STEP: Readonly<Record<OrderStatus, number | null>> = {
   needs_attention: 2,
   awaiting_client_approval: 2,
   // The parts are on their way: the stage «Заказан у поставщика» stays current until they
-  // arrive, so the stepper says what the status badge says (and «едет в Оренбург» under it).
+  // arrive, so the stepper says what the status badge says. No «едет в Оренбург» under it: the
+  // next step is «Доставка в Оренбург», and the part would seem to be on two steps at once.
   ordered_at_supplier: 2,
   ready: 4,
   out_for_delivery: 4,
@@ -43,7 +44,7 @@ const CURRENT_STEP: Readonly<Record<OrderStatus, number | null>> = {
 export function orderSteps(
   status: OrderStatus,
   scheme: PaymentScheme,
-): { label: string; state: StepState; hint?: string }[] {
+): { label: string; state: StepState }[] {
   // Past tense once a step is behind, the name of the stage while it is current or ahead:
   // «Оплачен» under «Ждёт оплаты» would read as if the money had come.
   const labels: readonly (readonly [done: string, pending: string])[] = [
@@ -55,12 +56,11 @@ export function orderSteps(
   ];
   const current = CURRENT_STEP[status];
   // At the supplier stage the order is placed already: the badge reads «Заказан у поставщика»,
-  // so does the current step, with where the parts are as the hint.
+  // so does the current step.
   const atSupplier = status === 'ordered_at_supplier';
   return labels.map(([done, pending], index) => ({
     label:
       current !== null && (index < current || (atSupplier && index === current)) ? done : pending,
-    hint: atSupplier && index === current ? 'едет в Оренбург' : undefined,
     state:
       current === null
         ? 'stopped'
@@ -142,7 +142,7 @@ export function OrderStepper({ status, scheme }: { status: OrderStatus; scheme: 
             <div className={cn('min-w-0 pt-2.5 md:px-1 md:pt-0', last ? 'pb-0' : 'pb-3 md:pb-0')}>
               <p
                 className={cn(
-                  'text-body leading-snug md:text-small',
+                  'text-body leading-snug md:text-small md:text-balance',
                   step.state === 'current'
                     ? 'font-bold text-ink'
                     : step.state === 'done'
@@ -156,7 +156,7 @@ export function OrderStepper({ status, scheme }: { status: OrderStatus; scheme: 
               </p>
               {step.state === 'current' ? (
                 <p aria-hidden className="mt-0.5 text-small font-semibold text-brand">
-                  сейчас{step.hint ? ` · ${step.hint}` : ''}
+                  сейчас
                 </p>
               ) : null}
             </div>

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { cartCountLabel } from '@/lib/plural';
 import { IconArrowRight, IconCart } from './icons';
 import { buttonClass } from './ui/Button';
@@ -21,19 +22,47 @@ function hiddenOn(pathname: string | null): boolean {
 }
 
 /**
+ * On /search the bar waits until the first «В корзину» has scrolled out of view: at 375×812 it
+ * would cover the first offer's price and button, the very thing a returning buyer came for.
+ * True while the bar should stay away; elsewhere (and with no offers on the page) false.
+ */
+function useFirstOfferInView(active: boolean): boolean {
+  const [inView, setInView] = useState(active);
+  useEffect(() => {
+    if (!active) {
+      setInView(false);
+      return;
+    }
+    const target = document.querySelector('[data-testid="add-to-cart"]');
+    if (!target || typeof IntersectionObserver === 'undefined') {
+      setInView(false);
+      return;
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      // Gone above the screen or still below it: only «on screen» keeps the bar away.
+      setInView(entry?.isIntersecting ?? false);
+    });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [active]);
+  return inView;
+}
+
+/**
  * Phones only (below md): a white floating panel at the bottom once the cart has lines, with
  * the number of lines and the way to checkout (through the cart, which re-prices first). The
  * footer makes room for it (`.mobile-cart-bar` in globals.css).
  */
 export function MobileCartBar({ cartCount }: { cartCount: number }) {
   const pathname = usePathname();
-  if (cartCount <= 0 || hiddenOn(pathname)) return null;
+  const offerInView = useFirstOfferInView(pathname === '/search' && cartCount > 0);
+  if (cartCount <= 0 || hiddenOn(pathname) || offerInView) return null;
   return (
     <div
-      className="mobile-cart-bar fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:hidden"
+      className="mobile-cart-bar fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:hidden"
       data-testid="mobile-cart-bar"
     >
-      <div className="flex h-17 items-center justify-between gap-3 rounded-tile border border-line bg-bg pr-2.5 pl-4 text-ink shadow-float">
+      <div className="flex h-15 items-center justify-between gap-3 rounded-tile border border-line bg-bg pr-1.5 pl-4 text-ink shadow-float">
         <p className="flex min-w-0 items-center gap-2.5 text-small">
           <IconCart size={24} className="shrink-0 text-brand" />
           <span className="min-w-0">

@@ -58,6 +58,18 @@ describe('offers inside a group', () => {
     expect(offerMarks([local, marked]).size).toBe(0);
   });
 
+  it('a tie keeps the mark on the earlier offer only (exact matches before crosses)', () => {
+    const cross = offer({
+      id: 'cross',
+      isLocal: true,
+      priceClientKop: 60_000,
+      etaDate: '2026-10-02',
+    });
+    const marks = offerMarks([local, cheapOrder, cross]);
+    expect(marks.get('local')).toEqual(['fastest']);
+    expect(marks.has('cross')).toBe(false);
+  });
+
   it('the stock count says where the parts are', () => {
     expect(stockCountText(local)).toBe('в Оренбурге: 5 шт.');
     expect(stockCountText(cheapOrder)).toBe('у поставщика: 5 шт.');
@@ -86,7 +98,8 @@ describe('order stepper', () => {
     const steps = orderSteps('ordered_at_supplier', 'pay_on_handover');
     const current = steps.find((step) => step.state === 'current');
     expect(current?.label).toBe('Заказан у поставщика');
-    expect(current?.hint).toBe('едет в Оренбург');
+    // No «едет в Оренбург» on this step: «Доставка в Оренбург» is the next one.
+    expect(JSON.stringify(steps)).not.toContain('едет');
     expect(steps.filter((step) => step.state === 'done')).toHaveLength(2);
   });
 

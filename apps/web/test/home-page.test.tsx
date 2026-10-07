@@ -109,7 +109,6 @@ describe('home: the dark panel', () => {
       createElement(WhyUs, {
         brandName: 'Тестовый бренд',
         pickupName: 'Тестовый сервис',
-        emblemSrc: '/images/partner/test-white.webp',
       }),
     );
     const t = text(html);
@@ -125,12 +124,13 @@ describe('home: the dark panel', () => {
       expect(t).toContain(caption);
     }
     expect(html.match(/data-testid="home-why-/g)).toHaveLength(6);
-    expect(html).toContain('src="/images/partner/test-white.webp"');
+    // Line glyphs only: the partner's filled emblem is not on the panel.
+    expect(html).not.toContain('<img');
   });
 
-  it('falls back to a wrench and a generic caption without the point', () => {
+  it('falls back to a generic caption without the point', () => {
     const html = renderToStaticMarkup(
-      createElement(WhyUs, { brandName: 'Тестовый бренд', pickupName: null, emblemSrc: null }),
+      createElement(WhyUs, { brandName: 'Тестовый бренд', pickupName: null }),
     );
     expect(text(html)).toContain('Установка в автосервисе');
     expect(html).not.toContain('<img');

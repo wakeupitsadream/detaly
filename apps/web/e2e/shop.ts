@@ -69,7 +69,12 @@ export function submitButton(page: Page) {
 export async function fillContacts(page: Page, client: Client): Promise<void> {
   await page.getByLabel('Телефон', { exact: true }).fill(client.phone.typed);
   await page.getByLabel('Имя', { exact: true }).fill(client.name);
-  await page.getByRole('radio', { name: 'MAX' }).check();
+  // MAX is «скоро» (inactive) as on /vin and the order page: statuses go to Telegram.
+  await expect(page.getByRole('radio', { name: /MAX/ })).toBeDisabled();
+  // The radio of a ChoiceCard is visually hidden: the card (its label) takes the tap.
+  const telegram = page.getByRole('radio', { name: 'Telegram' });
+  await page.locator('label', { has: telegram }).click();
+  await expect(telegram).toBeChecked();
 }
 
 export async function giveConsents(page: Page): Promise<void> {

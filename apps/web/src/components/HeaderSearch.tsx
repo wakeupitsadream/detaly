@@ -52,11 +52,12 @@ export function HeaderSearch({ className }: { className?: string }) {
       )}
     >
       {/* Phones: the magnifier is the submit button; from md it is a picture and «Найти» is
-          a text button on the right. */}
+          a text button on the right. A 48 px circle 4 px in from the pill's edge, so its focus
+          ring lies wholly on white and clear of the typed text (pl-1 on the field). */}
       <button
         type="submit"
         aria-label="Найти"
-        className="grid h-14 w-13 shrink-0 place-items-center rounded-full text-ink focus-visible:outline-offset-[-3px] md:hidden"
+        className="ml-1 grid size-12 shrink-0 place-items-center rounded-full text-ink focus-visible:outline-offset-[-3px] md:hidden"
       >
         <IconSearch size={24} />
       </button>
@@ -78,7 +79,7 @@ export function HeaderSearch({ className }: { className?: string }) {
         aria-label="Артикул детали или VIN"
         className={cn(
           'h-full min-w-0 flex-1 rounded-full bg-transparent pr-5 text-[1.0625rem] text-ink',
-          'placeholder:text-muted focus-visible:outline-none md:pl-3',
+          'pl-1 placeholder:text-muted focus-visible:outline-none md:pl-3',
           '[&::-webkit-search-cancel-button]:hidden',
         )}
       />

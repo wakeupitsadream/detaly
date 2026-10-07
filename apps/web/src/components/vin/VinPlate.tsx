@@ -1,8 +1,7 @@
-import type { ReactNode } from 'react';
-import { IconChevronDown, IconSts } from '@/components/icons';
-import { MarkerBar } from '@/components/ui/Card';
+import { type IconComponent, IconChevronDown, IconSts } from '@/components/icons';
+import { IconCard } from '@/components/ui/Card';
 import { cn } from '@/components/ui/cn';
-import { StepNumber } from '@/components/ui/StepNumber';
+import { StepIconTile } from '@/components/ui/StepNumber';
 
 /** A sample VIN to show what the 17 characters look like; not anybody's car. */
 export const SAMPLE_VIN = 'XTA210990Y1234567';
@@ -73,32 +72,20 @@ export function VinPlateBody({ note = true }: { note?: boolean }) {
 }
 
 /**
- * «Где найти VIN» (docs/design-v2.md, /vin): the СТС card icon and the title over
- * VinPlateBody, on a grey panel with the marker.
+ * «Где найти VIN» (docs/design-v2.md, /vin): VinPlateBody in the same white card as the other
+ * help cards beside the form — the СТС icon 24 and the `text-h3` title in its head.
  */
 export function VinPlate({ className }: { className?: string }) {
   return (
-    <section
-      aria-labelledby="vin-where"
-      className={cn('min-w-0 rounded-panel bg-surface p-6 md:p-8', className)}
+    <IconCard
+      icon={<IconSts size={24} />}
+      title="Где найти VIN"
+      titleId="vin-where"
+      className={className}
       data-testid="vin-plate"
     >
-      <MarkerBar className="mb-4 md:mb-5" />
-      <div className="flex min-w-0 items-center gap-4">
-        <span
-          aria-hidden
-          className="grid size-16 shrink-0 place-items-center rounded-tile bg-bg text-brand"
-        >
-          <IconSts size={44} strokeWidth={1.5} />
-        </span>
-        <h2 id="vin-where" className="min-w-0 text-h3">
-          Где найти VIN
-        </h2>
-      </div>
-      <div className="mt-5">
-        <VinPlateBody />
-      </div>
-    </section>
+      <VinPlateBody />
+    </IconCard>
   );
 }
 
@@ -128,14 +115,14 @@ export function VinWhereFold({ className }: { className?: string }) {
 }
 
 export interface VinStep {
-  icon: ReactNode;
+  icon: IconComponent;
   title: string;
   text: string;
 }
 
 /**
- * Three steps as icon tiles (the /vin page): a 56 px brand icon on white, a bold title and one
- * short line. A row from md, a list on phones.
+ * Three steps as icon tiles (the /vin page): the numbered icon plate (StepIconTile), a bold
+ * title and one short line. A row from md, a list on phones.
  */
 export function VinSteps({ steps }: { steps: readonly VinStep[] }) {
   return (
@@ -145,19 +132,9 @@ export function VinSteps({ steps }: { steps: readonly VinStep[] }) {
           key={step.title}
           className="flex min-w-0 items-center gap-4 rounded-tile bg-surface p-4 md:flex-col md:items-start md:p-6"
         >
-          <span
-            aria-hidden
-            className="grid size-16 shrink-0 place-items-center rounded-tile bg-bg text-brand"
-          >
-            {step.icon}
-          </span>
+          <StepIconTile n={index + 1} icon={step.icon} />
           <div className="min-w-0">
-            {/* The number in a neutral circle beside the title, as the steps of the form and of
-                /checkout: one numbering on the page, red only for what is current. */}
-            <div className="flex min-w-0 items-center gap-2.5">
-              <StepNumber n={index + 1} />
-              <h3 className="min-w-0 text-h3">{step.title}</h3>
-            </div>
+            <h3 className="min-w-0 text-h3">{step.title}</h3>
             <p className="mt-1 text-small font-normal text-muted">{step.text}</p>
           </div>
         </li>

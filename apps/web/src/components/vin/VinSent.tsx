@@ -36,7 +36,7 @@ export function VinSent({
           aria-hidden
           className="mx-auto grid size-24 place-items-center rounded-full bg-ok-soft text-ok"
         >
-          <IconCheck size={64} strokeWidth={2} />
+          <IconCheck size={64} />
         </span>
         <h1 className="mt-6 text-h1" data-testid="vin-sent-title">
           Заявка принята

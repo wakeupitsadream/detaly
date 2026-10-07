@@ -450,15 +450,14 @@
   .legal li::marker {
     color: var(--color-muted);
   }
-  /* A blockquote in the documents is the «черновик» note: the wait tone with an edge. */
-  .legal blockquote,
-  .draft-note {
+  /* A blockquote inside a document (the opening draft note is lifted into a Notice): the
+     same soft plate as a Notice, no thick edge. */
+  .legal blockquote {
     margin: 0 0 1.5rem;
-    padding: 0.875rem 1rem 0.875rem 1.25rem;
-    border-left: 4px solid var(--color-wait);
+    padding: 0.875rem 1rem;
     background: var(--color-wait-soft);
     color: var(--color-ink);
-    border-radius: 0 var(--radius-control) var(--radius-control) 0;
+    border-radius: var(--radius-tile);
   }
   .legal blockquote p:last-child {
     margin-bottom: 0;

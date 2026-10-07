@@ -149,10 +149,18 @@ export function CartSummary({
 
 /**
  * Phones only (below md) on /cart: the sum and «Оформить» on a white floating panel at the
- * bottom, so checkout is one tap away however long the cart is; it steps aside while the
- * total card (its own «Оформить заказ») is on screen. The footer makes room for it
+ * bottom, so checkout is one tap away however long the cart is; it steps aside only while the
+ * total's own button («Оформить заказ», or «Позвонить» while checkout is closed) is fully on
+ * screen — the top of the total card alone is not enough. The footer makes room for it
  * (`.mobile-cart-bar` in globals.css).
  */
+/** The total's own action, watched by the bar; the card itself when there is no button. */
+const CART_ACTION_TARGETS = [
+  '[data-testid="checkout-link"]',
+  '[data-testid="call-to-order"]',
+  '[data-testid="cart-summary"]',
+] as const;
+
 export function CartCheckoutBar({
   totalText,
   itemsCount,
@@ -162,7 +170,7 @@ export function CartCheckoutBar({
 }) {
   return (
     <HideWhileInView
-      target='[data-testid="cart-summary"]'
+      target={CART_ACTION_TARGETS}
       className="mobile-cart-bar fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:hidden"
       testId="cart-checkout-bar"
     >

@@ -23,6 +23,7 @@ import { getCartService } from '@/server/cart';
 import { promiseFor, STALE_PRICES_TEXT } from '@/server/cart/summary';
 import { readCartToken } from '@/server/cart-store';
 import { getCheckoutGate } from '@/server/checkout-gate';
+import { FIELD_MESSAGES } from '@/server/checkout/input';
 import {
   loadCheckoutPage,
   parseCartPart,
@@ -99,6 +100,7 @@ async function DemoCheckout() {
               marketingAvailable={false}
               blockedMessage={null}
               contactPhone={brand.contactPhone}
+              invalidMessages={FIELD_MESSAGES}
               demo={{ href: '/o/demo' }}
               receive={<PickupPoint pickup={brand.pickup} />}
               payment={
@@ -246,6 +248,7 @@ export default async function CheckoutPage({
             marketingAvailable={data.marketingAvailable}
             blockedMessage={data.minimums.ok ? null : data.minimums.message}
             contactPhone={brand.contactPhone}
+            invalidMessages={FIELD_MESSAGES}
             receive={<PickupPoint pickup={brand.pickup} />}
             payment={
               <PaymentSchemeNote scheme={data.decision.scheme} sentences={data.explanation} />

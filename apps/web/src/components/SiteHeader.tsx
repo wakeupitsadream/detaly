@@ -22,6 +22,15 @@ const DESKTOP_NAV = [...NAV, { href: '/docs/offer', label: 'Документы' 
 /** The city of the only pickup point (stock badges say «В Оренбурге» too). */
 const CITY = 'Оренбург';
 
+/**
+ * The pickup line's words: «Выдача: Сервис56» says what the place is to someone who has never
+ * heard of it (a bare «Оренбург · Сервис56» read as an ad of a garage); the city comes with the
+ * address on /about#pickup. Without a point name: «Выдача в Оренбурге».
+ */
+export function pickupLineText(pickupName: string | null | undefined): string {
+  return pickupName ? `Выдача: ${pickupName}` : `Выдача в ${CITY}е`;
+}
+
 export interface SiteHeaderProps {
   brandName: string;
   cartCount: number;
@@ -52,7 +61,7 @@ function cartLabel(count: number): string {
   return count > 0 ? `Корзина: ${cartCountLabel(count)}` : 'Корзина пуста';
 }
 
-/** «[emblem] Оренбург · Сервис · Как добраться ›»: where the parts are picked up. */
+/** «[emblem] Выдача: Сервис56 · Как добраться ›»: where the parts are picked up. */
 function PickupLine({
   pickupName,
   emblemSrc,
@@ -75,13 +84,13 @@ function PickupLine({
         <IconPin size={20} className="shrink-0" />
       )}
       <span className="min-w-0 truncate max-sm:text-sm">
-        {CITY}
         {pickupName ? (
           <>
-            {' · '}
-            <span className="font-semibold">{pickupName}</span>
+            Выдача: <span className="font-semibold">{pickupName}</span>
           </>
-        ) : null}
+        ) : (
+          pickupLineText(null)
+        )}
       </span>
       <Link
         href="/about#pickup"

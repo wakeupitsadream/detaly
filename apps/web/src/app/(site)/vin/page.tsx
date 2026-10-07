@@ -13,7 +13,7 @@ import {
 import { PICKUP_ADDRESS_PENDING } from '@/components/PickupCard';
 import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
 import { buttonClass } from '@/components/ui/Button';
-import { InfoCard } from '@/components/ui/Card';
+import { IconCard, InfoCard } from '@/components/ui/Card';
 import { SectionHeading } from '@/components/ui/Section';
 import { VinForm, type VinFormInitial } from '@/components/vin/VinForm';
 import { PART_CATEGORIES } from '@/lib/part-categories';
@@ -25,7 +25,7 @@ import { uuidV7 } from '@/server/checkout/uuid';
 import { serverEnv } from '@/server/env';
 import { photosEnabled } from '@/server/files';
 import { isDemoMode } from '@/server/mode';
-import { errorsOf, parseErrorCodes } from '@/server/vin/form';
+import { errorsOf, parseErrorCodes, VIN_FORM_MESSAGES } from '@/server/vin/form';
 
 export const metadata: Metadata = { title: 'Подбор запчастей по VIN' };
 
@@ -34,10 +34,12 @@ export const metadata: Metadata = { title: 'Подбор запчастей по
 export const dynamic = 'force-dynamic';
 
 const TITLE = 'Подбор по VIN';
-const LEAD = 'Мастер подберёт деталь и пришлёт цены. Бесплатно.';
+/** The answer time is in the lead, so it shows always — the demo too (the line under the
+ * button is about consent there). */
+const LEAD = 'Мастер подберёт деталь и пришлёт цены — обычно за 4 часа в рабочее время. Бесплатно.';
 
 /** The lead under the title when the visitor came with a choice (?car=, ?need=). */
-const CHOSEN_LEAD = 'Впишите VIN — подберём бесплатно';
+const CHOSEN_LEAD = 'Впишите VIN — ответим обычно за 4 часа, бесплатно';
 
 /** Longest «Нужно» chip before an ellipsis: the full text is in the form's field. */
 const NEED_CHIP_MAX = 28;
@@ -91,14 +93,14 @@ function VinBand({ initial }: { initial: VinFormInitial }) {
 
 /** Steps while there is no online form (phase 0 and a closed gate). */
 const CALL_STEPS: readonly VinStep[] = [
-  { icon: <IconSts size={36} strokeWidth={1.5} />, title: 'Найдите VIN', text: 'Он есть в СТС.' },
+  { icon: IconSts, title: 'Найдите VIN', text: 'Он есть в СТС.' },
   {
-    icon: <IconPhone size={36} strokeWidth={1.5} />,
+    icon: IconPhone,
     title: 'Позвоните',
     text: 'Назовите VIN и нужную деталь.',
   },
   {
-    icon: <IconWrench size={36} strokeWidth={1.5} />,
+    icon: IconWrench,
     title: 'Получите варианты',
     text: 'С ценой и датой получения.',
   },
@@ -107,17 +109,17 @@ const CALL_STEPS: readonly VinStep[] = [
 /** Steps next to the form (phase 1C). */
 const FORM_STEPS: readonly VinStep[] = [
   {
-    icon: <IconSts size={36} strokeWidth={1.5} />,
+    icon: IconSts,
     title: 'Заявка',
     text: 'VIN и что нужно.',
   },
   {
-    icon: <IconWrench size={36} strokeWidth={1.5} />,
+    icon: IconWrench,
     title: 'Мастер подберёт',
     text: 'Пришлёт ссылку с ценами и датами.',
   },
   {
-    icon: <IconCart size={36} strokeWidth={1.5} />,
+    icon: IconCart,
     title: 'Оформите',
     text: 'Как обычный заказ.',
   },
@@ -168,18 +170,38 @@ function PhoneNumber({ phone }: { phone: string | null }) {
   );
 }
 
-/** The VIN guarantee as one row: the shield and one sentence. */
+/**
+ * The phone of «Удобнее позвонить?» (data-testid="vin-phone"): on phones and tablets a
+ * full-width secondary button «Позвонить +7 …» (a bare number did not look tappable), from lg
+ * the large number under the card's phone icon.
+ */
+function CallButton({ phone }: { phone: string }) {
+  return (
+    <a
+      className={[
+        'inline-flex min-h-13 w-full min-w-0 items-center justify-center gap-2 rounded-control border-[1.5px] border-line-strong bg-bg px-5',
+        'text-[1.0625rem] font-semibold whitespace-nowrap text-ink tabular-nums hover:border-ink hover:bg-surface',
+        'lg:min-h-11 lg:w-auto lg:justify-start lg:gap-3 lg:border-0 lg:px-0 lg:text-h2 lg:hover:bg-transparent lg:hover:text-brand',
+      ].join(' ')}
+      href={telHref(phone)}
+      data-testid="vin-phone"
+    >
+      {/* From lg the card's head has the phone icon already: the number stands alone. */}
+      <IconPhone size={24} className="shrink-0 text-brand lg:hidden" />
+      <span className="lg:hidden">Позвонить</span>
+      {phone}
+    </a>
+  );
+}
+
+/** The VIN guarantee: the shield in the head of the same white card as the others. */
 function Guarantee() {
   return (
-    <div className="flex min-w-0 items-start gap-4 rounded-tile border border-line p-5 md:p-6">
-      <IconShield size={40} strokeWidth={1.5} className="shrink-0 text-brand" />
-      <div className="min-w-0">
-        <h2 className="text-h3">Подобрали мы&nbsp;— отвечаем мы</h2>
-        <p className="mt-1 text-small font-normal text-muted">
-          Не подошла к машине из заявки — вернём деньги.
-        </p>
-      </div>
-    </div>
+    <IconCard icon={<IconShield size={24} />} title={'Подобрали мы\u00a0— отвечаем мы'}>
+      <p className="text-small font-normal text-muted">
+        Не подошла к машине из заявки — вернём деньги.
+      </p>
+    </IconCard>
   );
 }
 
@@ -187,16 +209,12 @@ function Guarantee() {
 function CallCard({ brand }: { brand: Brand }) {
   if (!brand.contactPhone) return null;
   return (
-    <section
-      aria-labelledby="vin-call"
-      className="min-w-0 space-y-4 rounded-tile border border-line p-5 md:p-6"
-    >
-      <h2 id="vin-call" className="text-h3">
-        Удобнее позвонить?
-      </h2>
-      <PhoneNumber phone={brand.contactPhone} />
-      <PickupLines brand={brand} />
-    </section>
+    <IconCard icon={<IconPhone size={24} />} title="Удобнее позвонить?" titleId="vin-call">
+      <div className="space-y-4">
+        <CallButton phone={brand.contactPhone} />
+        <PickupLines brand={brand} />
+      </div>
+    </IconCard>
   );
 }
 
@@ -247,7 +265,7 @@ export default async function VinPage({ searchParams }: { searchParams: SearchPa
             <InfoCard
               title="Позвоните мастеру"
               titleId="vin-call"
-              icon={<IconPhone size={40} strokeWidth={1.5} />}
+              icon={<IconPhone size={40} />}
               aria-labelledby="vin-call"
             >
               <div className="space-y-5">
@@ -316,6 +334,14 @@ export default async function VinPage({ searchParams }: { searchParams: SearchPa
               demo={demo}
               initial={initial}
               vinHelp={<VinWhereFold className="lg:hidden" />}
+              invalidMessages={{
+                vin: VIN_FORM_MESSAGES.vin,
+                car: VIN_FORM_MESSAGES.car,
+                need: VIN_FORM_MESSAGES.need,
+                phone: VIN_FORM_MESSAGES.phone,
+                channel: VIN_FORM_MESSAGES.channel,
+                consent: VIN_FORM_MESSAGES.consent,
+              }}
             />
           </div>
           <aside className="min-w-0 space-y-4" aria-label="Подсказки к заявке">

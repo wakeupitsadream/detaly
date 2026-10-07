@@ -154,7 +154,7 @@ describe('header search', () => {
     expect(html).toContain('href="tel:+73532111111"');
     expect(html).toContain('aria-label="Корзина: 2 позиции"');
     expect(html).toContain('data-testid="header-cart-count"');
-    expect(text(html)).toContain('Оренбург · Тестовый сервис');
+    expect(text(html)).toContain('Выдача: Тестовый сервис');
     expect(html).toContain('src="/images/partner/test-white.webp"');
     expect(html).toContain('href="/about#pickup"');
     // The brand plate is drawn by tokens only.
@@ -169,6 +169,7 @@ describe('header search', () => {
     expect(html).not.toContain('href="tel:');
     expect(html).not.toContain('<img');
     expect(html).toContain('aria-label="Корзина пуста"');
+    expect(text(html)).toContain('Выдача в Оренбурге');
   });
 });
 
@@ -276,9 +277,9 @@ describe('UI kit v2', () => {
   });
 
   it('installDateText writes the slot day as a date, never «завтра»', () => {
-    expect(installDateText('2026-10-08T14:00:00+05:00')).toBe('чт 8 окт');
-    expect(installDateText('2026-10-03T09:30:00+05:00')).toBe('сб 3 окт');
-    expect(installDateText('2027-01-01T10:00:00+05:00')).toBe('пт 1 янв');
+    expect(installDateText('2026-10-08T14:00:00+05:00')).toBe('чт 8 октября');
+    expect(installDateText('2026-10-03T09:30:00+05:00')).toBe('сб 3 октября');
+    expect(installDateText('2027-01-01T10:00:00+05:00')).toBe('пт 1 января');
   });
 });
 

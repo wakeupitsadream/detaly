@@ -1,12 +1,19 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import { IconBox, IconChevronDown, IconDocument, IconShield, IconWallet } from '@/components/icons';
+import {
+  type IconComponent,
+  IconBox,
+  IconChevronDown,
+  IconDocument,
+  IconShield,
+  IconWallet,
+} from '@/components/icons';
 import { LegalDocumentView } from '@/components/LegalDocumentView';
 import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
 import { PickupCard } from '@/components/PickupCard';
 import { pickupRoutes } from '@/components/PickupRouteLinks';
 import { SectionHeading } from '@/components/ui/Section';
-import { StepNumber } from '@/components/ui/StepNumber';
+import { StepIconTile } from '@/components/ui/StepNumber';
 import { getBrand } from '@/server/brand';
 import { loadPublishedDocument, type LegalDocument } from '@/server/documents';
 import { getLogger } from '@/server/logger';
@@ -14,19 +21,19 @@ import { getLogger } from '@/server/logger';
 export const metadata: Metadata = { title: 'Возврат и обмен' };
 
 /** The three steps, with icons (docs/design-v2.md, /returns). */
-const STEPS: readonly { icon: ReactNode; title: string; text: string }[] = [
+const STEPS: readonly { icon: IconComponent; title: string; text: string }[] = [
   {
-    icon: <IconBox size={44} strokeWidth={1.5} className="md:size-14" />,
+    icon: IconBox,
     title: 'Принесите деталь',
     text: 'В течение 7 дней, в упаковке.',
   },
   {
-    icon: <IconShield size={44} strokeWidth={1.5} className="md:size-14" />,
+    icon: IconShield,
     title: 'Мы проверим',
     text: 'Без следов установки — примем.',
   },
   {
-    icon: <IconWallet size={44} strokeWidth={1.5} className="md:size-14" />,
+    icon: IconWallet,
     title: 'Деньги за 10 дней',
     text: 'Тем же способом, с чеком.',
   },
@@ -113,17 +120,9 @@ export default async function ReturnsPage() {
                 key={step.title}
                 className="flex min-w-0 items-center gap-4 rounded-tile bg-surface p-4 md:flex-col md:items-start md:gap-5 md:p-6"
               >
-                <span
-                  aria-hidden
-                  className="grid size-20 shrink-0 place-items-center rounded-tile bg-bg text-brand md:size-24"
-                >
-                  {step.icon}
-                </span>
+                <StepIconTile n={index + 1} icon={step.icon} />
                 <div className="min-w-0">
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <StepNumber n={index + 1} />
-                    <h2 className="min-w-0 text-h3">{step.title}</h2>
-                  </div>
+                  <h2 className="min-w-0 text-h3">{step.title}</h2>
                   <p className="mt-1 text-small font-normal text-muted">{step.text}</p>
                 </div>
               </li>

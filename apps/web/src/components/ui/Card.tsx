@@ -84,3 +84,46 @@ export function InfoCard({
     </Tag>
   );
 }
+
+/**
+ * A white help or reference card (the cards beside the VIN form, the order column, the master's
+ * comment of a proposal): `line` border, `rounded-tile`, one head — a 24 px brand icon and a
+ * `text-h3` title — then the content. One look for every card of that level, so a column of
+ * them never reads as parts from different kits. Grey (`surface`) stays for totals and CTAs.
+ */
+export function IconCard({
+  as: Tag = 'section',
+  icon,
+  title,
+  titleAs: Title = 'h2',
+  titleId,
+  className,
+  children,
+  ...rest
+}: {
+  as?: CardTag;
+  /** A 24 px icon; drawn in the brand colour. */
+  icon: ReactNode;
+  title: ReactNode;
+  titleAs?: 'h2' | 'h3';
+  titleId?: string;
+  children?: ReactNode;
+} & Omit<HTMLAttributes<HTMLElement>, 'title'>) {
+  return (
+    <Tag
+      aria-labelledby={titleId}
+      className={cn('min-w-0 rounded-tile border border-line bg-bg p-5 text-ink md:p-6', className)}
+      {...rest}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <span aria-hidden className="shrink-0 text-brand">
+          {icon}
+        </span>
+        <Title id={titleId} className="min-w-0 text-h3">
+          {title}
+        </Title>
+      </div>
+      {children ? <div className="mt-4 min-w-0">{children}</div> : null}
+    </Tag>
+  );
+}

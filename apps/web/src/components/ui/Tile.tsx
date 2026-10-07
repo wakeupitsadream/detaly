@@ -76,8 +76,8 @@ export function Tile({
 export function TileGlyph({ category }: { category: PartCategory }) {
   return (
     <>
-      <CategoryIcon category={category} size={72} strokeWidth={1.5} className="lg:hidden" />
-      <CategoryIcon category={category} size={88} strokeWidth={1.5} className="hidden lg:block" />
+      <CategoryIcon category={category} size={72} className="lg:hidden" />
+      <CategoryIcon category={category} size={88} className="hidden lg:block" />
     </>
   );
 }

@@ -15,7 +15,7 @@ export function CheckoutClosed({ message, phone }: { message: string; phone: str
       <CtaCard
         title="Оформление на сайте пока закрыто"
         titleId="checkout-closed-title"
-        icon={<IconLock size={56} strokeWidth={1.5} />}
+        icon={<IconLock size={56} />}
         text={message}
       >
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap">

@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import {
+  type IconComponent,
   IconCalendar,
-  IconChevron,
   IconReceipt,
   IconReturn,
   IconSts,
@@ -20,8 +20,21 @@ interface Advantage {
   href: string;
 }
 
-/** The white glyph of a tile: 40 px, 48 px from lg (CSS size wins over the attribute). */
-const ICON = { size: 40, strokeWidth: 1.5, className: 'lg:size-12' } as const;
+/**
+ * The white glyph of a tile: 40 px, 48 px from lg — two elements, so both keep the one
+ * on-screen line of every big icon (icons/index.tsx, LARGE_LINE_PX).
+ */
+function glyph(Icon: IconComponent): ReactNode {
+  return (
+    <>
+      <Icon size={40} className="lg:hidden" />
+      <Icon size={48} className="hidden lg:block" />
+    </>
+  );
+}
+
+/** The part of /about that explains the advantages (SectionHeading id there). */
+const ABOUT_WHY = '/about#about-why';
 
 /** No-break space: «по VIN», «при получении», «в Сервис56» never part at the line end. */
 const NB = '\u00a0';
@@ -31,19 +44,19 @@ function advantages(pickupName: string | null): Advantage[] {
     // The condition (only for parts in Orenburg) is on every stock badge; the tile stays short.
     {
       key: 'cod',
-      icon: <IconWallet {...ICON} />,
+      icon: glyph(IconWallet),
       title: `Оплата при${NB}получении`,
-      href: '/about',
+      href: ABOUT_WHY,
     },
     {
       key: 'date',
-      icon: <IconCalendar {...ICON} />,
+      icon: glyph(IconCalendar),
       title: 'Точная дата прибытия',
-      href: '/about',
+      href: ABOUT_WHY,
     },
     {
       key: 'vin',
-      icon: <IconSts {...ICON} />,
+      icon: glyph(IconSts),
       title: `Подбор по${NB}VIN бесплатно`,
       href: vinRequestHref(),
     },
@@ -51,16 +64,16 @@ function advantages(pickupName: string | null): Advantage[] {
       key: 'install',
       // A wrench like the other line glyphs (installation is a wrench everywhere): the
       // partner's filled emblem stood out of the row.
-      icon: <IconWrench {...ICON} />,
+      icon: glyph(IconWrench),
       title: pickupName ? `Установка в${NB}${pickupName}` : `Установка в${NB}автосервисе`,
       href: '/about#pickup',
     },
-    { key: 'return', icon: <IconReturn {...ICON} />, title: 'Возврат 7 дней', href: '/returns' },
+    { key: 'return', icon: glyph(IconReturn), title: 'Возврат 7 дней', href: '/returns' },
     {
       key: 'receipt',
-      icon: <IconReceipt {...ICON} />,
+      icon: glyph(IconReceipt),
       title: 'Чек на каждую покупку',
-      href: '/about',
+      href: ABOUT_WHY,
     },
   ];
 }
@@ -69,8 +82,10 @@ function advantages(pickupName: string | null): Advantage[] {
  * The dark panel (docs/design-v2.md, DarkPanel): `bg-dark rounded-panel`, the white title with
  * the brand from env, six `dark-2` tiles with a white glyph and a short caption. Each tile is a
  * link (a tile that looks like the category tiles above must lead where it says): VIN to the
- * request, installation to the pickup point, return to /returns, the rest to /about where the
- * advantages are explained; a small chevron, a lighter hover and a white focus ring. Phones: the
+ * request, installation to the pickup point, return to /returns, the rest to «Почему у нас» on
+ * /about where each one is explained. No chevrons (six arrows turned the panel into a settings
+ * menu): a lighter fill and the −2 px lift of the tiles show it is clickable, with a white focus
+ * ring. Phones: the
  * title over a 2×3 grid (three columns of ~100 px broke every caption word by word), 3×2 from
  * sm; desktop: the title on the left, the tiles 3×2 on the right.
  */
@@ -106,8 +121,8 @@ export function WhyUs({
               href={item.href}
               prefetch={false}
               className={cn(
-                'group relative flex h-full min-w-0 flex-col items-center gap-3 rounded-tile bg-dark-2 px-3 pt-5 pb-4 text-center text-on-brand',
-                'transition-colors duration-150 hover:bg-on-brand/12',
+                'flex h-full min-w-0 flex-col items-center gap-3 rounded-tile bg-dark-2 px-3 pt-5 pb-4 text-center text-on-brand',
+                'transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-on-brand/10',
                 'focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-on-brand',
                 'md:pt-6 md:pb-5 lg:gap-4 lg:pt-7 lg:pb-6',
               )}
@@ -119,10 +134,6 @@ export function WhyUs({
               <span className="max-w-full min-w-0 text-base leading-5 font-semibold wrap-anywhere">
                 {item.title}
               </span>
-              <IconChevron
-                size={18}
-                className="absolute top-3 right-3 opacity-60 transition-opacity group-hover:opacity-100"
-              />
             </Link>
           </li>
         ))}

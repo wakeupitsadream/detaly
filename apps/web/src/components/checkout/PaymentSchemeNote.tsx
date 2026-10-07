@@ -8,8 +8,8 @@ export { PAYMENT_SCHEME_TITLE };
 export { FINAL_SCHEME_NOTE };
 
 /**
- * How the order will be paid, as the chosen card of the «Оплата» step: an icon, the scheme's
- * name and a tick. The client does not pick it — the server decides by the cart and the phone —
+ * How the order will be paid, as the chosen card of the «Оплата» step: the anatomy of a checked
+ * ChoiceCard — a bare icon, the scheme's name and the tick in the corner. The client does not pick it — the server decides by the cart and the phone —
  * so it is a card in the selected state, not a radio. How the money is paid stands visibly
  * under the name (PAYMENT_METHOD_LINE); the explanation (explainPaymentScheme)
  * is under a disclosure. Before the phone is known no-shows count as 0, so under payment on
@@ -25,15 +25,21 @@ export function PaymentSchemeNote({
   const Icon = scheme === 'prepay' ? IconCard : IconWallet;
   return (
     <section
-      className="min-w-0 rounded-tile border-2 border-brand bg-brand-soft/40"
+      className="relative min-w-0 rounded-control border-[1.5px] border-brand bg-brand-soft"
       aria-labelledby="payment-scheme-title"
       data-testid="payment-scheme"
       data-scheme={scheme}
     >
-      <div className="flex min-w-0 items-center gap-3 px-4 pt-4 pb-2">
-        <span className="grid size-12 shrink-0 place-items-center rounded-full bg-bg text-brand">
-          <Icon size={26} />
-        </span>
+      {/* The anatomy of a chosen ChoiceCard: a bare brand icon, the check in the top-right
+          corner 10 px clear of the frame. */}
+      <span
+        aria-hidden
+        className="absolute top-2.5 right-2.5 grid size-6 place-items-center rounded-full bg-brand text-on-brand"
+      >
+        <IconCheck size={16} strokeWidth={2.5} />
+      </span>
+      <div className="flex min-w-0 items-start gap-3 pt-4 pr-11 pb-2 pl-4">
+        <Icon size={28} className="mt-0.5 shrink-0 text-brand" />
         <div className="min-w-0 flex-1">
           <h3 id="payment-scheme-title" className="text-h3">
             {PAYMENT_SCHEME_TITLE[scheme]}
@@ -43,12 +49,6 @@ export function PaymentSchemeNote({
             {PAYMENT_METHOD_LINE[scheme]}
           </p>
         </div>
-        <span
-          aria-hidden
-          className="grid size-7 shrink-0 place-items-center rounded-full bg-brand text-on-brand"
-        >
-          <IconCheck size={18} strokeWidth={2.5} />
-        </span>
       </div>
       <details className="details-plain group px-4 pb-3">
         {/* A disclosure, not a page link: ink with a quiet underline, like every «Как это

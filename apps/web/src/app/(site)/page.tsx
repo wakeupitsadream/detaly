@@ -5,6 +5,7 @@ import { WhyUs } from '@/components/home/WhyUs';
 import { IconSts } from '@/components/icons';
 import { Container } from '@/components/ui/Container';
 import { CtaCard } from '@/components/ui/CtaCard';
+import { VinCtaArt } from '@/components/vin/VinCtaArt';
 import { FullBleed, Section } from '@/components/ui/Section';
 import { vinRequestHref } from '@/lib/vin-link';
 import { getBrand } from '@/server/brand';
@@ -33,6 +34,7 @@ export default function HomePage() {
           title="Не знаете артикул?"
           titleId="vin-cta-title"
           text="Мастер подберёт деталь по VIN бесплатно."
+          art={<VinCtaArt />}
           action={{
             href: vinRequestHref(),
             label: 'Подобрать по VIN',

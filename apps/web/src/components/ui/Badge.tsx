@@ -18,7 +18,9 @@ const TONE: Record<BadgeTone, string> = {
 
 /**
  * A round chip of state on its soft fill: 14 px (15 px `lg`) semibold. A dot on the left, or
- * an icon when given (16-18 px). The text always says the state: colour is never alone.
+ * an icon when given (16-18 px). The text always says the state: colour is never alone. A long
+ * text that wraps (a 360 px phone) stays tidy: the radius is 20 px, not a pill turning into an
+ * oval, and the dot or icon sits on the first line instead of hanging between the two.
  */
 export function Badge({
   tone = 'neutral',
@@ -31,16 +33,19 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex max-w-full items-center gap-1.5 rounded-full font-semibold',
+        'inline-flex max-w-full items-start gap-1.5 rounded-[1.25rem] font-semibold',
         size === 'lg'
-          ? 'min-h-8 px-3.5 py-1 text-[0.9375rem] leading-snug'
-          : 'min-h-7 px-3 py-0.5 text-sm leading-snug',
+          ? 'min-h-8 px-3.5 py-1.5 text-[0.9375rem] leading-snug'
+          : 'min-h-7 px-3 py-1 text-sm leading-snug',
         TONE[tone],
         className,
       )}
       {...rest}
     >
-      {icon ?? <span aria-hidden className="size-2 shrink-0 rounded-full bg-current" />}
+      {/* One line high (1.375em = leading-snug), so the mark centres on the first line. */}
+      <span aria-hidden className="flex h-[1.375em] shrink-0 items-center">
+        {icon ?? <span className="size-2 rounded-full bg-current" />}
+      </span>
       <span className="min-w-0">{children}</span>
     </span>
   );

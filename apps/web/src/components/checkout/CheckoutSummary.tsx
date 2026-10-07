@@ -65,7 +65,7 @@ export function CheckoutSummary({
                   {formatRub(safeMul(line.priceClientKop, line.qty))}
                 </p>
               </div>
-              <p className="mt-0.5 line-clamp-1 text-small font-normal text-muted wrap-anywhere">
+              <p className="mt-0.5 line-clamp-2 text-small font-normal text-muted wrap-anywhere">
                 {line.offer.name}
               </p>
               <p className="text-small font-normal whitespace-nowrap text-muted tabular-nums">

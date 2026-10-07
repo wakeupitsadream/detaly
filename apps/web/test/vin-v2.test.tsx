@@ -129,14 +129,15 @@ describe('LegalDocumentView embedded', () => {
 
   it('on its own page the document keeps its h1', () => {
     const html = renderToStaticMarkup(createElement(LegalDocumentView, { doc, sheet: true }));
-    expect(html).toContain('<h1>Памятка о возврате</h1>');
+    // The title opens the sheet (over the edition line), in the page's h1 style.
+    expect(html).toMatch(/^<article[^>]*><h1[^>]*>Памятка о возврате<\/h1>/);
     expect(html).toContain('<h2>Сроки</h2>');
   });
 
   it('inside /returns every heading moves one level down: no second h1', () => {
     const html = renderToStaticMarkup(createElement(LegalDocumentView, { doc, embedded: true }));
     expect(html).not.toContain('<h1');
-    expect(html).toContain('<h2>Памятка о возврате</h2>');
+    expect(html).toMatch(/<h2[^>]*>Памятка о возврате<\/h2>/);
     expect(html).toContain('<h3>Сроки</h3>');
     expect(html).toContain('<h4>Деньги</h4>');
   });

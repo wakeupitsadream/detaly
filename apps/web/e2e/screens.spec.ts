@@ -8,19 +8,9 @@
  * real /p/<token> (a VIN request answered through the admin API; only on the 1C stand,
  * scripts/e2e-1c.sh) with noindex and no-referrer.
  */
-import { expect, test, type APIRequestContext, type Locator } from '@playwright/test';
-import { horizontalOverflow, randomIp, testPhone } from './helpers';
+import { expect, test, type APIRequestContext } from '@playwright/test';
+import { expectOneCheckoutAction, horizontalOverflow, randomIp, testPhone } from './helpers';
 import { PAYMENTS_ON, rememberSecrets } from './shop';
-
-/** True while any part of the element is on screen (HideWhileInView hides the bar then). */
-async function totalOnScreen(locator: Locator): Promise<boolean> {
-  return locator.evaluate((el) => {
-    const rect = el.getBoundingClientRect();
-    return (
-      rect.bottom > 0 && rect.top < (globalThis as unknown as { innerHeight: number }).innerHeight
-    );
-  });
-}
 
 const PAGES = [
   { slug: 'home', path: '/' },
@@ -282,11 +272,16 @@ test('/p/<token>: a live proposal, noindex and no-referrer, no horizontal scroll
   await expect(page.getByTestId('proposal-line')).toHaveCount(1);
   await expect(page.getByTestId('proposal-take')).toBeVisible();
   if (testInfo.project.name === 'mobile') {
-    // The bar is there and steps aside only while the total card is on screen.
+    // The bar is there and steps aside only while the total's own button is fully on screen.
     const bar = page.getByTestId('proposal-bar');
     await expect(bar).toHaveCount(1);
-    if (await totalOnScreen(page.getByTestId('proposal-summary'))) await expect(bar).toBeHidden();
-    else await expect(bar).toBeVisible();
+    await expectOneCheckoutAction(page, page.getByTestId('proposal-take'), bar);
+    // Scrolled so the total card sits under the sticky search: the bar is back.
+    await page.getByTestId('proposal-summary').evaluate((el) => {
+      const top = el.getBoundingClientRect().top + globalThis.scrollY;
+      globalThis.scrollTo(0, top + el.getBoundingClientRect().height - 120);
+    });
+    await expectOneCheckoutAction(page, page.getByTestId('proposal-take'), bar);
   }
   expect(await horizontalOverflow(page), `${href} horizontal scroll`).toBeLessThanOrEqual(0);
   await page.screenshot({

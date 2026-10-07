@@ -22,9 +22,11 @@ export function CartLineRow({ line }: { line: CartLineView }) {
       <PartTile name={line.name} size="sm" className="md:size-18 md:rounded-tile" />
 
       <div className="min-w-0 self-center pr-11">
-        <p className="text-[1.0625rem] leading-snug font-bold wrap-anywhere">
+        {/* A heading per line (h3 under «Товары в корзине»): a screen reader steps line to
+            line. */}
+        <h3 className="text-[1.0625rem] leading-snug font-bold wrap-anywhere">
           {line.brand} <span className="tabular-nums">{line.article}</span>
-        </p>
+        </h3>
         <p className="mt-0.5 line-clamp-2 text-small font-normal text-muted wrap-anywhere">
           {line.name}
         </p>

@@ -158,7 +158,7 @@ describe('offer card', () => {
     expect(t).toContain('Фильтр масляный');
     // One wording of the date on every page: «Получение к …».
     expect(t).toContain('Получение к сб 3 октября');
-    expect(t).toContain('С установкой — Машина готова сб 3 окт к 16:00');
+    expect(t).toContain('С установкой — Машина готова сб 3 октября к 16:00');
     expect(t).toContain('528 ₽');
     // No «как мы считаем» and no table.
     expect(html).not.toContain('<table');

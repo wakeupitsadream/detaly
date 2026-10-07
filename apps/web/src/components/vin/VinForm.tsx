@@ -18,6 +18,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { PhotoInput } from '@/components/forms/PhotoInput';
+import { useInvalidCapture } from '@/components/forms/use-invalid-capture';
 import {
   IconAlert,
   IconArrowRight,
@@ -57,7 +58,22 @@ export interface VinFormProps {
   initial?: VinFormInitial;
   /** Under the VIN field: «Где найти VIN?» folded (phones; the page aside shows it from lg). */
   vinHelp?: ReactNode;
+  /**
+   * The server's messages (VIN_FORM_MESSAGES) for the browser's own check before a submit, so
+   * a missing field is told under it like a server error, not in the browser's bubble.
+   */
+  invalidMessages?: Partial<Record<VinFormField, string>>;
 }
+
+/** Input name -> the field its error belongs to. */
+const FIELD_OF_INPUT: Readonly<Record<string, VinFormField>> = {
+  vin: 'vin',
+  car: 'car',
+  need: 'need',
+  phone: 'phone',
+  channel: 'channel',
+  consentPd: 'consent',
+};
 
 const LABEL = 'mb-2 block text-[0.9375rem] leading-snug font-semibold text-ink';
 const OPTIONAL = 'font-medium text-muted';
@@ -124,6 +140,7 @@ export function VinForm(props: VinFormProps) {
   const [done, setDone] = useState(false);
   const initial = props.initial ?? {};
   const vinHelp = props.vinHelp ?? null;
+  const onInvalid = useInvalidCapture(FIELD_OF_INPUT, props.invalidMessages, setFieldErrors);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -137,6 +154,7 @@ export function VinForm(props: VinFormProps) {
     if (pending || done) return;
     setPending(true);
     setFormError(null);
+    setFieldErrors({});
     try {
       const response = await fetch('/api/vin', {
         method: 'POST',
@@ -178,6 +196,7 @@ export function VinForm(props: VinFormProps) {
       action="/api/vin"
       encType="multipart/form-data"
       onSubmit={(event) => void onSubmit(event)}
+      onInvalidCapture={onInvalid}
       className="relative min-w-0 space-y-4"
       data-testid="vin-form"
     >
@@ -314,8 +333,10 @@ export function VinForm(props: VinFormProps) {
       </Step>
 
       <section className="min-w-0 rounded-tile border border-line bg-bg p-5 md:p-6">
-        <label className="flex cursor-pointer items-start gap-3 text-body">
-          <span className="relative grid size-7 shrink-0 place-items-center">
+        {/* A 44 px row at least; the box's own target is 44×44 (the 24 px square drawn in the
+            middle of it), so a touchpad user does not have to aim at the square. */}
+        <label className="flex min-h-11 cursor-pointer items-center gap-3 py-2 text-body lg:py-2.5">
+          <span className="relative -m-2.5 grid size-11 shrink-0 place-items-center">
             <input
               type="checkbox"
               name="consentPd"

@@ -36,11 +36,11 @@ export function PartTile({
       )}
     >
       {size === 'sm' ? (
-        <CategoryIcon category={cat} size={40} strokeWidth={1.5} />
+        <CategoryIcon category={cat} size={40} />
       ) : (
         <>
-          <CategoryIcon category={cat} size={48} strokeWidth={1.5} className="lg:hidden" />
-          <CategoryIcon category={cat} size={52} strokeWidth={1.5} className="hidden lg:block" />
+          <CategoryIcon category={cat} size={48} className="lg:hidden" />
+          <CategoryIcon category={cat} size={52} className="hidden lg:block" />
         </>
       )}
     </div>

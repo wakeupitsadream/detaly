@@ -4,7 +4,8 @@ import { cn } from './cn';
 /**
  * A radio card (the messenger choice of /checkout and /vin): an icon over a short label in a
  * framed card. Unchecked: a `faint` frame and an empty `muted` circle in the corner (both above
- * 3:1, WCAG 1.4.11); checked: a brand frame on `brand-soft` and a white check in a brand circle.
+ * 3:1, WCAG 1.4.11), 10 px clear of the frame; checked: a brand frame on `brand-soft` and a white
+ * check in a brand circle. The payment card of /checkout (PaymentSchemeNote) has the same anatomy.
  * `soon`: an inactive card with «скоро» under the label, nothing to tick.
  */
 export function ChoiceCard({
@@ -30,7 +31,7 @@ export function ChoiceCard({
   return (
     <label
       className={cn(
-        'relative flex min-h-24 min-w-0 flex-col items-center justify-center gap-1.5 rounded-control border-[1.5px] px-2 pt-7 pb-3 text-center font-semibold transition-colors',
+        'relative flex min-h-24 min-w-0 flex-col items-center justify-center gap-1.5 rounded-control border-[1.5px] px-2 pt-8 pb-3 text-center font-semibold transition-colors',
         soon
           ? 'cursor-not-allowed border-line bg-surface text-muted'
           : 'cursor-pointer border-faint bg-bg text-ink hover:border-muted has-[:checked]:border-brand has-[:checked]:bg-brand-soft',
@@ -53,7 +54,7 @@ export function ChoiceCard({
       {soon ? null : (
         <span
           aria-hidden
-          className="absolute top-2 right-2 grid size-6 place-items-center rounded-full border-2 border-muted bg-bg text-on-brand peer-checked:border-brand peer-checked:bg-brand [&>svg]:invisible peer-checked:[&>svg]:visible"
+          className="absolute top-2.5 right-2.5 grid size-6 place-items-center rounded-full border-2 border-muted bg-bg text-on-brand peer-checked:border-brand peer-checked:bg-brand [&>svg]:invisible peer-checked:[&>svg]:visible"
         >
           <IconCheck size={16} strokeWidth={2.5} />
         </span>

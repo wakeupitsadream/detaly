@@ -88,7 +88,9 @@ export function SectionHeading({
           !onDark && !phoneMarker && 'max-md:mt-0',
         )}
       >
-        <Tag id={id} className={cn('min-w-0 text-h2', onDark && 'text-on-brand')}>
+        {/* scroll-mt: a jump to the heading (/about#about-why) keeps the marker above it
+            clear of the sticky search plate (html has the plate's scroll-padding). */}
+        <Tag id={id} className={cn('min-w-0 scroll-mt-10 text-h2', onDark && 'text-on-brand')}>
           {children}
         </Tag>
         {action ? <div className="shrink-0">{action}</div> : null}

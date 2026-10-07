@@ -92,7 +92,7 @@ function Questions({ phone }: { phone: string | null }) {
  * /docs/<slug> (docs/design-v2.md, «Инфостраницы»): the list of documents on top, the text
  * 17/28 in a 68ch column. From lg the right column sticks under the search plate with the
  * table of contents (the h2 sections) and a short «Вопросы?» card; below lg the contents fold
- * into a <details> above the text.
+ * into a <details> under the title block, so the document's name opens the first screen.
  */
 export default async function DocumentPage({ params }: { params: Params }) {
   const { slug } = await params;
@@ -104,10 +104,14 @@ export default async function DocumentPage({ params }: { params: Params }) {
   return (
     <div className="min-w-0 space-y-6 md:space-y-8">
       <DocumentsNav current={slug} />
-      <LegalToc items={toc} variant="folded" className="lg:hidden" />
       <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-10">
         {doc ? (
-          <LegalDocumentView doc={doc} sheet anchors />
+          <LegalDocumentView
+            doc={doc}
+            sheet
+            anchors
+            toc={<LegalToc items={toc} variant="folded" className="mb-6 max-w-[68ch] lg:hidden" />}
+          />
         ) : (
           <div className="min-w-0 md:rounded-panel md:border md:border-line md:px-12 md:py-12">
             <p className="flex items-center gap-2 text-small text-muted">

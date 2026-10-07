@@ -164,7 +164,7 @@ const CONFIRMED_SET: ReadonlySet<OrderStatus> = new Set([
 
 const ITEM_STATE_LABELS: Record<OrderItemState, string> = {
   pending: 'Заказываем у поставщика',
-  ordered: 'Заказана, едет к нам',
+  ordered: 'Заказана у поставщика',
   failed: 'Отменена',
   replaced: 'Заменена',
   arrived: 'Приехала',

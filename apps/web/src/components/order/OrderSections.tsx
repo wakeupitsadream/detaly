@@ -185,10 +185,16 @@ function ItemRow({ item }: { item: OrderItemView }) {
     >
       <PartTile name={item.name} size="sm" />
       <div className="min-w-0">
-        <p className="text-[1.0625rem] leading-snug font-bold wrap-anywhere">
+        {/* A heading per item (h3 under «Состав заказа»): a screen reader steps item to item. */}
+        <h3 className="text-[1.0625rem] leading-snug font-bold wrap-anywhere">
           {item.brand} <span className="tabular-nums">{item.article}</span>
+        </h3>
+        {/* Two lines: «Колодки тормозные передние» must not lose «передние». */}
+        <p className="line-clamp-2 text-small font-normal text-muted wrap-anywhere">{item.name}</p>
+        {/* Quantity × price under the name, so the price column stays narrow. */}
+        <p className="text-small font-normal text-muted tabular-nums">
+          {item.qty} × <span className="whitespace-nowrap">{formatRub(item.priceClientKop)}</span>
         </p>
-        <p className="line-clamp-1 text-small font-normal text-muted wrap-anywhere">{item.name}</p>
       </div>
       <div className="text-right">
         {/* An item out of the order: the sum struck through, the text keeps its contrast. */}
@@ -200,13 +206,10 @@ function ItemRow({ item }: { item: OrderItemView }) {
         >
           {formatRub(item.lineTotalKop)}
         </p>
-        <p className="text-small font-normal whitespace-nowrap text-muted tabular-nums">
-          {item.qty} × {formatRub(item.priceClientKop)}
-        </p>
       </div>
       {/* One badge, like everywhere, under the name and the sum (it may be long): the item's
           state once the order is confirmed, before that where it comes from. Never «склад»
-          next to «едет к нам». */}
+          next to «заказана у поставщика». */}
       {item.stateLabel ? (
         <p className="col-span-2 col-start-2 mt-1.5">
           <Badge tone={itemTone(item)} data-testid="order-item-state">

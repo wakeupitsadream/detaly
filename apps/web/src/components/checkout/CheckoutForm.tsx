@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { DiffBanner } from '@/components/DiffBanner';
+import { useInvalidCapture } from '@/components/forms/use-invalid-capture';
 import {
   IconAlert,
   IconArrowRight,
@@ -60,7 +61,21 @@ export interface CheckoutFormProps {
   payment?: ReactNode;
   /** The order's lines and total, shown before the consents. */
   summary?: ReactNode;
+  /**
+   * The server's messages (FIELD_MESSAGES) for the browser's own check before a submit: a
+   * missing phone or name is told under the field like a server error, not in a bubble.
+   */
+  invalidMessages?: Partial<Record<Field, string>>;
 }
+
+/** Input name -> the field its error belongs to. */
+const FIELD_OF_INPUT: Readonly<Record<string, Field>> = {
+  phone: 'phone',
+  name: 'name',
+  channel: 'channel',
+  acceptOffer: 'acceptOffer',
+  consentPd: 'consentPd',
+};
 
 /** Example values of the demo form: obviously not a person. */
 export const DEMO_FORM_EXAMPLE = { phone: '+7 999 123-45-67', name: 'Алексей' } as const;
@@ -124,8 +139,8 @@ function Step({ index, title, children }: { index?: string; title: string; child
 }
 
 /**
- * A consent checkbox: a 24 px rounded square, brand fill with a white tick when checked, the
- * whole row (48 px at least) is the label. The native input stays in place (keyboard, form
+ * A consent checkbox: a 24 px rounded square in a 44 px target, brand fill with a white tick
+ * when checked, the whole row (48 px at least) is the label. The native input stays in place (keyboard, form
  * data, the label as its name), only its look changes.
  */
 function Consent({
@@ -148,8 +163,9 @@ function Consent({
       }
     : {};
   return (
-    <label className="flex min-h-12 cursor-pointer items-start gap-3 py-1.5 text-body leading-snug">
-      <span className="relative grid size-6 shrink-0 place-items-center">
+    <label className="flex min-h-12 cursor-pointer items-center gap-3 py-2 text-body leading-snug lg:py-2.5">
+      {/* The box's own target is 44×44 around the 24 px square (the whole row is the label). */}
+      <span className="relative -m-2.5 grid size-11 shrink-0 place-items-center">
         <input
           type="checkbox"
           name={name}
@@ -182,6 +198,7 @@ export function CheckoutForm(props: CheckoutFormProps) {
   const [pending, setPending] = useState(false);
   const [done, setDone] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<Field, string>>>({});
+  const onInvalid = useInvalidCapture(FIELD_OF_INPUT, props.invalidMessages, setFieldErrors);
   const [formError, setFormError] = useState<string | null>(null);
   const [changes, setChanges] = useState<LineChange[] | null>(null);
   // Values from a 409 answer until the refreshed page brings its own.
@@ -300,6 +317,7 @@ export function CheckoutForm(props: CheckoutFormProps) {
     <form
       className="min-w-0 space-y-6 md:space-y-8"
       onSubmit={(e) => void onSubmit(e)}
+      onInvalidCapture={onInvalid}
       data-testid="checkout-form"
     >
       {changes !== null || schemeNotice !== null ? (

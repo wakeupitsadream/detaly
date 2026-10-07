@@ -14,10 +14,14 @@ const SHOP_LINKS = [
   { href: '/about', label: 'О нас и реквизиты' },
 ];
 
+/**
+ * Short captions that fit one line on a 360 px phone (the documents keep their full titles):
+ * a column of even 44 px rows instead of two-line items with jumping gaps.
+ */
 const DOC_LINKS = [
   { href: '/docs/offer', label: 'Публичная оферта' },
-  { href: '/docs/privacy', label: 'Политика обработки персональных данных' },
-  { href: '/docs/consent', label: 'Согласие на обработку персональных данных' },
+  { href: '/docs/privacy', label: 'Политика обработки данных' },
+  { href: '/docs/consent', label: 'Согласие на обработку данных' },
 ];
 
 function telHrefOf(phone: string): string {
@@ -27,13 +31,13 @@ function telHrefOf(phone: string): string {
 function LinkList({ label, links }: { label: string; links: { href: string; label: string }[] }) {
   return (
     <nav aria-label={label} className="min-w-0">
-      <ul className="space-y-1">
+      <ul>
         {links.map((link) => (
-          <li key={link.href}>
-            {/* 44 px targets; two-line items (the long documents) keep a 24 px line height. */}
+          <li key={link.href} className="flex">
+            {/* Even 44 px rows, no gap between them: one step down the whole column. */}
             <Link
               href={link.href}
-              className="inline-flex min-h-11 items-center py-1 text-body leading-6 text-muted underline-offset-4 transition-colors hover:text-ink hover:underline"
+              className="inline-flex min-h-11 items-center text-body leading-6 text-muted underline-offset-4 transition-colors hover:text-ink hover:underline"
             >
               {link.label}
             </Link>
@@ -105,7 +109,7 @@ export function Footer({ brand, year }: { brand: Brand; year: number }) {
           <div
             className={cn(
               'min-w-0',
-              columns === 1 ? 'grid gap-5 md:grid-cols-2 md:gap-12' : 'space-y-2',
+              columns === 1 ? 'grid gap-2 md:grid-cols-2 md:gap-12' : 'space-y-2',
             )}
           >
             <LinkList label="Покупателям" links={SHOP_LINKS} />

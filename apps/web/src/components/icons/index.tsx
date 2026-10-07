@@ -2,7 +2,10 @@
  * Inline SVG icons, no library (docs/design-v2.md, «Иконки»): 24x24 grid, 1.75 stroke, round
  * caps and joins, currentColor. Brand colour on light surfaces, white on the dark panel.
  * Decorative by default (aria-hidden); pass `title` to give an icon an accessible name.
- * Category glyphs in big tiles take `strokeWidth={1.5}` (they are drawn at 56-64 px).
+ * Big icons (32 px and up: category tiles, the dark panel, feature rows, empty states) keep one
+ * on-screen line of LARGE_LINE_PX whatever their size, so a 88 px tile glyph and a 40 px panel
+ * glyph look drawn with the same pen; the stroke is scaled down from the 24 grid automatically.
+ * Draw an icon at one size per element (two elements for a responsive size), not resized by CSS.
  */
 import type { ReactNode, SVGProps } from 'react';
 import type { PartCategory } from './category';
@@ -16,6 +19,14 @@ export type IconProps = Omit<SVGProps<SVGSVGElement>, 'children'> & {
 
 export type IconComponent = ((props: IconProps) => ReactNode) & { displayName?: string };
 
+/** The on-screen line of every icon drawn at 32 px or more. */
+export const LARGE_LINE_PX = 2.5;
+
+/** Stroke width in 24-grid units that renders LARGE_LINE_PX at the given size. */
+export function largeStroke(size: number): number {
+  return Math.round(((LARGE_LINE_PX * 24) / size) * 100) / 100;
+}
+
 function Svg({ size = 24, title, children, ...rest }: IconProps & { children: ReactNode }) {
   return (
     <svg
@@ -25,7 +36,7 @@ function Svg({ size = 24, title, children, ...rest }: IconProps & { children: Re
       height={size}
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.75}
+      strokeWidth={size >= 32 ? largeStroke(size) : 1.75}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden={title ? undefined : true}

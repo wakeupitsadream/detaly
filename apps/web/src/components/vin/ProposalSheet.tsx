@@ -1,7 +1,7 @@
 /**
  * /p/<token>: the master's proposal (docs/phase-1c-implementation.md section 11 item 2; look:
- * docs/design-v2.md, /p/[token]): the master's comment on a `surface` card with the master's
- * icon, the lines as offer cards (tile, brand and article, name, stock badge, date, price), the
+ * docs/design-v2.md, /p/[token]): the master's comment in a white IconCard (the wrench in its
+ * head, like the guarantee card), the lines as offer cards (tile, brand and article, name, stock badge, date, price), the
  * total with how it is paid and «Оформить заказ» — a plain form post (no JavaScript needed;
  * it fills the cart, the payment comes at checkout) — and the rule
  * «подобрали мы и не подошло — вернём деньги». Phones get the sum and the button in a white bar
@@ -19,6 +19,7 @@ import { Notice } from '@/components/page/Notice';
 import { StockBadge } from '@/components/StockBadge';
 import { Badge } from '@/components/ui/Badge';
 import { buttonClass } from '@/components/ui/Button';
+import { IconCard } from '@/components/ui/Card';
 import { cn } from '@/components/ui/cn';
 import { PartTile } from '@/components/ui/PartTile';
 import { Price } from '@/components/ui/Price';
@@ -44,7 +45,7 @@ const STATUS_TEXT: Record<Exclude<ProposalLineView['status'], 'ok'>, string> = {
  * the name. On phones the badge row takes the card's full width (as in OfferRow), so «В
  * Оренбурге — оплата при получении» stays on one line.
  */
-function ProposalLine({ line }: { line: ProposalLineView }) {
+function ProposalLine({ line, mixed }: { line: ProposalLineView; mixed: boolean }) {
   const off = line.status !== 'ok';
   return (
     <li
@@ -58,9 +59,10 @@ function ProposalLine({ line }: { line: ProposalLineView }) {
     >
       <PartTile name={line.name} size="sm" className="md:row-span-2 md:size-18 md:rounded-tile" />
       <div className="min-w-0 self-center">
-        <p className="text-[1.0625rem] leading-snug font-bold wrap-anywhere">
+        {/* A heading (h3 under «Что подобрал мастер»): a screen reader steps line to line. */}
+        <h3 className="text-[1.0625rem] leading-snug font-bold wrap-anywhere">
           {line.brand} <span className="tabular-nums">{line.article}</span>
-        </p>
+        </h3>
         <p className="mt-1 line-clamp-2 text-small font-normal text-muted wrap-anywhere">
           {line.name}
         </p>
@@ -70,7 +72,8 @@ function ProposalLine({ line }: { line: ProposalLineView }) {
           <p className="text-small font-semibold text-danger">{STATUS_TEXT[line.status]}</p>
         ) : (
           <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-            <StockBadge isLocal={line.isLocal} />
+            {/* A mixed proposal is one prepaid order: no «оплата при получении» tail. */}
+            <StockBadge isLocal={line.isLocal} payment={!mixed} />
             {line.promiseText ? (
               <span
                 className="inline-flex min-w-0 items-center gap-1.5 text-small"
@@ -153,7 +156,17 @@ export function proposalPaymentLine(lines: readonly ProposalLineView[]): string 
     return 'Оплата при получении — картой или по QR. Наличные не принимаем.';
   }
   if (live.every((line) => !line.isLocal)) return 'Предоплата — картой или СБП при оформлении.';
-  return 'Одним заказом — предоплата 100%, картой или СБП.';
+  return MIXED_PROPOSAL_PAYMENT;
+}
+
+/** The payment line of a proposal with parts both in Orenburg and to order. */
+export const MIXED_PROPOSAL_PAYMENT =
+  'Предоплата 100% за всю подборку: в ней есть деталь под заказ. Картой или СБП.';
+
+/** True when the live lines are both in Orenburg and to order (one prepaid order). */
+export function isMixedProposal(lines: readonly ProposalLineView[]): boolean {
+  const live = lines.filter((line) => line.status === 'ok');
+  return live.some((line) => line.isLocal) && live.some((line) => !line.isLocal);
 }
 
 export function ProposalSheet({
@@ -168,6 +181,7 @@ export function ProposalSheet({
   const sellable = view.lines.length > view.unavailable;
   const canTake = mode.kind !== 'expired' && sellable;
   const paymentLine = proposalPaymentLine(view.lines);
+  const mixed = isMixedProposal(view.lines);
   return (
     <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-10">
       <div className="min-w-0 space-y-6">
@@ -201,31 +215,21 @@ export function ProposalSheet({
         ) : null}
 
         {view.comment ? (
-          <section
-            className="flex min-w-0 items-start gap-4 rounded-panel bg-surface p-5 md:p-6"
-            aria-labelledby="proposal-comment"
+          <IconCard
+            icon={<IconWrench size={24} />}
+            title="Комментарий мастера"
+            titleId="proposal-comment"
             data-testid="proposal-comment"
           >
-            <span
-              aria-hidden
-              className="grid size-14 shrink-0 place-items-center rounded-full bg-brand text-on-brand"
-            >
-              <IconWrench size={28} />
-            </span>
-            <div className="min-w-0">
-              <h2 id="proposal-comment" className="text-h3">
-                Комментарий мастера
-              </h2>
-              <p className="mt-2 text-body whitespace-pre-line wrap-anywhere">{view.comment}</p>
-            </div>
-          </section>
+            <p className="text-body whitespace-pre-line wrap-anywhere">{view.comment}</p>
+          </IconCard>
         ) : null}
 
         <section aria-labelledby="proposal-lines" className="min-w-0">
           <SectionHeading id="proposal-lines">Что подобрал мастер</SectionHeading>
           <ul className="mt-5 flex min-w-0 flex-col gap-3" data-testid="proposal-lines">
             {view.lines.map((line) => (
-              <ProposalLine key={line.id} line={line} />
+              <ProposalLine key={line.id} line={line} mixed={mixed} />
             ))}
           </ul>
         </section>
@@ -282,24 +286,21 @@ export function ProposalSheet({
           ) : null}
         </section>
 
-        <section className="flex min-w-0 items-start gap-4 rounded-tile border border-line p-5 md:p-6">
-          <IconShield size={40} strokeWidth={1.5} className="shrink-0 text-brand" />
-          <div className="min-w-0">
-            <h2 className="text-h3">Подобрали мы&nbsp;— отвечаем мы</h2>
-            <p className="mt-1 text-small font-normal text-muted" data-testid="proposal-guarantee">
-              Деталь не подошла к автомобилю из заявки — вернём деньги полностью.
-            </p>
-          </div>
-        </section>
+        <IconCard icon={<IconShield size={24} />} title={'Подобрали мы\u00a0— отвечаем мы'}>
+          <p className="text-small font-normal text-muted" data-testid="proposal-guarantee">
+            Деталь не подошла к автомобилю из заявки — вернём деньги полностью.
+          </p>
+        </IconCard>
       </aside>
 
       {canTake ? (
         <>
           {/* The footer makes room for the bar (`.mobile-cart-bar` in globals.css). */}
           {/* The same floating card as MobileCartBar on the other pages. */}
-          {/* Steps aside while the total card is on screen: no two take buttons in a row. */}
+          {/* Steps aside while the total's own take button is fully on screen (not merely the
+              top of its card, not under the sticky search): never a screen without a button. */}
           <HideWhileInView
-            target='[data-testid="proposal-summary"]'
+            target='[data-testid="proposal-take"]'
             className="mobile-cart-bar fixed inset-x-0 bottom-0 z-50 px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:hidden"
             testId="proposal-bar"
           >

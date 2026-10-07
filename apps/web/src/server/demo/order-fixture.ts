@@ -113,7 +113,7 @@ export async function buildDemoOrderView(deps: DemoOrderDeps): Promise<OrderView
       priceClientKop: view.priceClientKop,
       lineTotalKop: safeMul(view.priceClientKop, qty),
       state: 'ordered',
-      stateLabel: 'Заказана, едет к нам',
+      stateLabel: 'Заказана у поставщика',
       waiting: true,
       inactive: false,
       canCancel: false,

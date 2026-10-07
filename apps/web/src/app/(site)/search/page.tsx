@@ -26,6 +26,7 @@ import { ResultsHeader } from '@/components/search/ResultsHeader';
 import { cartCountLabel } from '@/components/SiteHeader';
 import { ButtonLink } from '@/components/ui/Button';
 import { CtaCard } from '@/components/ui/CtaCard';
+import { VinCtaArt } from '@/components/vin/VinCtaArt';
 import { vinRequestHref } from '@/lib/vin-link';
 import { getBrand, telHref } from '@/server/brand';
 import { requestCartCount } from '@/server/cart/count';
@@ -116,11 +117,11 @@ function SearchIdle({ demoData }: { demoData: boolean }) {
         title="Не знаете артикул?"
         titleId="search-vin-cta"
         text="Мастер подберёт деталь по VIN бесплатно."
-        icon={<IconSts size={48} />}
+        art={<VinCtaArt />}
         action={{
           href: vinRequestHref(),
           label: 'Подобрать по VIN',
-          icon: <IconArrowRight size={22} />,
+          icon: <IconSts size={22} />,
         }}
       />
     </div>
@@ -202,12 +203,12 @@ function Results({
         title="Не уверены, что подойдёт?"
         titleId="search-results-vin-cta"
         text="Мастер проверит по VIN бесплатно."
-        icon={<IconSts size={48} />}
+        art={<VinCtaArt />}
         testId="search-vin-cta"
         action={{
           href: vinRequestHref({ need: `Артикул ${query}` }),
           label: 'Подобрать по VIN',
-          icon: <IconArrowRight size={22} />,
+          icon: <IconSts size={22} />,
           prefetch: false,
         }}
       />

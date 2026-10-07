@@ -14,7 +14,7 @@ import { cn } from './ui/cn';
 export function EmptyState({ query, demoData = false }: { query: string; demoData?: boolean }) {
   return (
     <EmptyPanel
-      icon={<IconSearch size={64} strokeWidth={1.5} />}
+      icon={<IconSearch size={64} />}
       titleAs="h1"
       titleId="empty-title"
       testId="empty-state"

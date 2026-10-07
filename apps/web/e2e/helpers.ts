@@ -2,7 +2,7 @@
  * Shared bits of the e2e specs (not a spec itself: Playwright collects *.spec.ts only).
  */
 import { randomInt } from 'node:crypto';
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 /** 198.18.0.0/15 is reserved for benchmarking: never a real client. */
 export function randomIp(): string {
@@ -45,4 +45,34 @@ export function testName(): string {
   let suffix = '';
   for (let i = 0; i < 6; i += 1) suffix += NAME_LETTERS[randomInt(0, NAME_LETTERS.length)];
   return `Евграф Тест${suffix}`;
+}
+
+/**
+ * True while the whole element is on screen and clear of the sticky search plate (top 84 px)
+ * and the floating bar (bottom 76 px): exactly when HideWhileInView hides the bar. Phones only.
+ */
+export async function actionClearOnScreen(locator: Locator): Promise<boolean> {
+  return locator.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    const height = (globalThis as unknown as { innerHeight: number }).innerHeight;
+    return rect.height > 0 && rect.top >= 84 && rect.bottom <= height - 76;
+  });
+}
+
+/**
+ * Phones: a page with a floating checkout bar always shows a way on — the bar, or the on-page
+ * button it repeats, fully visible (never neither, never both).
+ */
+export async function expectOneCheckoutAction(
+  page: Page,
+  action: Locator,
+  bar: Locator,
+): Promise<void> {
+  // The observer answers asynchronously after a scroll or a load.
+  await expect
+    .poll(async () => {
+      const clear = await actionClearOnScreen(action);
+      return clear !== (await bar.isVisible());
+    })
+    .toBe(true);
 }

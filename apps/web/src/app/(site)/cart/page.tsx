@@ -40,7 +40,7 @@ function first(value: string | string[] | undefined): string {
 function EmptyCart() {
   return (
     <EmptyPanel
-      icon={<IconCart size={64} strokeWidth={1.5} />}
+      icon={<IconCart size={64} />}
       title="Корзина пуста"
       testId="cart-empty"
       text="Найдите деталь по артикулу или отдайте подбор мастеру."
@@ -130,6 +130,8 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
         {summary && gate ? (
           <div className="grid min-w-0 gap-6 pt-2 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start lg:gap-8">
             <div className="min-w-0 space-y-4">
+              {/* The lines are h3: this heading puts them under the page's h1. */}
+              <h2 className="sr-only">Товары в корзине</h2>
               <ul className="min-w-0 space-y-3">
                 {summary.lines.map((line) => (
                   <CartLineRow key={line.id} line={line} />

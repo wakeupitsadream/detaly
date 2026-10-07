@@ -24,7 +24,7 @@ export default function NotFound() {
       </div>
       <div className="mx-auto flex w-full max-w-site flex-1 flex-col justify-center px-4 py-16 md:px-6 lg:px-8">
         <EmptyPanel
-          icon={<IconSearch size={64} strokeWidth={1.5} />}
+          icon={<IconSearch size={64} />}
           eyebrow="Ошибка 404"
           title="Страница не найдена"
           titleAs="h1"

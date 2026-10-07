@@ -1,6 +1,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { IconCalendar, IconReturn, IconSts, IconWallet, IconWrench } from '@/components/icons';
+import {
+  IconCalendar,
+  IconReceipt,
+  IconReturn,
+  IconSts,
+  IconWallet,
+  IconWrench,
+} from '@/components/icons';
 import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
 import { PickupCard } from '@/components/PickupCard';
 import { pickupRoutes } from '@/components/PickupRouteLinks';
@@ -11,8 +18,12 @@ import { getBrand } from '@/server/brand';
 
 export const metadata: Metadata = { title: 'О магазине' };
 
+/**
+ * A page link at the end of a feature line. py-3: an inline box grows its target to 47 px
+ * without moving the line (like «Например, OC 90» in the header).
+ */
 const LINK =
-  'font-semibold text-brand underline decoration-1 underline-offset-4 hover:text-brand-hover hover:decoration-2';
+  'py-3 font-semibold text-brand underline decoration-1 underline-offset-4 hover:text-brand-hover hover:decoration-2';
 
 /**
  * /about (docs/design-v2.md, «Инфостраницы»): the pickup point on top (anchor #pickup, the
@@ -67,6 +78,10 @@ export default function AboutPage() {
                 <Link className={LINK} href="/returns">
                   Как вернуть
                 </Link>
+              </FeatureRow>
+              {/* The dark panel's «Чек на каждую покупку» leads here. */}
+              <FeatureRow as="li" icon={<IconReceipt size={40} />} title="Чек на каждую покупку">
+                Кассовый чек — для гарантии и возврата.
               </FeatureRow>
             </ul>
           </section>

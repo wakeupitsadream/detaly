@@ -205,7 +205,7 @@ describe('base components', () => {
       }),
     );
     // Visible: «Машина готова …» after the spanner; «С установкой» is for screen readers.
-    expect(text(html)).toBe('С установкой — Машина готова чт 8 окт к 16:00');
+    expect(text(html)).toBe('С установкой — Машина готова чт 8 октября к 16:00');
     expect(html).toContain('<span class="sr-only">С установкой — </span>');
     expect(html).toContain('dateTime="2026-10-08T14:00:00+05:00"');
     expect(html).toContain('title="Установка: чт 8 окт с 14:00"');

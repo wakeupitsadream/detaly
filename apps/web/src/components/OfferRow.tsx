@@ -86,9 +86,11 @@ export function OfferRow({
             ))}
           </p>
         ) : null}
-        <p className="text-[1.0625rem] leading-snug font-bold wrap-anywhere lg:text-[1.25rem]">
+        {/* A heading per offer (h3 under «Точное совпадение» / «Аналоги»): a screen reader
+            steps offer to offer instead of reading five «Фильтр масляный» in a row. */}
+        <h3 className="text-[1.0625rem] leading-snug font-bold wrap-anywhere lg:text-[1.25rem]">
           {offer.brand} <span className="tabular-nums">{offer.article}</span>
-        </p>
+        </h3>
         <p className="mt-0.5 line-clamp-2 text-small font-normal text-muted wrap-anywhere">
           {offer.name}
         </p>

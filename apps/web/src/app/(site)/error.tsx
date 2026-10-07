@@ -21,7 +21,7 @@ export default function SiteError({
         aria-hidden
         className="grid size-28 place-items-center rounded-full bg-danger-soft text-danger md:size-32"
       >
-        <IconAlert size={64} strokeWidth={1.5} />
+        <IconAlert size={64} />
       </span>
       <h1 className="mt-6 text-h1">Что-то пошло не так</h1>
       <p className="mt-3 max-w-md text-body text-muted">

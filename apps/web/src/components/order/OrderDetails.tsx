@@ -216,7 +216,7 @@ export function OrderDetails({
       <div>
         <PageBody className={GRID}>
           <section
-            className="min-w-0 rounded-panel bg-surface px-5 py-5 md:px-6 md:py-7"
+            className="min-w-0 rounded-tile border border-line bg-bg px-5 py-5 md:px-6 md:py-7"
             aria-label="Ход заказа"
           >
             <OrderStepper status={view.status} scheme={view.scheme} />

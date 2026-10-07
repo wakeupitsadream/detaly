@@ -70,7 +70,7 @@ describe('dark panel', () => {
     expect(tile('vin')).toBe(vinRequestHref());
     expect(tile('install')).toBe('/about#pickup');
     expect(tile('return')).toBe('/returns');
-    for (const key of ['cod', 'date', 'receipt']) expect(tile(key)).toBe('/about');
+    for (const key of ['cod', 'date', 'receipt']) expect(tile(key)).toBe('/about#about-why');
     expect(html.match(/<a /g)).toHaveLength(6);
     expect(html).toContain('focus-visible:outline-on-brand');
   });
@@ -112,7 +112,9 @@ describe('proposal payment line', () => {
   it('one scheme: one phrase; a mix: one prepaid order, as the cart says', () => {
     expect(proposalPaymentLine([line(true), line(true)])).toContain('при получении');
     expect(proposalPaymentLine([line(false)])).toContain('Предоплата');
-    expect(proposalPaymentLine([line(true), line(false)])).toContain('предоплата 100%');
+    expect(proposalPaymentLine([line(true), line(false)])).toContain(
+      'Предоплата 100% за всю подборку',
+    );
     // A line that cannot be sold does not count.
     expect(proposalPaymentLine([line(true), line(false, 'unavailable')])).toContain(
       'при получении',

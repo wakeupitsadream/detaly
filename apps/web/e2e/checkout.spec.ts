@@ -16,7 +16,7 @@
  */
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type Response } from '@playwright/test';
-import { expectNoHorizontalScroll, randomIp, screenshot } from './helpers';
+import { expectNoHorizontalScroll, expectOneCheckoutAction, randomIp, screenshot } from './helpers';
 import {
   addToCart,
   BOSCH_TO_ORDER,
@@ -249,6 +249,22 @@ test('split a mixed cart, cancel the first order, then check out the rest', asyn
   await expect(rest).toContainText('BOSCH');
   await expect(page.getByTestId('payment-scheme')).toHaveAttribute('data-scheme', 'prepay');
   await expectNoHorizontalScroll(page, '/checkout?part=order');
+});
+
+test('one item in the cart on a phone: a checkout button is always on screen', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'the floating bar is a phone thing');
+  await addToCart(page, 'OC90', KNECHT_LOCAL);
+  const action = page.getByTestId('checkout-link').or(page.getByTestId('call-to-order'));
+  const bar = page.getByTestId('cart-checkout-bar');
+  await expectOneCheckoutAction(page, action, bar);
+  // Step down the page: at every stop either the total's button or the bar shows.
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  for (let y = 0; y <= height; y += 160) {
+    await page.evaluate((top) => globalThis.scrollTo(0, top), y);
+    await expectOneCheckoutAction(page, action, bar);
+  }
 });
 
 test('stale total: 409 shows the diff banner, a resubmit creates the order', async ({ page }) => {

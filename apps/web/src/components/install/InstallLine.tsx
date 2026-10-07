@@ -1,4 +1,4 @@
-import { weekdayShort, type IsoDate } from '@detaly/domain';
+import { formatDayMonth, weekdayShort, type IsoDate } from '@detaly/domain';
 import { IconWrench } from '@/components/icons';
 import { cn } from '@/components/ui/cn';
 import type { InstallPlanView } from '@/server/install/types';
@@ -6,35 +6,20 @@ import type { InstallPlanView } from '@/server/install/types';
 /** No free slot within the horizon or unparsed PICKUP_HOURS: no promise, only this. */
 export const INSTALL_FALLBACK_TEXT = 'время подберём при записи';
 
-const MONTHS_SHORT = [
-  'янв',
-  'фев',
-  'мар',
-  'апр',
-  'мая',
-  'июн',
-  'июл',
-  'авг',
-  'сен',
-  'окт',
-  'ноя',
-  'дек',
-] as const;
-
 /**
- * '2026-10-08T14:00:00+05:00' -> 'чт 8 окт': the slot's own date, written like the arrival
- * date next to it. Never «завтра»: a relative day under an absolute arrival date read as if the
- * car were ready before the part came.
+ * '2026-10-08T14:00:00+05:00' -> 'чт 8 октября': the slot's own date, written exactly like the
+ * arrival date next to it («Получение к чт 8 октября»), so the two lines never look like two
+ * different days. Never «завтра»: a relative day under an absolute arrival date read as if the
+ * car were ready before the part came. The short «8 окт» stays only in the slot chips.
  */
 export function installDateText(slotStartIso: string): string {
   const date = slotStartIso.slice(0, 10) as IsoDate;
-  const [, month = 1, day = 1] = date.split('-').map(Number);
-  return `${weekdayShort(date)} ${day} ${MONTHS_SHORT[month - 1] ?? ''}`;
+  return `${weekdayShort(date)} ${formatDayMonth(date)}`;
 }
 
 /**
  * The «when is the car ready» feature as one line (docs/design-v2.md): a spanner and «Машина
- * готова чт 8 окт к 16:00» under an offer, a cart line or the order's booking card. The spanner
+ * готова чт 8 октября к 16:00» under an offer, a cart line or the order's booking card. The spanner
  * stands for «with installation» (said to screen readers): the one who only buys a filter is
  * not promised anything, and the short text keeps the line on one line at 375 px. A
  * calculation, not a booking: the master confirms the slot (its start is in the title).

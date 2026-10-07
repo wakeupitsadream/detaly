@@ -17,7 +17,13 @@
  */
 import { expect, test } from '@playwright/test';
 import sharp from 'sharp';
-import { expectNoHorizontalScroll, randomIp, screenshot, testPhone } from './helpers';
+import {
+  expectNoHorizontalScroll,
+  expectOneCheckoutAction,
+  randomIp,
+  screenshot,
+  testPhone,
+} from './helpers';
 import {
   fillContacts,
   giveConsents,
@@ -155,18 +161,13 @@ test('VIN request with photos -> answer with a typo -> /p/<token> -> checkout ->
   await expect(page.getByTestId('proposal-guarantee')).toBeVisible();
   await expectNoHorizontalScroll(page, '/p/<token>');
   await screenshot(page, project, 'vin-flow-proposal');
-  // On phones the bar's button, unless the total card is on screen: the bar steps aside then
-  // (HideWhileInView), and the total's button is the one to press.
+  // On phones the bar's button, unless the total's own button is fully on screen: the bar
+  // steps aside then (HideWhileInView), and the total's button is the one to press.
   let take = page.getByTestId('proposal-take');
   if (project === 'mobile') {
-    const onScreen = await page.getByTestId('proposal-summary').evaluate((el) => {
-      const rect = el.getBoundingClientRect();
-      return (
-        rect.bottom > 0 && rect.top < (globalThis as unknown as { innerHeight: number }).innerHeight
-      );
-    });
-    if (onScreen) await expect(page.getByTestId('proposal-bar')).toBeHidden();
-    else take = page.getByTestId('proposal-take-bar');
+    const bar = page.getByTestId('proposal-bar');
+    await expectOneCheckoutAction(page, take, bar);
+    if (await bar.isVisible()) take = page.getByTestId('proposal-take-bar');
   }
   await take.click();
   await expect(page).toHaveURL(/\/checkout$/);

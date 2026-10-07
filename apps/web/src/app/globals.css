@@ -155,6 +155,14 @@
     html:has(.mobile-cart-bar) .site-footer {
       padding-bottom: calc(5rem + env(safe-area-inset-bottom));
     }
+    /* While a text field has focus the keyboard leaves ~420 px: the bar steps aside so it never
+       sits on the field being typed in or tempts a stray tap away from a form. */
+    html:has(
+        :is(input:not([type='checkbox'], [type='radio'], [type='hidden']), textarea, select):focus
+      )
+      .mobile-cart-bar {
+      display: none;
+    }
   }
 
   ::selection {
@@ -278,10 +286,12 @@
     scrollbar-width: none;
     padding-block: 6px;
     margin-block: -6px;
-    padding-inline: 6px 2rem;
+    /* The fade is a narrow 24 px edge that says «more to the right» without dimming the
+       text of the chip under it; at the end of the scroll only the padding is under it. */
+    padding-inline: 6px 1.5rem;
     margin-inline-start: -6px;
-    scroll-padding-inline: 1rem;
-    mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+    scroll-padding-inline: 1rem 1.5rem;
+    mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent);
   }
   .chip-row::-webkit-scrollbar {
     display: none;

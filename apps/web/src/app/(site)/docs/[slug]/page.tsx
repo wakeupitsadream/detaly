@@ -2,9 +2,11 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { IconDocument, IconPhone } from '@/components/icons';
-import { LegalDocumentView } from '@/components/LegalDocumentView';
+import { legalBodyForView, LegalDocumentView } from '@/components/LegalDocumentView';
+import { LegalToc } from '@/components/LegalToc';
 import { Notice } from '@/components/page/Notice';
 import { Chip, ChipRow } from '@/components/ui/Chip';
+import { headingAnchors } from '@/lib/markdown';
 import { getBrand, telHref } from '@/server/brand';
 import { docKindForSlug, loadPublishedDocument } from '@/server/documents';
 
@@ -56,7 +58,7 @@ function DocumentsNav({ current }: { current: string }) {
 function Questions({ phone }: { phone: string | null }) {
   return (
     <aside
-      className="min-w-0 space-y-3 rounded-tile bg-surface p-6 lg:sticky lg:top-28"
+      className="min-w-0 space-y-3 rounded-tile bg-surface p-6"
       aria-labelledby="docs-questions"
       data-print-hide=""
     >
@@ -78,7 +80,7 @@ function Questions({ phone }: { phone: string | null }) {
           className="font-semibold text-brand underline underline-offset-4 hover:text-brand-hover"
           href="/about"
         >
-          на странице «О сервисе»
+          на странице «О нас»
         </Link>
         .
       </p>
@@ -88,7 +90,9 @@ function Questions({ phone }: { phone: string | null }) {
 
 /**
  * /docs/<slug> (docs/design-v2.md, «Инфостраницы»): the list of documents on top, the text
- * 17/28 in a 68ch column, a short «Вопросы?» card beside it from lg.
+ * 17/28 in a 68ch column. From lg the right column sticks under the search plate with the
+ * table of contents (the h2 sections) and a short «Вопросы?» card; below lg the contents fold
+ * into a <details> above the text.
  */
 export default async function DocumentPage({ params }: { params: Params }) {
   const { slug } = await params;
@@ -96,12 +100,14 @@ export default async function DocumentPage({ params }: { params: Params }) {
   if (!kind) notFound();
   const doc = await loadPublishedDocument(kind);
   const brand = getBrand();
+  const toc = doc ? headingAnchors(legalBodyForView(doc)) : [];
   return (
     <div className="min-w-0 space-y-6 md:space-y-8">
       <DocumentsNav current={slug} />
+      <LegalToc items={toc} variant="folded" className="lg:hidden" />
       <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-10">
         {doc ? (
-          <LegalDocumentView doc={doc} sheet />
+          <LegalDocumentView doc={doc} sheet anchors />
         ) : (
           <div className="min-w-0 md:rounded-panel md:border md:border-line md:px-12 md:py-12">
             <p className="flex items-center gap-2 text-small text-muted">
@@ -114,7 +120,10 @@ export default async function DocumentPage({ params }: { params: Params }) {
             </Notice>
           </div>
         )}
-        <div className="min-w-0">
+        {/* Sticky under the search plate; a long contents scrolls inside the column so the
+            «Вопросы» card is never cut off below the screen (px-1: room for focus rings). */}
+        <div className="min-w-0 space-y-6 lg:sticky lg:top-28 lg:-mx-1 lg:max-h-[calc(100dvh-8rem)] lg:self-start lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:pb-1">
+          <LegalToc items={toc} variant="side" className="max-lg:hidden" />
           <Questions phone={brand.contactPhone} />
         </div>
       </div>

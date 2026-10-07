@@ -138,7 +138,7 @@ export function Footer({ brand, year }: { brand: Brand; year: number }) {
                 <span className="min-w-0">{pickup.hours}</span>
               </p>
             ) : null}
-            <PickupRouteLinks brand={brand} className="pt-1" />
+            <PickupRouteLinks brand={brand} variant="inline" />
           </section>
         ) : null}
 

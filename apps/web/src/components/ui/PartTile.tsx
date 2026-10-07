@@ -3,13 +3,15 @@ import { cn } from './cn';
 
 const SIZE = {
   sm: 'size-14 rounded-control',
-  md: 'size-18 rounded-tile',
+  md: 'size-18 rounded-tile lg:size-20',
 } as const;
 
 /**
  * Stands in for a photo (the supplier has none): a `surface` plate with the category glyph in
- * the brand colour. 72 px in an offer card (`md`), 56 px in compact lists (`sm`). Category
- * comes from the offer name unless given. Decorative: the name is written next to it.
+ * the brand colour. 72 px (80 px from lg) in an offer card (`md`), 56 px in compact lists
+ * (`sm`). The glyph fills about two thirds of the plate, like the picture of a home-page Tile,
+ * so a list of offers does not read as "no photo". Category comes from the offer name unless
+ * given. Decorative: the name is written next to it.
  */
 export function PartTile({
   name,
@@ -33,7 +35,14 @@ export function PartTile({
         className,
       )}
     >
-      <CategoryIcon category={cat} size={size === 'sm' ? 30 : 36} strokeWidth={1.5} />
+      {size === 'sm' ? (
+        <CategoryIcon category={cat} size={40} strokeWidth={1.5} />
+      ) : (
+        <>
+          <CategoryIcon category={cat} size={48} strokeWidth={1.5} className="lg:hidden" />
+          <CategoryIcon category={cat} size={52} strokeWidth={1.5} className="hidden lg:block" />
+        </>
+      )}
     </div>
   );
 }

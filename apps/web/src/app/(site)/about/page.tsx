@@ -9,7 +9,7 @@ import { FeatureRow } from '@/components/ui/FeatureRow';
 import { SectionHeading } from '@/components/ui/Section';
 import { getBrand } from '@/server/brand';
 
-export const metadata: Metadata = { title: 'О сервисе' };
+export const metadata: Metadata = { title: 'О магазине' };
 
 const LINK =
   'font-semibold text-brand underline decoration-1 underline-offset-4 hover:text-brand-hover hover:decoration-2';
@@ -26,7 +26,7 @@ export default function AboutPage() {
     <InnerPage>
       <PageBand
         tone="light"
-        title={`О сервисе ${brand.name}`}
+        title={`О магазине ${brand.name}`}
         lead="Запчасти по артикулу с точной датой. Забираете и ставите в одном месте."
       />
       <PageBody className="space-y-12 md:space-y-16">

@@ -1,3 +1,4 @@
+import { vinRequestHref } from '@/lib/vin-link';
 import { DemoDataBanner } from './DemoDataBanner';
 import { IconSearch, IconSts } from './icons';
 import { EmptyPanel } from './page/EmptyPanel';
@@ -26,7 +27,12 @@ export function EmptyState({ query, demoData = false }: { query: string; demoDat
       }
       actions={
         <>
-          <ButtonLink href="/vin" size="lg" icon={<IconSts size={22} />}>
+          {/* The article goes into the request: nothing to remember and type again. */}
+          <ButtonLink
+            href={vinRequestHref({ need: `Артикул ${query}` })}
+            size="lg"
+            icon={<IconSts size={22} />}
+          >
             Подобрать по VIN
           </ButtonLink>
           <EditQueryLink className={cn(buttonClass({ variant: 'secondary', size: 'lg' }), 'bg-bg')}>

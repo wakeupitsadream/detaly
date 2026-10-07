@@ -26,7 +26,8 @@ const GRID =
 
 /**
  * One make (docs/design-v2.md, BrandTile): a white card with a `line` border, the logo in a
- * 72×40 / 96×48 box, the name under it. Leads to the VIN request with the make filled in.
+ * 60×36 / 96×48 box (scaled by `brand.scale`, so wide ovals do not outweigh compact emblems and
+ * keep clear of the rounded frame), the name under it. Leads to the VIN request with the make filled in.
  */
 export function BrandTile({
   brand,
@@ -50,7 +51,9 @@ export function BrandTile({
           'md:min-h-28 md:gap-2.5 md:pt-4 md:pb-3',
         )}
       >
-        {/* A plain img: the logos are small trimmed WebP files (docs/assets.md). */}
+        {/* A plain img: the logos are small trimmed WebP files (docs/assets.md). The 60 px box
+            leaves ~10 px of air to the rounded frame on a 80 px phone tile, while the tile itself
+            keeps a thin side padding so «Mitsubishi» still fits in one line under it. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={brandLogoSrc(brand)}
@@ -59,7 +62,8 @@ export function BrandTile({
           height={brand.height}
           loading={lazy ? 'lazy' : undefined}
           decoding="async"
-          className="h-10 w-[4.5rem] max-w-full object-contain md:h-12 md:w-24"
+          style={brand.scale ? { transform: `scale(${brand.scale})` } : undefined}
+          className="h-9 w-[3.75rem] max-w-full object-contain md:h-12 md:w-24"
         />
         {/* 14 px on phones, 15 px from md; never broken inside a word («Mitsubish / i»): a
             little tighter tracking under 375 px keeps «Mitsubishi» and «Chevrolet» whole. */}

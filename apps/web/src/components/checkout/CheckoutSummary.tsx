@@ -114,50 +114,64 @@ export function CheckoutSummary({
 
 /**
  * Pickup point from env (PICKUP_*): the only way to receive an order in 1A (no courier). The
- * card of the «Получение» step: a pin with the name and address, hours, the phone and one line
- * about the installation right there.
+ * card of the «Получение» step is information, not a choice: a white card with a `line` frame
+ * (brand frame and soft fill stay for the selected payment card below), the name, then address,
+ * hours and phone in rows with brand icons like PickupCard, and one line about installation.
  */
 export function PickupPoint({ pickup }: { pickup: Brand['pickup'] }) {
   return (
     <section
-      className="min-w-0 rounded-tile border-2 border-brand bg-brand-soft/40 p-4 md:p-5"
+      className="min-w-0 rounded-tile border border-line bg-bg p-4 md:p-5"
       aria-labelledby="pickup-point-title"
       data-testid="pickup-point"
     >
-      <div className="flex min-w-0 items-start gap-3">
-        {/* A pin, not the partner's logo: its lettering is unreadable at 56 px. */}
-        <span className="grid size-14 shrink-0 place-items-center rounded-control bg-bg text-brand">
-          <IconPin size={28} />
-        </span>
-        <div className="min-w-0 flex-1 space-y-1">
-          <p className="text-small text-muted">Самовывоз</p>
-          <h3 id="pickup-point-title" className="text-h3 wrap-anywhere">
-            {pickup.name ?? 'Пункт выдачи'}
-          </h3>
-          {pickup.address ? <p className="text-body wrap-anywhere">{pickup.address}</p> : null}
+      <p className="text-small text-muted">Самовывоз</p>
+      <h3 id="pickup-point-title" className="mt-1 text-h3 wrap-anywhere">
+        {pickup.name ?? 'Пункт выдачи'}
+      </h3>
+      <address className="mt-3 not-italic">
+        <dl className="grid min-w-0 gap-2">
+          <div className="flex min-w-0 items-start gap-3">
+            <dt className="mt-0.5 shrink-0 text-brand">
+              <IconPin size={22} />
+              <span className="sr-only">Адрес</span>
+            </dt>
+            <dd className="min-w-0 text-body wrap-anywhere">
+              {pickup.address ? (
+                <span className="font-semibold">{pickup.address}</span>
+              ) : (
+                <span className="text-muted">{PICKUP_ADDRESS_UNKNOWN}</span>
+              )}
+            </dd>
+          </div>
           {pickup.hours ? (
-            <p className="flex items-center gap-1.5 text-small font-normal text-muted wrap-anywhere">
-              <IconClock size={18} className="shrink-0" />
-              {pickup.hours}
-            </p>
+            <div className="flex min-w-0 items-start gap-3">
+              <dt className="mt-0.5 shrink-0 text-brand">
+                <IconClock size={22} />
+                <span className="sr-only">Часы</span>
+              </dt>
+              <dd className="min-w-0 text-body wrap-anywhere">{pickup.hours}</dd>
+            </div>
           ) : null}
           {pickup.phone ? (
-            <p>
-              <a
-                className="inline-flex min-h-11 items-center gap-1.5 font-semibold whitespace-nowrap text-brand underline underline-offset-4"
-                href={telHref(pickup.phone)}
-              >
-                <IconPhone size={18} className="shrink-0" />
-                {pickup.phone}
-              </a>
-            </p>
+            <div className="flex min-w-0 items-center gap-3">
+              <dt className="shrink-0 text-brand">
+                <IconPhone size={22} />
+                <span className="sr-only">Телефон</span>
+              </dt>
+              <dd className="min-w-0">
+                <a
+                  className="inline-flex min-h-11 items-center text-body font-bold whitespace-nowrap text-ink tabular-nums underline decoration-line-strong underline-offset-4 hover:decoration-brand"
+                  href={telHref(pickup.phone)}
+                >
+                  {pickup.phone}
+                </a>
+              </dd>
+            </div>
           ) : null}
-          {!pickup.name && !pickup.address ? (
-            <p className="text-small text-muted">{PICKUP_ADDRESS_UNKNOWN}</p>
-          ) : null}
-        </div>
-      </div>
-      <p className="mt-3 border-t border-brand/15 pt-3 text-small font-normal">
+        </dl>
+      </address>
+      <p className="mt-3 border-t border-line pt-3 text-small font-normal">
         Там же можно сразу поставить деталь. Установка — услуга сервиса, оплата там.
       </p>
     </section>

@@ -15,30 +15,36 @@ export interface CarBrand {
   /** Intrinsic logo size in pixels, for next/image without layout shift. */
   width: number;
   height: number;
+  /**
+   * Optical scale of the logo inside its box (1 when unset). A wide oval or a wordmark plate
+   * fills the whole box width and looks twice the size of a compact emblem (Renault, VW, the
+   * Mercedes star), so those are drawn smaller to even the tiles out by area, not by width.
+   */
+  scale?: number;
 }
 
 export const CAR_BRANDS: readonly CarBrand[] = [
-  { slug: 'lada', name: 'Lada', width: 240, height: 101 },
-  { slug: 'kia', name: 'Kia', width: 239, height: 120 },
-  { slug: 'hyundai', name: 'Hyundai', width: 155, height: 79 },
+  { slug: 'lada', name: 'Lada', width: 240, height: 101, scale: 0.85 },
+  { slug: 'kia', name: 'Kia', width: 239, height: 120, scale: 0.8 },
+  { slug: 'hyundai', name: 'Hyundai', width: 155, height: 79, scale: 0.85 },
   { slug: 'renault', name: 'Renault', width: 96, height: 120 },
   { slug: 'toyota', name: 'Toyota', width: 185, height: 120 },
   { slug: 'volkswagen', name: 'Volkswagen', width: 120, height: 120 },
   { slug: 'skoda', name: 'Škoda', width: 91, height: 90 },
   { slug: 'nissan', name: 'Nissan', width: 143, height: 120 },
-  { slug: 'chevrolet', name: 'Chevrolet', width: 240, height: 106 },
-  { slug: 'ford', name: 'Ford', width: 240, height: 90 },
+  { slug: 'chevrolet', name: 'Chevrolet', width: 240, height: 106, scale: 0.85 },
+  { slug: 'ford', name: 'Ford', width: 240, height: 90, scale: 0.8 },
   { slug: 'mitsubishi', name: 'Mitsubishi', width: 93, height: 81 },
   { slug: 'mazda', name: 'Mazda', width: 111, height: 89 },
   { slug: 'haval', name: 'Haval', width: 240, height: 42 },
-  { slug: 'chery', name: 'Chery', width: 222, height: 120 },
-  { slug: 'geely', name: 'Geely', width: 208, height: 120 },
+  { slug: 'chery', name: 'Chery', width: 222, height: 120, scale: 0.85 },
+  { slug: 'geely', name: 'Geely', width: 208, height: 120, scale: 0.85 },
   { slug: 'mercedes-benz', name: 'Mercedes-Benz', width: 78, height: 77 },
   { slug: 'bmw', name: 'BMW', width: 120, height: 120 },
-  { slug: 'audi', name: 'Audi', width: 240, height: 85 },
+  { slug: 'audi', name: 'Audi', width: 240, height: 85, scale: 0.85 },
   { slug: 'opel', name: 'Opel', width: 155, height: 120 },
   { slug: 'peugeot', name: 'Peugeot', width: 83, height: 86 },
-  { slug: 'daewoo', name: 'Daewoo', width: 190, height: 120 },
+  { slug: 'daewoo', name: 'Daewoo', width: 190, height: 120, scale: 0.85 },
   { slug: 'honda', name: 'Honda', width: 184, height: 120 },
   { slug: 'lexus', name: 'Lexus', width: 86, height: 61 },
   { slug: 'uaz', name: 'УАЗ', width: 208, height: 120 },

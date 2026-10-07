@@ -155,10 +155,19 @@ test('VIN request with photos -> answer with a typo -> /p/<token> -> checkout ->
   await expect(page.getByTestId('proposal-guarantee')).toBeVisible();
   await expectNoHorizontalScroll(page, '/p/<token>');
   await screenshot(page, project, 'vin-flow-proposal');
-  const take =
-    project === 'mobile'
-      ? page.getByTestId('proposal-take-bar')
-      : page.getByTestId('proposal-take');
+  // On phones the bar's button, unless the total card is on screen: the bar steps aside then
+  // (HideWhileInView), and the total's button is the one to press.
+  let take = page.getByTestId('proposal-take');
+  if (project === 'mobile') {
+    const onScreen = await page.getByTestId('proposal-summary').evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return (
+        rect.bottom > 0 && rect.top < (globalThis as unknown as { innerHeight: number }).innerHeight
+      );
+    });
+    if (onScreen) await expect(page.getByTestId('proposal-bar')).toBeHidden();
+    else take = page.getByTestId('proposal-take-bar');
+  }
   await take.click();
   await expect(page).toHaveURL(/\/checkout$/);
   await expect(page.getByTestId('payment-scheme')).toHaveAttribute('data-scheme', 'prepay');

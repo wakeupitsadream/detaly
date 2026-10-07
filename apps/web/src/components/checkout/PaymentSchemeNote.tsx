@@ -1,7 +1,7 @@
 import type { PaymentScheme } from '@detaly/domain';
 import { IconCard, IconCheck, IconChevronDown, IconWallet } from '@/components/icons';
 import { FINAL_SCHEME_NOTE } from '@/server/cart/summary';
-import { PAYMENT_SCHEME_TITLE } from './scheme-text';
+import { PAYMENT_METHOD_LINE, PAYMENT_SCHEME_TITLE } from './scheme-text';
 
 export { PAYMENT_SCHEME_TITLE };
 
@@ -10,7 +10,8 @@ export { FINAL_SCHEME_NOTE };
 /**
  * How the order will be paid, as the chosen card of the «Оплата» step: an icon, the scheme's
  * name and a tick. The client does not pick it — the server decides by the cart and the phone —
- * so it is a card in the selected state, not a radio. The explanation (explainPaymentScheme)
+ * so it is a card in the selected state, not a radio. How the money is paid stands visibly
+ * under the name (PAYMENT_METHOD_LINE); the explanation (explainPaymentScheme)
  * is under a disclosure. Before the phone is known no-shows count as 0, so under payment on
  * handover the note says the server decides finally; a prepayment does not depend on the phone.
  */
@@ -33,9 +34,15 @@ export function PaymentSchemeNote({
         <span className="grid size-12 shrink-0 place-items-center rounded-full bg-bg text-brand">
           <Icon size={26} />
         </span>
-        <h3 id="payment-scheme-title" className="min-w-0 flex-1 text-h3">
-          {PAYMENT_SCHEME_TITLE[scheme]}
-        </h3>
+        <div className="min-w-0 flex-1">
+          <h3 id="payment-scheme-title" className="text-h3">
+            {PAYMENT_SCHEME_TITLE[scheme]}
+          </h3>
+          {/* Visible, not under the disclosure: how to pay (no cash at the point). */}
+          <p className="mt-0.5 text-small font-normal text-muted" data-testid="payment-method">
+            {PAYMENT_METHOD_LINE[scheme]}
+          </p>
+        </div>
         <span
           aria-hidden
           className="grid size-7 shrink-0 place-items-center rounded-full bg-brand text-on-brand"
@@ -44,7 +51,9 @@ export function PaymentSchemeNote({
         </span>
       </div>
       <details className="details-plain group px-4 pb-3">
-        <summary className="inline-flex min-h-11 items-center gap-1.5 text-small font-semibold text-brand">
+        {/* A disclosure, not a page link: ink with a quiet underline, like every «Как это
+            работает» and «Подробнее» on the site (page links inside text are brand). */}
+        <summary className="inline-flex min-h-11 items-center gap-1.5 text-small font-semibold text-ink underline decoration-line-strong underline-offset-4 hover:decoration-brand">
           Как это работает
           <IconChevronDown
             size={20}

@@ -1,9 +1,11 @@
 import type { OrderMinimumsResult } from '@detaly/domain';
 import type { ReactNode } from 'react';
+import { PAYMENT_METHOD_LINE } from '@/components/checkout/scheme-text';
 import { telHref } from '@/server/brand';
 import type { InstallPlanView } from '@/server/install/types';
 import { IconArrowRight, IconCalendar, IconCard, IconPhone, IconWallet } from './icons';
 import { InstallLine } from './install/InstallLine';
+import { HideWhileInView } from './page/HideWhileInView';
 import { Notice } from './page/Notice';
 import { Badge } from './ui/Badge';
 import { buttonClass } from './ui/Button';
@@ -13,14 +15,18 @@ import { Price } from './ui/Price';
 /** How the cart will be paid, as the badge of the summary. */
 export type CartPaymentMode = 'on_pickup' | 'prepay';
 
-const PAYMENT_BADGE: Record<CartPaymentMode, { text: string; tone: 'ok' | 'info' }> = {
-  on_pickup: { text: 'Оплата при получении', tone: 'ok' },
-  prepay: { text: 'Предоплата онлайн', tone: 'info' },
+const PAYMENT_BADGE: Record<CartPaymentMode, { text: string; tone: 'ok' | 'info'; how: string }> = {
+  on_pickup: {
+    text: 'Оплата при получении',
+    tone: 'ok',
+    how: PAYMENT_METHOD_LINE.pay_on_handover,
+  },
+  prepay: { text: 'Предоплата онлайн', tone: 'info', how: PAYMENT_METHOD_LINE.prepay },
 };
 
 /**
  * The total of /cart on a grey panel (docs/design-v2.md, «Корзина»): the sum large, the payment
- * mode as a badge, the order's date, the install line and «Оформить заказ» — or, while online
+ * mode as a badge with one line of how to pay, the order's date, the install line and «Оформить заказ» — or, while online
  * checkout is closed, the gate's text with a call button (every closed reason), so the client
  * who collected a cart still has a way to order.
  */
@@ -72,6 +78,12 @@ export function CartSummary({
         >
           {badge.text}
         </Badge>
+      ) : null}
+      {/* How to pay, visible (no cash at the point): the same line as on /checkout. */}
+      {badge ? (
+        <p className="mt-2 text-small font-normal text-muted" data-testid="cart-payment-method">
+          {badge.how}
+        </p>
       ) : null}
       {paymentNotice}
       {promiseText ? (
@@ -137,7 +149,8 @@ export function CartSummary({
 
 /**
  * Phones only (below md) on /cart: the sum and «Оформить» on a white floating panel at the
- * bottom, so checkout is one tap away however long the cart is. The footer makes room for it
+ * bottom, so checkout is one tap away however long the cart is; it steps aside while the
+ * total card (its own «Оформить заказ») is on screen. The footer makes room for it
  * (`.mobile-cart-bar` in globals.css).
  */
 export function CartCheckoutBar({
@@ -148,9 +161,10 @@ export function CartCheckoutBar({
   itemsCount: number;
 }) {
   return (
-    <div
+    <HideWhileInView
+      target='[data-testid="cart-summary"]'
       className="mobile-cart-bar fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:hidden"
-      data-testid="cart-checkout-bar"
+      testId="cart-checkout-bar"
     >
       <div className="flex h-15 items-center justify-between gap-3 rounded-tile border border-line bg-bg pr-1.5 pl-4 text-ink shadow-float">
         <p className="min-w-0">
@@ -164,6 +178,6 @@ export function CartCheckoutBar({
           <IconArrowRight size={20} />
         </a>
       </div>
-    </div>
+    </HideWhileInView>
   );
 }

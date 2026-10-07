@@ -33,11 +33,11 @@ export function installDateText(slotStartIso: string): string {
 }
 
 /**
- * The «when is the car ready» feature as one line (docs/design-v2.md): a spanner and «С
- * установкой — машина готова чт 8 окт к 16:00» under an offer, a cart line or the order's
- * booking card. «С установкой» says whose car: the one who only buys a filter is not promised
- * anything. A calculation, not a booking: the master confirms the slot (its start is in the
- * title).
+ * The «when is the car ready» feature as one line (docs/design-v2.md): a spanner and «Машина
+ * готова чт 8 окт к 16:00» under an offer, a cart line or the order's booking card. The spanner
+ * stands for «with installation» (said to screen readers): the one who only buys a filter is
+ * not promised anything, and the short text keeps the line on one line at 375 px. A
+ * calculation, not a booking: the master confirms the slot (its start is in the title).
  */
 export function InstallLine({
   plan,
@@ -74,7 +74,9 @@ export function InstallLine({
       <span className="min-w-0">
         {plan ? (
           <>
-            С установкой — машина готова{' '}
+            {/* The spanner says «with installation» to the eye; a screen reader hears it. */}
+            <span className="sr-only">С установкой — </span>
+            Машина готова{' '}
             <span className="font-bold whitespace-nowrap">
               <time dateTime={plan.slotStartIso}>{installDateText(plan.slotStartIso)}</time>{' '}
               {plan.carReadyText}

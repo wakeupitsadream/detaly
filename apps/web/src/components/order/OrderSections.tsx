@@ -14,6 +14,7 @@ import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { cn } from '@/components/ui/cn';
 import { PartTile } from '@/components/ui/PartTile';
 import { Price } from '@/components/ui/Price';
+import { cartCountLabel } from '@/lib/plural';
 import type { InstallPlanView } from '@/server/install/types';
 import type { CartReminder } from '@/server/orders/cart-reminder';
 import type { OrderItemView } from '@/server/orders/order-view';
@@ -238,7 +239,7 @@ export function ItemsBlock({
       icon={<IconCart size={24} />}
       testId="order-items"
       tight
-      aside={<span className="text-small text-muted">{items.length} поз.</span>}
+      aside={<span className="text-small text-muted">{cartCountLabel(items.length)}</span>}
     >
       <ul className="divide-y divide-line">
         {items.map((item) => (

@@ -8,9 +8,19 @@
  * real /p/<token> (a VIN request answered through the admin API; only on the 1C stand,
  * scripts/e2e-1c.sh) with noindex and no-referrer.
  */
-import { expect, test, type APIRequestContext } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Locator } from '@playwright/test';
 import { horizontalOverflow, randomIp, testPhone } from './helpers';
 import { PAYMENTS_ON, rememberSecrets } from './shop';
+
+/** True while any part of the element is on screen (HideWhileInView hides the bar then). */
+async function totalOnScreen(locator: Locator): Promise<boolean> {
+  return locator.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    return (
+      rect.bottom > 0 && rect.top < (globalThis as unknown as { innerHeight: number }).innerHeight
+    );
+  });
+}
 
 const PAGES = [
   { slug: 'home', path: '/' },
@@ -58,7 +68,11 @@ for (const { slug, path } of PAGES) {
     if (slug === 'search-notfound') {
       const empty = page.getByTestId('empty-state');
       await expect(empty).toBeVisible();
-      await expect(empty.getByRole('link', { name: /VIN/ })).toHaveAttribute('href', '/vin');
+      // The article typed goes into the request («Артикул NOTFOUND»).
+      await expect(empty.getByRole('link', { name: /VIN/ })).toHaveAttribute(
+        'href',
+        `/vin?need=${encodeURIComponent('Артикул')}+NOTFOUND`,
+      );
     }
     if (slug.startsWith('docs-')) {
       await expect(page.getByTestId('legal-document')).toBeVisible();
@@ -167,7 +181,7 @@ test('client-side navigation works through the proxy', async ({ page }) => {
     .getByRole('link', { name: 'О нас' })
     .click();
   await expect(page).toHaveURL(/\/about$/);
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('О сервисе');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('О магазине');
 });
 
 test('robots.txt closes service paths, search is closed by noindex instead', async ({
@@ -268,7 +282,11 @@ test('/p/<token>: a live proposal, noindex and no-referrer, no horizontal scroll
   await expect(page.getByTestId('proposal-line')).toHaveCount(1);
   await expect(page.getByTestId('proposal-take')).toBeVisible();
   if (testInfo.project.name === 'mobile') {
-    await expect(page.getByTestId('proposal-bar')).toBeVisible();
+    // The bar is there and steps aside only while the total card is on screen.
+    const bar = page.getByTestId('proposal-bar');
+    await expect(bar).toHaveCount(1);
+    if (await totalOnScreen(page.getByTestId('proposal-summary'))) await expect(bar).toBeHidden();
+    else await expect(bar).toBeVisible();
   }
   expect(await horizontalOverflow(page), `${href} horizontal scroll`).toBeLessThanOrEqual(0);
   await page.screenshot({

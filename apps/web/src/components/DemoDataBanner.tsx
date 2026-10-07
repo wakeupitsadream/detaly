@@ -43,7 +43,7 @@ export function DemoDataBanner({
           <a
             key={example.q}
             href={`/search?q=${example.q}`}
-            className="inline-flex min-h-11 items-center font-bold whitespace-nowrap tabular-nums underline decoration-1 underline-offset-4 hover:decoration-2"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center font-bold whitespace-nowrap tabular-nums underline decoration-1 underline-offset-4 hover:decoration-2"
           >
             {example.article}
           </a>

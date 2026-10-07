@@ -399,7 +399,7 @@ export function CheckoutForm(props: CheckoutFormProps) {
               ))}
             </div>
             <p className="mt-2 text-small font-normal text-muted">
-              Подключить уведомления можно будет на странице заказа.
+              Включите одной кнопкой на странице заказа.
             </p>
             <FieldError id="checkout-channel-error" message={fieldErrors.channel} />
           </fieldset>

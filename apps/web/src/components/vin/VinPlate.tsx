@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { IconChevronDown, IconSts } from '@/components/icons';
 import { MarkerBar } from '@/components/ui/Card';
 import { cn } from '@/components/ui/cn';
+import { StepNumber } from '@/components/ui/StepNumber';
 
 /** A sample VIN to show what the 17 characters look like; not anybody's car. */
 export const SAMPLE_VIN = 'XTA210990Y1234567';
@@ -146,15 +147,17 @@ export function VinSteps({ steps }: { steps: readonly VinStep[] }) {
         >
           <span
             aria-hidden
-            className="relative grid size-16 shrink-0 place-items-center rounded-tile bg-bg text-brand"
+            className="grid size-16 shrink-0 place-items-center rounded-tile bg-bg text-brand"
           >
             {step.icon}
-            <span className="absolute -top-2 -left-2 grid size-7 place-items-center rounded-full bg-brand text-[0.875rem] font-extrabold text-on-brand tabular-nums">
-              {index + 1}
-            </span>
           </span>
           <div className="min-w-0">
-            <h3 className="text-h3">{step.title}</h3>
+            {/* The number in a neutral circle beside the title, as the steps of the form and of
+                /checkout: one numbering on the page, red only for what is current. */}
+            <div className="flex min-w-0 items-center gap-2.5">
+              <StepNumber n={index + 1} />
+              <h3 className="min-w-0 text-h3">{step.title}</h3>
+            </div>
             <p className="mt-1 text-small font-normal text-muted">{step.text}</p>
           </div>
         </li>

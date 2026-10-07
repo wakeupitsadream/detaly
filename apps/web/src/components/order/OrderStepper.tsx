@@ -14,7 +14,7 @@ import { cn } from '@/components/ui/cn';
 type StepState = 'done' | 'current' | 'todo' | 'stopped';
 
 /**
- * Which step of «Оформлен → Оплачен/Подтверждён → Заказан у поставщика → Приехал → Выдан» an
+ * Which step of «Оформлен → Оплачен/Подтверждён → Заказан у поставщика → Приехал на точку → Выдан» an
  * order status is at: the index of the step in progress (5 = all done), null for a stopped
  * order. Display only: the statuses themselves and their labels come from the read model.
  */
@@ -28,8 +28,8 @@ const CURRENT_STEP: Readonly<Record<OrderStatus, number | null>> = {
   needs_attention: 2,
   awaiting_client_approval: 2,
   // The parts are on their way: the stage «Заказан у поставщика» stays current until they
-  // arrive, so the stepper says what the status badge says. No «едет в Оренбург» under it: the
-  // next step is «Доставка в Оренбург», and the part would seem to be on two steps at once.
+  // arrive, so the stepper says what the status badge says. No «едет …» under it: the next
+  // step is «Доставка на точку выдачи», and the part would seem to be on two steps at once.
   ordered_at_supplier: 2,
   ready: 4,
   out_for_delivery: 4,
@@ -51,7 +51,9 @@ export function orderSteps(
     ['Оформлен', 'Оформление'],
     scheme === 'prepay' ? ['Оплачен', 'Оплата'] : ['Подтверждён', 'Подтверждение'],
     ['Заказан у поставщика', 'Заказ у поставщика'],
-    ['Приехал', 'Доставка в Оренбург'],
+    // One wording for both schemes: a part «В Оренбурге» still travels from the warehouse to
+    // the point, and «Доставка в Оренбург» under it read as if it were not in town yet.
+    ['Приехал на точку', 'Доставка на точку выдачи'],
     ['Выдан', 'Выдача'],
   ];
   const current = CURRENT_STEP[status];

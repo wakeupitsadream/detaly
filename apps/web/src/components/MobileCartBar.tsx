@@ -8,7 +8,10 @@ import { IconArrowRight, IconCart } from './icons';
 import { buttonClass } from './ui/Button';
 import { cn } from './ui/cn';
 
-/** The cart itself, checkout and the order page have their own primary action at the bottom. */
+/**
+ * The cart itself, checkout, the order page, a proposal and the VIN form have their own primary
+ * action at the bottom.
+ */
 function hiddenOn(pathname: string | null): boolean {
   if (pathname === null) return false;
   return (
@@ -17,7 +20,11 @@ function hiddenOn(pathname: string | null): boolean {
     pathname === '/o' ||
     pathname.startsWith('/o/') ||
     // A proposal page /p/<token> has its own bottom bar in the same place.
-    pathname.startsWith('/p/')
+    pathname.startsWith('/p/') ||
+    // The VIN request form: «Оформить» under the thumb would compete with «Отправить заявку»
+    // and a stray tap would leave the form (no draft is kept).
+    pathname === '/vin' ||
+    pathname.startsWith('/vin/')
   );
 }
 

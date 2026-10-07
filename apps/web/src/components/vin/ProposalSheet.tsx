@@ -2,7 +2,8 @@
  * /p/<token>: the master's proposal (docs/phase-1c-implementation.md section 11 item 2; look:
  * docs/design-v2.md, /p/[token]): the master's comment on a `surface` card with the master's
  * icon, the lines as offer cards (tile, brand and article, name, stock badge, date, price), the
- * total with «Оформить и оплатить» — a plain form post (no JavaScript needed) — and the rule
+ * total with how it is paid and «Оформить заказ» — a plain form post (no JavaScript needed;
+ * it fills the cart, the payment comes at checkout) — and the rule
  * «подобрали мы и не подошло — вернём деньги». Phones get the sum and the button in a white bar
  * fixed at the bottom. An expired proposal is read-only.
  */
@@ -13,6 +14,7 @@ import {
   IconShield,
   IconWrench,
 } from '@/components/icons';
+import { HideWhileInView } from '@/components/page/HideWhileInView';
 import { Notice } from '@/components/page/Notice';
 import { StockBadge } from '@/components/StockBadge';
 import { Badge } from '@/components/ui/Badge';
@@ -131,11 +133,27 @@ function TakeButton({
         className={cn(buttonClass({ variant: 'primary', size, block }), 'shrink-0')}
         data-testid={testId}
       >
-        {compact ? 'Оформить' : 'Оформить и оплатить'}
+        {/* Not «… и оплатить»: the take fills the cart; part of a mix may be paid at pickup. */}
+        {compact ? 'Оформить' : 'Оформить заказ'}
         <IconArrowRight size={20} />
       </button>
     </form>
   );
+}
+
+/**
+ * How the proposal will be paid, by the stock badges of its live lines, in the words of the
+ * cart (MIXED_CART_TEXT, offer 3.3-3.4): all in Orenburg — at pickup by card or QR; all to
+ * order — prepaid; a mix in one order — prepaid in full (the cart offers to split it).
+ */
+export function proposalPaymentLine(lines: readonly ProposalLineView[]): string | null {
+  const live = lines.filter((line) => line.status === 'ok');
+  if (live.length === 0) return null;
+  if (live.every((line) => line.isLocal)) {
+    return 'Оплата при получении — картой или по QR. Наличные не принимаем.';
+  }
+  if (live.every((line) => !line.isLocal)) return 'Предоплата — картой или СБП при оформлении.';
+  return 'Одним заказом — предоплата 100%, картой или СБП.';
 }
 
 export function ProposalSheet({
@@ -149,6 +167,7 @@ export function ProposalSheet({
 }) {
   const sellable = view.lines.length > view.unavailable;
   const canTake = mode.kind !== 'expired' && sellable;
+  const paymentLine = proposalPaymentLine(view.lines);
   return (
     <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-10">
       <div className="min-w-0 space-y-6">
@@ -229,6 +248,11 @@ export function ProposalSheet({
               </span>
             </p>
           ) : null}
+          {paymentLine && mode.kind !== 'expired' ? (
+            <p className="mt-2 text-small font-normal" data-testid="proposal-payment">
+              {paymentLine}
+            </p>
+          ) : null}
           <p className="mt-2 text-small font-normal text-muted">
             {mode.kind === 'expired' ? 'Цены действовали до' : 'Цены действуют до'}{' '}
             <span className="whitespace-nowrap">{view.expiresText}</span>
@@ -273,22 +297,25 @@ export function ProposalSheet({
         <>
           {/* The footer makes room for the bar (`.mobile-cart-bar` in globals.css). */}
           {/* The same floating card as MobileCartBar on the other pages. */}
-          <div
+          {/* Steps aside while the total card is on screen: no two take buttons in a row. */}
+          <HideWhileInView
+            target='[data-testid="proposal-summary"]'
             className="mobile-cart-bar fixed inset-x-0 bottom-0 z-50 px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:hidden"
-            data-testid="proposal-bar"
+            testId="proposal-bar"
           >
             <div className="flex h-15 items-center justify-between gap-3 rounded-tile border border-line bg-bg pr-1.5 pl-4 shadow-float">
+              {/* «Подборка» over the sum: the bar is not the cart (the header counts the cart). */}
               <p className="min-w-0">
-                <span className="block text-[1.375rem] leading-none font-extrabold whitespace-nowrap tabular-nums">
-                  {view.totalText}
+                <span className="block text-caption text-muted tabular-nums">
+                  Подборка · {view.itemsCount} шт.
                 </span>
-                <span className="mt-1 block text-caption text-muted tabular-nums">
-                  {view.itemsCount} шт.
+                <span className="mt-0.5 block text-[1.375rem] leading-none font-extrabold whitespace-nowrap tabular-nums">
+                  {view.totalText}
                 </span>
               </p>
               <TakeButton mode={mode} compact testId="proposal-take-bar" />
             </div>
-          </div>
+          </HideWhileInView>
         </>
       ) : null}
     </div>

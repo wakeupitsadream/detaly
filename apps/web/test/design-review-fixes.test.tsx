@@ -98,8 +98,11 @@ describe('order stepper', () => {
     const steps = orderSteps('ordered_at_supplier', 'pay_on_handover');
     const current = steps.find((step) => step.state === 'current');
     expect(current?.label).toBe('Заказан у поставщика');
-    // No «едет в Оренбург» on this step: «Доставка в Оренбург» is the next one.
+    // No «едет …» on this step: «Доставка на точку выдачи» is the next one.
     expect(JSON.stringify(steps)).not.toContain('едет');
+    // The part «В Оренбурге» is never shown as still travelling to Orenburg.
+    expect(steps[3]?.label).toBe('Доставка на точку выдачи');
+    expect(JSON.stringify(orderSteps('ordered_at_supplier', 'prepay'))).not.toContain('в Оренбург');
     expect(steps.filter((step) => step.state === 'done')).toHaveLength(2);
   });
 

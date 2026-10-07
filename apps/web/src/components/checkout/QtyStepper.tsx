@@ -57,7 +57,8 @@ export function QtyStepper({
       </form>
       <form method="post" action={action} className="flex min-w-0 items-center gap-2">
         <input type="hidden" name="_method" value="patch" />
-        <div className="flex items-center rounded-full border-[1.5px] border-line-strong bg-bg">
+        {/* faint: the frame of a control holds 3:1 (docs/design-v2.md, «Форма»). */}
+        <div className="flex items-center rounded-full border-[1.5px] border-faint bg-bg">
           <button
             type="submit"
             form={decId}
@@ -83,7 +84,7 @@ export function QtyStepper({
             required
             className={cn(
               'h-11 w-12 min-w-0 bg-transparent text-center text-[1.1875rem] font-bold text-ink tabular-nums',
-              'appearance-none focus-visible:rounded-control focus-visible:outline-2 focus-visible:outline-brand',
+              'appearance-none focus-visible:rounded-control focus-visible:outline-3 focus-visible:outline-brand',
               '[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
               '[-moz-appearance:textfield]',
             )}

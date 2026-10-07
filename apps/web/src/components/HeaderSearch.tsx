@@ -45,7 +45,9 @@ export function HeaderSearch({ className }: { className?: string }) {
       onSubmit={onSubmit}
       className={cn(
         'relative flex h-14 w-full min-w-0 items-center rounded-full bg-bg text-ink',
-        'focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-on-brand',
+        // The white ring of the pill only while the field itself is focused: with the focus on
+        // the magnifier button two rings overlapped into a red caret-like bar.
+        'has-[input:focus-visible]:outline-3 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-on-brand',
         className,
       )}
     >
@@ -54,7 +56,7 @@ export function HeaderSearch({ className }: { className?: string }) {
       <button
         type="submit"
         aria-label="Найти"
-        className="grid h-14 w-13 shrink-0 place-items-center rounded-l-full text-ink md:hidden"
+        className="grid h-14 w-13 shrink-0 place-items-center rounded-full text-ink focus-visible:outline-offset-[-3px] md:hidden"
       >
         <IconSearch size={24} />
       </button>

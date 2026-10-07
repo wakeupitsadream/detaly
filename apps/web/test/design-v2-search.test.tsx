@@ -17,6 +17,7 @@ import {
 } from '@/components/search/FilterChips';
 import { OfferGroup } from '@/components/search/OfferGroup';
 import { ResultsHeader } from '@/components/search/ResultsHeader';
+import { vinRequestHref } from '@/lib/vin-link';
 
 vi.mock('next/navigation', () => ({
   redirect: (url: string) => {
@@ -157,7 +158,7 @@ describe('offer card', () => {
     expect(t).toContain('Фильтр масляный');
     // One wording of the date on every page: «Получение к …».
     expect(t).toContain('Получение к сб 3 октября');
-    expect(t).toContain('С установкой — машина готова сб 3 окт к 16:00');
+    expect(t).toContain('С установкой — Машина готова сб 3 окт к 16:00');
     expect(t).toContain('528 ₽');
     // No «как мы считаем» and no table.
     expect(html).not.toContain('<table');
@@ -205,7 +206,9 @@ describe('nothing found', () => {
     const html = renderToStaticMarkup(createElement(EmptyState, { query: 'NOTFOUND' }));
     expect(html).toContain('data-testid="empty-state"');
     expect(text(html)).toContain('Ничего не нашли по «NOTFOUND»');
-    expect(html).toContain('href="/vin"');
+    // The article goes into the request: «Артикул NOTFOUND» in «Какая деталь нужна».
+    expect(html).toContain(`href="${vinRequestHref({ need: 'Артикул NOTFOUND' })}"`);
+    expect(html).toContain('href="/vin?need=');
     expect(html).toContain('href="#header-q"');
     expect(text(html)).toContain('Изменить запрос');
     expect(html).not.toContain('data-testid="demo-banner"');

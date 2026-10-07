@@ -195,6 +195,22 @@ function Results({
           />
         </>
       )}
+
+      {/* The next step for the one who is not sure (no chip row under the header on phones
+          outside the home page): the master checks by VIN, the article goes into the request. */}
+      <CtaCard
+        title="Не уверены, что подойдёт?"
+        titleId="search-results-vin-cta"
+        text="Мастер проверит по VIN бесплатно."
+        icon={<IconSts size={48} />}
+        testId="search-vin-cta"
+        action={{
+          href: vinRequestHref({ need: `Артикул ${query}` }),
+          label: 'Подобрать по VIN',
+          icon: <IconArrowRight size={22} />,
+          prefetch: false,
+        }}
+      />
     </div>
   );
 }

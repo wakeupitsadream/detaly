@@ -127,7 +127,8 @@ export function PickupCard({
         </dl>
       </address>
       {extra ? <div className="mt-4 min-w-0">{extra}</div> : null}
-      <RouteLinks routes={routes} className="mt-5 max-sm:*:w-full" />
+      {/* Two equal columns everywhere (a 384 px column fits both): one layout per card. */}
+      <RouteLinks routes={routes} variant="grid" className="mt-5 sm:max-w-md" />
     </div>
   );
   return (

@@ -6,6 +6,7 @@ import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
 import { PickupCard } from '@/components/PickupCard';
 import { pickupRoutes } from '@/components/PickupRouteLinks';
 import { SectionHeading } from '@/components/ui/Section';
+import { StepNumber } from '@/components/ui/StepNumber';
 import { getBrand } from '@/server/brand';
 import { loadPublishedDocument, type LegalDocument } from '@/server/documents';
 import { getLogger } from '@/server/logger';
@@ -114,15 +115,15 @@ export default async function ReturnsPage() {
               >
                 <span
                   aria-hidden
-                  className="relative grid size-20 shrink-0 place-items-center rounded-tile bg-bg text-brand md:size-24"
+                  className="grid size-20 shrink-0 place-items-center rounded-tile bg-bg text-brand md:size-24"
                 >
                   {step.icon}
-                  <span className="absolute -top-2 -left-2 grid size-8 place-items-center rounded-full bg-brand text-base font-extrabold text-on-brand tabular-nums">
-                    {index + 1}
-                  </span>
                 </span>
                 <div className="min-w-0">
-                  <h2 className="text-h3">{step.title}</h2>
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <StepNumber n={index + 1} />
+                    <h2 className="min-w-0 text-h3">{step.title}</h2>
+                  </div>
                   <p className="mt-1 text-small font-normal text-muted">{step.text}</p>
                 </div>
               </li>

@@ -50,17 +50,20 @@ function demoteHeadings(body: string): string {
  * notice when it is not published, then the text 17/28 in a 68ch column (.legal in globals.css)
  * with headings in the site's h2/h3 sizes. `sheet` frames it as a white card from md (the /docs
  * pages); without it the caller frames it. `embedded` (the memo under a disclosure on /returns)
- * moves every heading one level down, so the page keeps its single h1.
+ * moves every heading one level down, so the page keeps its single h1. `anchors` gives the h2
+ * sections ids for the table of contents (LegalToc, from headingAnchors(legalBodyForView(doc))).
  */
 export function LegalDocumentView({
   doc,
   sheet = false,
   embedded = false,
+  anchors = false,
   className,
 }: {
   doc: LegalDocument;
   sheet?: boolean;
   embedded?: boolean;
+  anchors?: boolean;
   className?: string;
 }) {
   const bodyDraft = BODY_DRAFT_RE.test(doc.bodyMd);
@@ -120,7 +123,8 @@ export function LegalDocumentView({
       )}
       <Markdown
         source={body}
-        className="legal max-w-[68ch] [&_h2]:text-h2 [&_h3]:text-h3 [&_h4]:text-h3"
+        anchorLevel={anchors && !embedded ? 2 : undefined}
+        className="legal max-w-[68ch] [&_h2]:scroll-mt-28 [&_h2]:text-h2 [&_h3]:text-h3 [&_h4]:text-h3"
       />
     </article>
   );

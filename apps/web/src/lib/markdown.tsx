@@ -237,8 +237,61 @@ function renderBlock(block: Block, key: number): ReactNode {
   }
 }
 
-export function Markdown({ source, className }: { source: string; className?: string }) {
-  return <div className={className}>{parseMarkdown(source).map(renderBlock)}</div>;
+/** Anchor id of the n-th (1-based) heading of the anchored level: «section-3». */
+export function headingAnchorId(n: number): string {
+  return `section-${n}`;
+}
+
+/** Heading text without the inline markers («**», «`», link brackets), for a table of contents. */
+function plainInline(text: string): string {
+  return text
+    .replace(/\[([^\]]+)\]\([^)\s]+\)/g, '$1')
+    .replace(/\*\*|`/g, '')
+    .replace(/(?<![*\w])\*(?!\s)([^*]+?)\*(?![*\w])/gu, '$1')
+    .trim();
+}
+
+/**
+ * The headings of one level as anchors (id and plain text), in order: the table of contents of
+ * a legal document. Pairs with `<Markdown anchorLevel>`, which gives the same headings the same
+ * ids. Top-level only: headings inside quotes are not counted on either side.
+ */
+export function headingAnchors(source: string, level: 2 | 3 = 2): { id: string; text: string }[] {
+  return parseMarkdown(source)
+    .filter((block) => block.type === 'heading' && block.level === level)
+    .map((block, index) => ({
+      id: headingAnchorId(index + 1),
+      text: plainInline((block as { text: string }).text),
+    }));
+}
+
+export function Markdown({
+  source,
+  className,
+  anchorLevel,
+}: {
+  source: string;
+  className?: string;
+  /** Give the top-level headings of this level ids (headingAnchors) for a table of contents. */
+  anchorLevel?: 2 | 3;
+}) {
+  let n = 0;
+  return (
+    <div className={className}>
+      {parseMarkdown(source).map((block, key) => {
+        if (anchorLevel && block.type === 'heading' && block.level === anchorLevel) {
+          n += 1;
+          const Tag = `h${block.level}` as const;
+          return (
+            <Tag key={key} id={headingAnchorId(n)}>
+              {renderInline(block.text)}
+            </Tag>
+          );
+        }
+        return renderBlock(block, key);
+      })}
+    </div>
+  );
 }
 
 /** True when the document body starts its own top-level heading. */

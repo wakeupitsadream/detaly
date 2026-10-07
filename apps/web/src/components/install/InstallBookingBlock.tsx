@@ -167,7 +167,7 @@ export function InstallBookingBlock({
       </details>
       {install.demo ? (
         <Badge tone="demo" className="mt-3">
-          Демо: время условное, запись не сохраняется
+          Демо: запись не сохраняется
         </Badge>
       ) : null}
     </Card>

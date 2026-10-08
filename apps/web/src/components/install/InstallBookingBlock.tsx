@@ -5,10 +5,17 @@
  * With a booking: the slot, whether the master confirmed it, and «Отменить запись» until two
  * hours before. No price anywhere: the installation is the partner's service, paid at the
  * service by its own receipt (PLAN risk 11): that sentence is folded under «Как оплатить
- * установку», so the card is the «Машина готова …» line (`lead`), the slots and one button.
+ * установку», so the card is the «Машина готова …» line, the slots and one button.
+ *
+ * The «Машина готова …» line follows the chosen chip (audit ux-7): one line per slot (its start
+ * plus a typical job, slotInstallPlan), and globals.css (.install-pick) shows the line of the
+ * checked chip — no script, so it works before hydration and without JS too; each radio is
+ * described by its own line for a screen reader. With a booking the line is the booked slot's;
+ * with no slot at all it is `lead` (the nearest slot of the order's date, or the fallback).
  */
 import type { ReactNode } from 'react';
 import { IconCheck, IconChevronDown, IconClock, IconWrench } from '@/components/icons';
+import { InstallLine, slotInstallPlan } from '@/components/install/InstallLine';
 import { Badge } from '@/components/ui/Badge';
 import { buttonClass } from '@/components/ui/Button';
 import { cn } from '@/components/ui/cn';
@@ -38,7 +45,7 @@ export function InstallBookingBlock({
   token: string;
   install: InstallBlockView;
   notice?: ReactNode;
-  /** The «Машина готова …» line (InstallLine) over the slots. */
+  /** The «Машина готова …» line (InstallLine) when there is neither a booking nor a slot. */
   lead?: ReactNode;
 }) {
   const { booking, slots } = install;
@@ -50,7 +57,14 @@ export function InstallBookingBlock({
       id="install"
     >
       {notice}
-      {lead ? <div className="mb-4">{lead}</div> : null}
+      {booking ? (
+        // The booked slot's own line, not the nearest free one.
+        <div className="mb-4" data-testid="order-car-ready">
+          <InstallLine plan={slotInstallPlan(booking.slot)} size="md" icon={false} />
+        </div>
+      ) : null}
+      {/* With slots the lines are in the form, one per chip. */}
+      {!booking && slots.length === 0 && lead ? <div className="mb-4">{lead}</div> : null}
       {booking ? (
         <div className="space-y-3" data-testid="install-booking" data-status={booking.status}>
           <div className="flex min-w-0 items-start gap-3 rounded-tile bg-surface p-4">
@@ -105,7 +119,7 @@ export function InstallBookingBlock({
         <form
           method={install.demo ? 'get' : 'post'}
           action={install.demo ? '/o/demo' : `/api/orders/${token}/install`}
-          className="space-y-4"
+          className="install-pick space-y-4"
           data-testid="install-form"
         >
           {install.demo ? (
@@ -113,6 +127,14 @@ export function InstallBookingBlock({
           ) : (
             <input type="hidden" name="requestKey" value={install.requestKey} />
           )}
+          {/* One line per chip; only the checked chip's line shows (globals.css). */}
+          <div aria-live="polite" data-testid="order-car-ready">
+            {slots.map((slot, index) => (
+              <div key={slot.startAt} id={`install-ready-${index}`} data-ready-slot={index}>
+                <InstallLine plan={slotInstallPlan(slot)} size="md" icon={false} />
+              </div>
+            ))}
+          </div>
           <fieldset className="min-w-0">
             <legend className="mb-3 text-[0.9375rem] font-semibold">Когда приедете</legend>
             <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
@@ -126,6 +148,8 @@ export function InstallBookingBlock({
                     defaultChecked={index === 0}
                     className="peer sr-only"
                     data-testid="install-slot"
+                    data-slot-index={index}
+                    aria-describedby={`install-ready-${index}`}
                   />
                   <span
                     className={cn(

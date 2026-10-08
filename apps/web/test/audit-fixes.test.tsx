@@ -99,19 +99,21 @@ describe('offer row (ux-14, ux-15)', () => {
   });
 
   it('a marked good says in plain words where it is sold, with a call when a phone is set', () => {
-    expect(excludedClientText('Маркируемый товар: масла')).toBe('Масла продаём только в сервисе');
+    // Where it is sold, never «мы продаём в сервисе»: the shop is not the service (08.10).
+    expect(excludedClientText('Маркируемый товар: масла')).toBe('Масла — только в сервисе');
     expect(excludedClientText('Маркируемый товар: тормозные жидкости')).toBe(
-      'Тормозные жидкости продаём только в сервисе',
+      'Тормозные жидкости — только в сервисе',
     );
-    expect(excludedClientText(null)).toBe('Этот товар продаём только в сервисе');
-    expect(excludedClientText('по правилу админки')).toBe('Этот товар продаём только в сервисе');
+    expect(excludedClientText(null)).toBe('Этот товар — только в сервисе');
+    expect(excludedClientText('по правилу админки')).toBe('Этот товар — только в сервисе');
     const oil = offer({ excluded: true, excludedReason: 'Маркируемый товар: масла' });
     const withPhone = render(OfferRow, {
       offer: oil,
       searchArticleNorm: 'OC90',
       contactPhone: '+7 900 000-00-01',
     });
-    expect(text(withPhone)).toContain('Масла продаём только в сервисе');
+    expect(text(withPhone)).toContain('Масла — только в сервисе');
+    expect(text(withPhone)).not.toContain('продаём только в сервисе');
     expect(text(withPhone)).not.toContain('Маркируемый');
     expect(withPhone).toContain('href="tel:+79000000001"');
     const noPhone = render(OfferRow, { offer: oil, searchArticleNorm: 'OC90' });

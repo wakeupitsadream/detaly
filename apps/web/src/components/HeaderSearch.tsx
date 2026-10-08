@@ -4,8 +4,10 @@ import { normalizeVin } from '@detaly/vin/vin';
 import { usePathname, useSearchParams } from 'next/navigation';
 import type { FormEvent } from 'react';
 import { DEMO_EXAMPLES } from '@/lib/demo-articles';
+import { HOME_HEADLINE } from '@/lib/seo';
 import { vinRequestHref } from '@/lib/vin-link';
 import { IconSearch } from './icons';
+import { Container } from './ui/Container';
 import { cn } from './ui/cn';
 
 /** Where a header query goes: a VIN to the request form, anything else to the article search. */
@@ -90,6 +92,28 @@ export function HeaderSearch({ className }: { className?: string }) {
         Найти
       </button>
     </form>
+  );
+}
+
+/**
+ * Home page only: the page's h1, visible under the search (audit ux-10, decision of 08.10) —
+ * what the shop is, in one line, before any tile: «Автозапчасти в Оренбурге — по артикулу и VIN»
+ * (lib/seo.ts). In the brand plate, so it leaves with the plate when the page scrolls; one
+ * element for every width, so the page keeps a single h1.
+ */
+export function HomeHeadline({ className }: { className?: string }) {
+  const pathname = usePathname();
+  if (pathname !== '/') return null;
+  return (
+    <Container className={className}>
+      <h1
+        className="text-[1.25rem] leading-[1.625rem] font-extrabold tracking-[-0.01em] text-on-brand md:text-[1.375rem] md:leading-7"
+        data-testid="home-headline"
+      >
+        {/* A no-break space before the dash: a phone line never starts with «—». */}
+        {HOME_HEADLINE.replace(' — ', '\u00a0— ')}
+      </h1>
+    </Container>
   );
 }
 

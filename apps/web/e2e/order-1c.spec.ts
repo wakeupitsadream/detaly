@@ -175,7 +175,21 @@ test.describe('order page 1C', () => {
     const chips = booking.getByTestId('install-slot');
     expect(await chips.count()).toBeGreaterThan(0);
     expect(await chips.count()).toBeLessThanOrEqual(6);
+    // «Машина готова …» follows the chosen chip (audit ux-7): one line per chip, only the
+    // checked chip's line is on screen, dated by that chip's own start.
+    const ready = booking.getByTestId('order-car-ready');
+    const chosenSlot = (await chips.nth(1).getAttribute('value')) ?? 'the chip has a value';
+    await expect(ready.locator('[data-ready-slot]:visible')).toHaveCount(1);
+    await expect(ready.locator('[data-ready-slot="0"]')).toBeVisible();
     await booking.locator('label').nth(1).click();
+    await expect(ready.locator('[data-ready-slot="1"]')).toBeVisible();
+    await expect(ready.locator('[data-ready-slot="0"]')).toBeHidden();
+    await expect(ready.locator('[data-ready-slot]:visible')).toHaveCount(1);
+    await expect(ready.locator('[data-ready-slot="1"]')).toContainText('Машина готова');
+    await expect(ready.locator('[data-ready-slot="1"] time')).toHaveAttribute(
+      'datetime',
+      chosenSlot,
+    );
     await booking.getByTestId('install-submit').click();
     await expect(page).toHaveURL(/\?flash=install_booked#install$/);
     await expect(page.getByTestId('order-flash')).toContainText('Вы записаны');
@@ -184,6 +198,11 @@ test.describe('order page 1C', () => {
       'requested',
     );
     await expect(booking).toContainText('ждём подтверждения мастера');
+    // With the booking the line is the booked slot's, not the nearest free one.
+    await expect(booking.getByTestId('order-car-ready').locator('time')).toHaveAttribute(
+      'datetime',
+      chosenSlot,
+    );
     await expect(page.getByTestId('order-timeline')).toContainText('Запись на установку');
     await expectNoHorizontalScroll(page, '/o/<token> ready with a booking');
     await screenshot(page, project, 'order-1c-ready');

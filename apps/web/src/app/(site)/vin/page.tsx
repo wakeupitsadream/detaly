@@ -17,6 +17,7 @@ import { IconCard, InfoCard } from '@/components/ui/Card';
 import { SectionHeading } from '@/components/ui/Section';
 import { VinForm, type VinFormInitial } from '@/components/vin/VinForm';
 import { PART_CATEGORIES } from '@/lib/part-categories';
+import { PAGE_SEO } from '@/lib/seo';
 import { VinPlate, VinSteps, VinWhereFold, type VinStep } from '@/components/vin/VinPlate';
 import { vinFormInitial } from '@/components/vin/vin-query';
 import { getBrand, telHref, type Brand } from '@/server/brand';
@@ -29,7 +30,8 @@ import { errorsOf, parseErrorCodes, VIN_FORM_MESSAGES } from '@/server/vin/form'
 
 // The canonical drops ?vin, ?car and ?need: the home page links /vin with 48 of them.
 export const metadata: Metadata = {
-  title: 'Подбор запчастей по VIN',
+  title: PAGE_SEO.vin.title,
+  description: PAGE_SEO.vin.description,
   alternates: { canonical: '/vin' },
 };
 

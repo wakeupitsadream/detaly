@@ -7,6 +7,7 @@ import { Footer } from '@/components/Footer';
 import { headerSearchTarget } from '@/components/HeaderSearch';
 import { CATEGORY_LABEL, IconMax, IconTelegram } from '@/components/icons';
 import { installDateText } from '@/components/install/InstallLine';
+import { pickupLineText, shortPickupAddress } from '@/lib/pickup-text';
 import { PageBand } from '@/components/page/PageBand';
 import { SiteHeader } from '@/components/SiteHeader';
 import { InfoCard } from '@/components/ui/Card';
@@ -140,6 +141,7 @@ describe('header search', () => {
         phone: '+7 (3532) 11-11-11',
         hours: 'пн–пт 9–19',
         pickupName: 'Тестовый сервис',
+        pickupAddress: 'г. Оренбург, ул. Тестовая, 1',
         emblemSrc: '/images/partner/test-white.webp',
       }),
     );
@@ -154,7 +156,9 @@ describe('header search', () => {
     expect(html).toContain('href="tel:+73532111111"');
     expect(html).toContain('aria-label="Корзина: 2 позиции"');
     expect(html).toContain('data-testid="header-cart-count"');
-    expect(text(html)).toContain('Выдача: Тестовый сервис');
+    // The point is a pickup point with its address, the city dropped (decision of 08.10).
+    expect(text(html)).toContain('Пункт выдачи: ул. Тестовая, 1');
+    expect(text(html)).not.toContain('Выдача:');
     expect(html).toContain('src="/images/partner/test-white.webp"');
     expect(html).toContain('href="/about#pickup"');
     // The brand plate is drawn by tokens only.
@@ -169,13 +173,36 @@ describe('header search', () => {
     expect(html).not.toContain('href="tel:');
     expect(html).not.toContain('<img');
     expect(html).toContain('aria-label="Корзина пуста"');
-    expect(text(html)).toContain('Выдача в Оренбурге');
+    expect(text(html)).toContain('Пункт выдачи в Оренбурге');
+  });
+
+  it('SiteHeader names the point only while there is no address; the pin without env marks', () => {
+    const named = renderToStaticMarkup(
+      createElement(SiteHeader, { brandName: 'Тест', cartCount: 0, pickupName: 'Тестовый сервис' }),
+    );
+    expect(text(named)).toContain('Пункт выдачи: Тестовый сервис');
+    // Production: no PICKUP_EMBLEM_WHITE_SRC, so the line has the pin, never a logo.
+    expect(named).not.toContain('<img');
+    expect(named).toContain('data-testid="header-pickup"');
+    expect(pickupLineText({ address: 'Оренбург, ул. Тестовая, 1' })).toBe(
+      'Пункт выдачи: ул. Тестовая, 1',
+    );
+    expect(pickupLineText({ address: 'г.Оренбург , пр. Тестовый, 5' })).toBe(
+      'Пункт выдачи: пр. Тестовый, 5',
+    );
+    // Another city or a postal code in front is kept as written.
+    expect(shortPickupAddress('460000, г. Оренбург, ул. Тестовая, 1')).toBe(
+      '460000, г. Оренбург, ул. Тестовая, 1',
+    );
   });
 });
 
 describe('footer v2', () => {
   it('phone, pickup point, messengers and requisites', () => {
     const html = renderToStaticMarkup(createElement(Footer, { brand: BRAND, year: 2026 }));
+    // The service is the pickup point, named with its address (decision of 08.10).
+    expect(text(html)).toContain('Пункт выдачи — Тестовый сервис, Оренбург, ул. Тестовая, 1');
+    expect(text(html)).not.toContain('Точка выдачи и установки');
     expect(html).toContain('href="tel:+73532111111"');
     // The partner's full logo stays on the pickup card only: a pin marks the point here.
     expect(html).not.toContain('src="/images/partner/test-color.webp"');

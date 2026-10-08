@@ -368,6 +368,29 @@
   .details-plain > summary::-webkit-details-marker {
     display: none;
   }
+
+  /*
+   * «Машина готова …» follows the chosen install slot (audit ux-7, InstallBookingBlock): one line
+   * per chip, and only the checked chip's line shows — no script, so the form keeps working
+   * before hydration and without JS. A browser without :has() keeps the first line (the nearest
+   * slot, the default chip). One rule per chip up to INSTALL_SLOTS_SHOWN (6; test/ux-7).
+   */
+  .install-pick [data-ready-slot]:not([data-ready-slot='0']) {
+    display: none;
+  }
+  @supports selector(:has(*)) {
+    .install-pick [data-ready-slot] {
+      display: none;
+    }
+    .install-pick:has([data-slot-index='0']:checked) [data-ready-slot='0'],
+    .install-pick:has([data-slot-index='1']:checked) [data-ready-slot='1'],
+    .install-pick:has([data-slot-index='2']:checked) [data-ready-slot='2'],
+    .install-pick:has([data-slot-index='3']:checked) [data-ready-slot='3'],
+    .install-pick:has([data-slot-index='4']:checked) [data-ready-slot='4'],
+    .install-pick:has([data-slot-index='5']:checked) [data-ready-slot='5'] {
+      display: block;
+    }
+  }
 }
 
 /* ------------------------------------------------------------------------------------------ */

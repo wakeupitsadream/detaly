@@ -86,6 +86,24 @@ describe('demo proxy: hidden paths', () => {
     }
   });
 
+  it('the not-found page of a hidden path is rendered with the script nonce (tech-3)', async () => {
+    for (const path of ['/admin', '/o/abcdefghijklmnopqrstu', '/p/abcdefghijklmnopqrstu']) {
+      const response = await proxy(request('GET', path));
+      expect(response.headers.get('x-middleware-rewrite'), path).toMatch(/\/_demo\/not-found$/);
+      const csp = response.headers.get('content-security-policy');
+      expect(csp, path).toMatch(/script-src 'self' 'nonce-[^']+' 'strict-dynamic'/);
+      // Next reads the nonce from the request it renders: the rewrite hands the policy on.
+      expect(response.headers.get('x-middleware-request-content-security-policy'), path).toBe(csp);
+    }
+    // The demo's 303 and 404 JSON answers carry the policy as well.
+    const form = await proxy(request('POST', '/api/vin'));
+    expect(form.status).toBe(303);
+    expect(form.headers.get('content-security-policy')).toContain("'strict-dynamic'");
+    const api = await proxy(request('POST', '/api/webhooks/yookassa'));
+    expect(api.status).toBe(404);
+    expect(api.headers.get('content-security-policy')).toContain("'strict-dynamic'");
+  });
+
   it('serves the sample order and the storefront as usual', async () => {
     for (const path of ['/o/demo', '/', '/cart', '/docs/offer', '/api/health']) {
       const response = await proxy(request('GET', path));

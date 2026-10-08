@@ -85,7 +85,8 @@ export function BrandTile({
 /**
  * «Выберите марку»: the most common makes as logo tiles (12 on phones, FEATURED_BRANDS_COUNT
  * from md), «Все марки» opens the rest without JS. The makes between the two counts sit in
- * both lists: shown in the grid from md, inside «Все марки» only on phones.
+ * both lists: shown in the grid from md, inside «Все марки» only on phones. A small muted line
+ * under it all says whose the marks are (14 px, legal-7).
  */
 export function BrandGrid({ className }: { className?: string }) {
   const featured = CAR_BRANDS.slice(0, FEATURED_BRANDS_COUNT);
@@ -136,6 +137,14 @@ export function BrandGrid({ className }: { className?: string }) {
           </ul>
         </details>
       ) : null}
+      {/* Under the makes, for every logo above (audit legal-7, decision of 08.10): the marks are
+          their owners', and a logo tile is no claim of a dealership. */}
+      <p
+        className="mt-4 text-caption font-normal text-muted md:mt-5"
+        data-testid="home-brands-note"
+      >
+        Товарные знаки принадлежат их владельцам. Мы не официальный дилер марок.
+      </p>
     </div>
   );
 }

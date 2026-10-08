@@ -33,13 +33,15 @@ export function stockCountLine(offer: Pick<OfferView, 'isLocal' | 'available'>):
 }
 
 /**
- * Plain words for an excluded (marked) good: «Масла продаём только в сервисе» from the rule's
- * reason «Маркируемый товар: масла». The reason itself stays as it is (the worker reads it).
+ * Plain words for an excluded (marked) good: «Масла — только в сервисе» from the rule's reason
+ * «Маркируемый товар: масла». Where it is sold, not «мы продаём в сервисе»: the shop is an
+ * independent store and the service only its pickup point (decision of 08.10). The reason
+ * itself stays as it is (the worker reads it).
  */
 export function excludedClientText(reason: string | null): string {
   const category = /^Маркируемый товар:\s*(.+)$/u.exec(reason?.trim() ?? '')?.[1]?.trim();
-  if (!category) return 'Этот товар продаём только в сервисе';
-  return `${category.charAt(0).toUpperCase()}${category.slice(1)} продаём только в сервисе`;
+  if (!category) return 'Этот товар — только в сервисе';
+  return `${category.charAt(0).toUpperCase()}${category.slice(1)} — только в сервисе`;
 }
 
 /**

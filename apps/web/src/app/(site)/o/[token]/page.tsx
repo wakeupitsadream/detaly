@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation';
 import { cache } from 'react';
 import { OrderDetails } from '@/components/order/OrderDetails';
 import { pickupRoutes } from '@/components/PickupRouteLinks';
+import { shareCard } from '@/lib/seo';
 import { getBrand } from '@/server/brand';
 import { readCartToken } from '@/server/cart-store';
 import { getDb } from '@/server/db';
@@ -69,9 +70,11 @@ const PRIVATE: Pick<Metadata, 'robots' | 'referrer'> = {
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { token } = await params;
-  if (!isOrderToken(token)) return { ...PRIVATE, title: 'Заказ не найден' };
+  // The share card without its picture: the link is the client's own (lib/seo.ts).
+  const card = shareCard(getBrand().name, { image: false });
+  if (!isOrderToken(token)) return { ...PRIVATE, ...card, title: 'Заказ не найден' };
   const view = await getOrderView(token);
-  return { ...PRIVATE, title: view ? `Заказ ${view.number}` : 'Заказ не найден' };
+  return { ...PRIVATE, ...card, title: view ? `Заказ ${view.number}` : 'Заказ не найден' };
 }
 
 export default async function OrderPage({

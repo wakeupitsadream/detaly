@@ -1,7 +1,19 @@
-import { formatDayMonth, weekdayShort, type IsoDate } from '@detaly/domain';
+import {
+  formatDayMonth,
+  weekdayShort,
+  zonedIso,
+  type InstallSlot,
+  type IsoDate,
+} from '@detaly/domain';
 import { IconWrench } from '@/components/icons';
 import { cn } from '@/components/ui/cn';
+import { INSTALL_JOB_MIN } from '@/lib/install-params';
 import type { InstallPlanView } from '@/server/install/types';
+
+const MINUTE_MS = 60_000;
+
+/** What the line needs of a plan: the slot's start (its date, the title) and the ready time. */
+export type InstallLinePlan = Pick<InstallPlanView, 'slotStartIso' | 'carReadyText' | 'slotText'>;
 
 /** No free slot within the horizon or unparsed PICKUP_HOURS: no promise, only this. */
 export const INSTALL_FALLBACK_TEXT = 'время подберём при записи';
@@ -18,6 +30,24 @@ export function installDateText(slotStartIso: string): string {
 }
 
 /**
+ * «Машина готова …» if the client books this slot (audit ux-7): the slot's start plus a typical
+ * job (INSTALL_JOB_MIN of @detaly/domain/install-params), the sum the planner makes for the
+ * nearest slot too — so the first chip's line is the line of the page before any choice. The
+ * ready time is read off zonedIso, the formatter that wrote the slot's own start.
+ */
+export function slotInstallPlan(
+  slot: Pick<InstallSlot, 'startAt' | 'dayText' | 'timeText'>,
+): InstallLinePlan {
+  const readyAt = zonedIso(Date.parse(slot.startAt) + INSTALL_JOB_MIN * MINUTE_MS);
+  return {
+    slotStartIso: slot.startAt,
+    // '2026-10-09T17:00:00+05:00' -> 'к 17:00': the wall time in the slot's own zone.
+    carReadyText: `к ${readyAt.slice(11, 16)}`,
+    slotText: `${slot.dayText} с ${slot.timeText}`,
+  };
+}
+
+/**
  * The «when is the car ready» feature as one line (docs/design-v2.md): a spanner and «Машина
  * готова чт 8 октября к 16:00» under an offer, a cart line or the order's booking card. The spanner
  * stands for «with installation» (said to screen readers): the one who only buys a filter is
@@ -31,7 +61,8 @@ export function InstallLine({
   icon = true,
   className,
 }: {
-  plan: InstallPlanView | null;
+  /** A planner view (InstallPlanView) or a chosen slot's line (slotInstallPlan). */
+  plan: InstallPlanView | InstallLinePlan | null;
   onDark?: boolean;
   /** The spanner on the left; off under a title that has the spanner already. */
   icon?: boolean;

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { OrderDetails } from '@/components/order/OrderDetails';
 import { pickupRoutes } from '@/components/PickupRouteLinks';
 import { FullBleed } from '@/components/ui/Section';
+import { shareCard } from '@/lib/seo';
 import { getBrand } from '@/server/brand';
 import {
   buildDemoOrderServices,
@@ -19,11 +20,15 @@ import { getSupplier } from '@/server/supplier';
 // Reads env and the fixtures on every request (DEMO_MODE is a runtime switch).
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Пример заказа',
-  robots: { index: false, follow: false },
-  referrer: 'no-referrer',
-};
+export function generateMetadata(): Metadata {
+  return {
+    title: 'Пример заказа',
+    robots: { index: false, follow: false },
+    referrer: 'no-referrer',
+    // The share card without its picture: a page behind a token or a cart (lib/seo.ts).
+    ...shareCard(getBrand().name, { image: false }),
+  };
+}
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 

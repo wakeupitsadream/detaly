@@ -1,7 +1,8 @@
 import Link from 'next/link';
+import { pickupLine } from '@/lib/pickup-text';
 import { cartCountLabel } from '@/lib/plural';
 import { HeaderNavChips, HeaderNavLinks, HeaderTail } from './HeaderNav';
-import { HeaderSearch, HomeSearchHint } from './HeaderSearch';
+import { HeaderSearch, HomeHeadline, HomeSearchHint } from './HeaderSearch';
 import { IconCart, IconChevron, IconClock, IconPhone, IconPin } from './icons';
 import { Container } from './ui/Container';
 import { Wordmark } from './ui/Wordmark';
@@ -19,18 +20,6 @@ const NAV = [
 /** Desktop only: the documents live in the footer on phones. */
 const DESKTOP_NAV = [...NAV, { href: '/docs/offer', label: 'Документы' }];
 
-/** The city of the only pickup point (stock badges say «В Оренбурге» too). */
-const CITY = 'Оренбург';
-
-/**
- * The pickup line's words: «Выдача: Сервис56» says what the place is to someone who has never
- * heard of it (a bare «Оренбург · Сервис56» read as an ad of a garage); the city comes with the
- * address on /about#pickup. Without a point name: «Выдача в Оренбурге».
- */
-export function pickupLineText(pickupName: string | null | undefined): string {
-  return pickupName ? `Выдача: ${pickupName}` : `Выдача в ${CITY}е`;
-}
-
 export interface SiteHeaderProps {
   brandName: string;
   cartCount: number;
@@ -40,9 +29,14 @@ export interface SiteHeaderProps {
   phoneHref?: string | null;
   /** PICKUP_HOURS as written. */
   hours?: string | null;
-  /** PICKUP_POINT_NAME. */
+  /** PICKUP_POINT_NAME: the line names the point only while there is no address. */
   pickupName?: string | null;
-  /** PICKUP_EMBLEM_WHITE_SRC: the partner's white emblem; a pin without it. */
+  /** PICKUP_ADDRESS: «Пункт выдачи: ул. …» (the city in front is dropped). */
+  pickupAddress?: string | null;
+  /**
+   * PICKUP_EMBLEM_WHITE_SRC: an emblem instead of the pin. Not set in production (decision of
+   * 08.10: the partner's marks are not shown), where the line has the pin.
+   */
   emblemSrc?: string | null;
 }
 
@@ -61,40 +55,79 @@ function cartLabel(count: number): string {
   return count > 0 ? `Корзина: ${cartCountLabel(count)}` : 'Корзина пуста';
 }
 
-/** «[emblem] Выдача: Сервис56 · Как добраться ›»: where the parts are picked up. */
+/**
+ * «[pin] Пункт выдачи: ул. Тестовая, 1 · Как добраться ›» (decision of 08.10): the shop is an
+ * independent store, the service only hands the parts over, so the line says what the place is
+ * for and where it is — the address without the city, the point's name only while there is no
+ * address, «Пункт выдачи в Оренбурге» with neither. The full card is on /about#pickup.
+ *
+ * `compact` (phones): a 343 px row has no room for both the address and «Как добраться», and the
+ * address is what the line is for — so the whole row is the link to the card, with a chevron
+ * («как добраться» for a screen reader). From md the words stand beside the line.
+ */
 function PickupLine({
   pickupName,
+  pickupAddress,
   emblemSrc,
+  compact = false,
   className,
-}: Pick<SiteHeaderProps, 'pickupName' | 'emblemSrc'> & { className?: string }) {
-  return (
-    <div className={cn('flex min-h-11 min-w-0 items-center gap-2 text-small', className)}>
-      {emblemSrc ? (
-        // A plain img: a small WebP from public/, no optimizer needed.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={emblemSrc}
-          alt=""
-          width={40}
-          height={24}
-          className="h-6 w-auto shrink-0 md:h-7"
-          decoding="async"
-        />
-      ) : (
-        <IconPin size={20} className="shrink-0" />
-      )}
-      <span className="min-w-0 truncate max-sm:text-sm">
-        {pickupName ? (
-          <>
-            Выдача: <span className="font-semibold">{pickupName}</span>
-          </>
-        ) : (
-          pickupLineText(null)
-        )}
-      </span>
+}: Pick<SiteHeaderProps, 'pickupName' | 'pickupAddress' | 'emblemSrc'> & {
+  compact?: boolean;
+  className?: string;
+}) {
+  const { label, value } = pickupLine({ name: pickupName, address: pickupAddress });
+  const marker = emblemSrc ? (
+    // A plain img: a small WebP from public/, no optimizer needed.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={emblemSrc}
+      alt=""
+      width={40}
+      height={24}
+      className="h-6 w-auto shrink-0 md:h-7"
+      decoding="async"
+    />
+  ) : (
+    <IconPin size={20} className="shrink-0" />
+  );
+  const text = (
+    <span className="min-w-0 truncate max-sm:text-sm" title={value ? `${label} ${value}` : label}>
+      {label}
+      {value ? (
+        <>
+          {' '}
+          <span className="font-semibold">{value}</span>
+        </>
+      ) : null}
+    </span>
+  );
+  if (compact) {
+    return (
       <Link
         href="/about#pickup"
-        className="ml-auto -mr-2 inline-flex min-h-11 shrink-0 items-center px-2 text-sm font-semibold whitespace-nowrap underline-offset-4 hover:underline md:ml-2 md:text-[0.9375rem]"
+        className={cn(
+          'flex min-h-11 min-w-0 items-center gap-2 text-small underline-offset-4 hover:underline',
+          className,
+        )}
+        data-testid="header-pickup"
+      >
+        {marker}
+        {text}
+        <span className="sr-only">, как добраться</span>
+        <IconChevron size={16} className="shrink-0" />
+      </Link>
+    );
+  }
+  return (
+    <div
+      className={cn('flex min-h-11 min-w-0 items-center gap-2 text-small', className)}
+      data-testid="header-pickup"
+    >
+      {marker}
+      {text}
+      <Link
+        href="/about#pickup"
+        className="ml-2 -mr-2 inline-flex min-h-11 shrink-0 items-center px-2 text-[0.9375rem] font-semibold whitespace-nowrap underline-offset-4 hover:underline"
       >
         Как добраться
         <IconChevron size={16} />
@@ -122,6 +155,7 @@ export function SiteHeader({
   phoneHref = null,
   hours = null,
   pickupName = null,
+  pickupAddress = null,
   emblemSrc = null,
 }: SiteHeaderProps) {
   const callHref = phone ? (phoneHref ?? `tel:${phone.replace(/[^\d+]/g, '')}`) : null;
@@ -157,7 +191,12 @@ export function SiteHeader({
               ) : null}
             </Link>
           </div>
-          <PickupLine pickupName={pickupName} emblemSrc={emblemSrc} />
+          <PickupLine
+            pickupName={pickupName}
+            pickupAddress={pickupAddress}
+            emblemSrc={emblemSrc}
+            compact
+          />
         </Container>
 
         {/* Desktop. */}
@@ -207,6 +246,8 @@ export function SiteHeader({
       </div>
 
       <HeaderTail className="site-header relative z-20 -mt-8 rounded-b-header bg-brand pt-10 text-on-brand lg:-mt-10 lg:rounded-b-header-lg lg:pt-12">
+        {/* Home page only: the page's h1 under the search, one element for every width. */}
+        <HomeHeadline className="mb-1 md:mb-0" />
         <Container className="pb-4 md:hidden">
           <HomeSearchHint className="mb-3" />
           {/* py-1.5: room for the focus ring inside the scrolling row (it clips both axes). */}
@@ -218,7 +259,12 @@ export function SiteHeader({
           </nav>
         </Container>
         <Container className="hidden items-center gap-6 pb-3 md:flex lg:pb-4">
-          <PickupLine pickupName={pickupName} emblemSrc={emblemSrc} className="min-w-0" />
+          <PickupLine
+            pickupName={pickupName}
+            pickupAddress={pickupAddress}
+            emblemSrc={emblemSrc}
+            className="min-w-0"
+          />
           <HomeSearchHint className="ml-auto shrink-0" />
         </Container>
       </HeaderTail>

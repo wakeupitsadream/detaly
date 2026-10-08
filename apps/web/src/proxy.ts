@@ -49,8 +49,14 @@
  *    /api/orders/demo/{link,install,claims} -> 303 /o/demo?demo=<what>, POST
  *    /api/demo/checkout-done -> 303 /o/demo with the demo cart emptied; every proposal but
  *    /p/demo (and its API) and every /vin/sent/<token> answer 404.
+ * 5. Content-Security-Policy (audit tech-3, lib/csp.ts): a new script nonce for every request,
+ *    the policy on every response the proxy gives, and the same policy on the request that
+ *    goes on to the app (NextResponse.next / rewrite), which is where Next reads the nonce for
+ *    its own scripts. No 'unsafe-inline' in script-src: a page rendered without the nonce
+ *    (prerendered at build time) would lose its scripts, so every page is rendered per request.
  */
 import { NextResponse, type NextRequest } from 'next/server';
+import { contentSecurityPolicy, createNonce } from './lib/csp';
 import {
   ADMIN_CHALLENGE,
   ADMIN_RESPONSE_HEADERS,
@@ -330,14 +336,32 @@ function demoSeeOther(base: string | URL, location: string): NextResponse {
   });
 }
 
+/**
+ * What the app gets instead of the bare request: the same headers plus this response's CSP, the
+ * header Next takes the script nonce from (lib/csp.ts). Used by every NextResponse.next() and
+ * rewrite below, so no rendered page goes without its nonce.
+ */
+function appRequest(request: NextRequest, csp: string): { request: { headers: Headers } } {
+  const headers = new Headers(request.headers);
+  headers.set('content-security-policy', csp);
+  return { request: { headers } };
+}
+
 /** 404 of a demo-blocked path: JSON for the API, the site's not-found page otherwise. */
-function demoNotFoundResponse(request: NextRequest, kind: 'api' | 'page'): NextResponse {
+function demoNotFoundResponse(
+  request: NextRequest,
+  kind: 'api' | 'page',
+  csp: string,
+): NextResponse {
   const headers = { 'Cache-Control': 'no-store', 'X-Robots-Tag': NOINDEX };
   if (kind === 'api') {
     return NextResponse.json({ error: 'not_found' }, { status: 404, headers });
   }
   // A path no route matches: Next renders app/not-found.tsx with status 404.
-  const response = NextResponse.rewrite(new URL('/_demo/not-found', request.url), { headers });
+  const response = NextResponse.rewrite(new URL('/_demo/not-found', request.url), {
+    headers,
+    ...appRequest(request, csp),
+  });
   response.headers.set('Referrer-Policy', 'no-referrer');
   return response;
 }
@@ -362,7 +386,7 @@ function adminText(text: string, status: number, headers: Record<string, string>
  * The /admin gate (decision Б25). A request without credentials is the browser's first try:
  * it gets the challenge without touching the wrong-password counter.
  */
-async function adminGate(request: NextRequest, env: Env): Promise<NextResponse> {
+async function adminGate(request: NextRequest, env: Env, csp: string): Promise<NextResponse> {
   const auth = checkAdminAuth(request.headers, env.ADMIN_BASIC_AUTH);
   if (auth === 'disabled') return adminText('Not Found', 404);
   const challenge = () =>
@@ -381,10 +405,21 @@ async function adminGate(request: NextRequest, env: Env): Promise<NextResponse> 
   }
   const decision = await decide(request, env, 'admin_auth', 'peek');
   if (decision && !decision.allowed) return tooMany(decision);
-  return withAdminHeaders(NextResponse.next());
+  return withAdminHeaders(NextResponse.next(appRequest(request, csp)));
 }
 
+/** next dev: React refresh needs 'unsafe-eval' and the HMR socket in the policy. */
+const DEV = process.env.NODE_ENV === 'development';
+
 export async function proxy(request: NextRequest): Promise<NextResponse> {
+  // A new nonce per request; every response of the proxy carries the policy (point 5 above).
+  const csp = contentSecurityPolicy(createNonce(), { dev: DEV });
+  const response = await route(request, csp);
+  response.headers.set('Content-Security-Policy', csp);
+  return response;
+}
+
+async function route(request: NextRequest, csp: string): Promise<NextResponse> {
   let env: Env;
   try {
     env = serverEnv();
@@ -400,10 +435,10 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
       if (redirect !== null) return demoSeeOther(request.nextUrl, redirect);
       const blocked = demoBlockedPath(path);
       if (blocked !== null) {
-        return demoNotFoundResponse(request, path.startsWith('/api/') ? 'api' : blocked);
+        return demoNotFoundResponse(request, path.startsWith('/api/') ? 'api' : blocked, csp);
       }
     }
-    return NextResponse.next();
+    return NextResponse.next(appRequest(request, csp));
   }
   const { pathname } = request.nextUrl;
   // Decoded and normalized, so `/o//token/` or `/%6f/token` gets the same headers.
@@ -419,10 +454,10 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     }
     const blocked = isAdminPath(pathname) ? 'page' : demoBlockedPath(path);
     if (blocked !== null) {
-      return demoNotFoundResponse(request, path.startsWith('/api/') ? 'api' : blocked);
+      return demoNotFoundResponse(request, path.startsWith('/api/') ? 'api' : blocked, csp);
     }
   }
-  if (isAdminPath(pathname)) return adminGate(request, env);
+  if (isAdminPath(pathname)) return adminGate(request, env, csp);
 
   const limited = classifyLimitedRequest({
     method: request.method,
@@ -446,7 +481,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  return applyPathHeaders(NextResponse.next(), path, env);
+  return applyPathHeaders(NextResponse.next(appRequest(request, csp)), path, env);
 }
 
 export const config = {

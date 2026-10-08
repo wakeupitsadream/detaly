@@ -62,9 +62,7 @@ describe('one line weight for big icons', () => {
 
   it('the category tile glyph and the dark panel glyphs share the line', () => {
     const tile = strokes(renderToStaticMarkup(createElement(TileGlyph, { category: 'filter' })));
-    const panel = strokes(
-      renderToStaticMarkup(createElement(WhyUs, { brandName: 'Тест', pickupName: 'Сервис' })),
-    );
+    const panel = strokes(renderToStaticMarkup(createElement(WhyUs, { brandName: 'Тест' })));
     expect(tile.map((s) => s.width)).toEqual([72, 88]);
     for (const { width, stroke } of [...tile, ...panel]) {
       expect((stroke * width) / 24).toBeCloseTo(LARGE_LINE_PX, 1);
@@ -79,9 +77,7 @@ describe('one line weight for big icons', () => {
 
 describe('dark panel', () => {
   it('no chevrons; the lift on hover tells a tile is a link', () => {
-    const html = renderToStaticMarkup(
-      createElement(WhyUs, { brandName: 'Тест', pickupName: 'Сервис' }),
-    );
+    const html = renderToStaticMarkup(createElement(WhyUs, { brandName: 'Тест' }));
     expect(html).not.toContain('M9.5 6l6 6-6 6');
     expect(html.match(/hover:-translate-y-0\.5/g)).toHaveLength(6);
     expect(html.match(/href="\/about#about-why"/g)).toHaveLength(3);

@@ -41,22 +41,55 @@ describe('/sitemap.xml and robots.txt (perf-7)', () => {
   });
 });
 
+/** The five legal documents: a static route each (no /docs/[slug], see the perf-11 test). */
+const DOC_ROUTES = {
+  offer: () => import('@/app/(site)/docs/offer/page'),
+  privacy: () => import('@/app/(site)/docs/privacy/page'),
+  consent: () => import('@/app/(site)/docs/consent/page'),
+  'consent-marketing': () => import('@/app/(site)/docs/consent-marketing/page'),
+  'return-memo': () => import('@/app/(site)/docs/return-memo/page'),
+} as const;
+
 describe('canonical URLs (perf-3)', () => {
   it('the pages linked with a query or found by a slug declare their clean address', async () => {
     const pages = {
-      '/': await import('@/app/(site)/page'),
-      '/vin': await import('@/app/(site)/vin/page'),
-      '/about': await import('@/app/(site)/about/page'),
-      '/returns': await import('@/app/(site)/returns/page'),
+      '/': (await import('@/app/(site)/page')).generateMetadata(),
+      '/vin': (await import('@/app/(site)/vin/page')).metadata,
+      '/about': (await import('@/app/(site)/about/page')).generateMetadata(),
+      '/returns': (await import('@/app/(site)/returns/page')).metadata,
     };
-    for (const [path, page] of Object.entries(pages)) {
-      expect(page.metadata.alternates?.canonical, path).toBe(path);
+    for (const [path, metadata] of Object.entries(pages)) {
+      expect(metadata.alternates?.canonical, path).toBe(path);
     }
-    const docs = await import('@/app/(site)/docs/[slug]/page');
-    const offer = await docs.generateMetadata({ params: Promise.resolve({ slug: 'offer' }) });
-    expect(offer.alternates?.canonical).toBe('/docs/offer');
-    const nope = await docs.generateMetadata({ params: Promise.resolve({ slug: 'nope' }) });
-    expect(nope.alternates).toBeUndefined();
+    for (const [slug, route] of Object.entries(DOC_ROUTES)) {
+      const { metadata } = await route();
+      expect(metadata.alternates?.canonical, slug).toBe(`/docs/${slug}`);
+      expect(metadata.title, slug).toBeTruthy();
+    }
+  });
+});
+
+describe('an unknown document is an honest 404 (perf-11)', () => {
+  it('every document is a static route, so /docs/<unknown> matches nothing', async () => {
+    const docs = new URL('../src/app/(site)/docs/', import.meta.url);
+    // A dynamic segment would render the page and throw notFound() inside a streamed render,
+    // which Next 16 answers with an empty 404 body that only a script fills in.
+    expect(existsSync(new URL('[slug]', docs))).toBe(false);
+    const { DOC_SLUGS } = await import('@/server/documents');
+    expect(Object.keys(DOC_ROUTES).sort()).toEqual(Object.keys(DOC_SLUGS).sort());
+    for (const slug of Object.keys(DOC_SLUGS)) {
+      expect(existsSync(new URL(`${slug}/page.tsx`, docs)), slug).toBe(true);
+    }
+  });
+
+  it('the root not-found is rendered per request (its scripts need the CSP nonce)', async () => {
+    const source = readFileSync(new URL('../src/app/not-found.tsx', import.meta.url), 'utf8');
+    expect(source).toMatch(/await connection\(\)/);
+    // A real title on every 404, also in the shell Next sends for a notFound() of a page.
+    expect((await import('@/app/not-found')).metadata.title).toBe('Страница не найдена');
+    expect((await import('@/app/(site)/o/[token]/not-found')).metadata.title).toBe(
+      'Заказ не найден',
+    );
   });
 });
 

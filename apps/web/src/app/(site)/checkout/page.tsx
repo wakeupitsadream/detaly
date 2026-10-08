@@ -18,6 +18,7 @@ import { IconArrowRight } from '@/components/icons';
 import { Notice } from '@/components/page/Notice';
 import { buttonClass } from '@/components/ui/Button';
 import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
+import { shareCard } from '@/lib/seo';
 import { getBrand } from '@/server/brand';
 import { getCartService } from '@/server/cart';
 import { promiseFor, STALE_PRICES_TEXT } from '@/server/cart/summary';
@@ -39,10 +40,14 @@ import { storageDays } from '@/server/settings';
 import { getSupplier } from '@/server/supplier';
 
 // Personal data form and a cart-specific page: never indexed (also X-Robots-Tag from proxy).
-export const metadata: Metadata = {
-  title: 'Оформление заказа',
-  robots: { index: false, follow: false },
-};
+export function generateMetadata(): Metadata {
+  return {
+    title: 'Оформление заказа',
+    robots: { index: false, follow: false },
+    // The share card without its picture: a page behind a token or a cart (lib/seo.ts).
+    ...shareCard(getBrand().name, { image: false }),
+  };
+}
 
 type SearchParams = Record<string, string | string[] | undefined>;
 

@@ -10,7 +10,7 @@
  * t.me after a native submit is refused («violates form-action»). A navigation by script is not
  * a form submission. Without JavaScript the native post still reaches the handler (a 303 that
  * browsers with the CSP refuse); `https://t.me` in form-action is listed as an open issue for
- * apps/web/next.config.ts. The demo is a plain GET to /o/demo?demo=link: nothing is created.
+ * apps/web/src/lib/csp.ts. The demo is a plain GET to /o/demo?demo=link: nothing is created.
  */
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { IconAlert } from '@/components/icons';

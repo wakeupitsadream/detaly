@@ -15,12 +15,14 @@ import { pickupRoutes } from '@/components/PickupRouteLinks';
 import { DefectClaimNote } from '@/components/returns/DefectClaimNote';
 import { SectionHeading } from '@/components/ui/Section';
 import { StepIconTile } from '@/components/ui/StepNumber';
+import { PAGE_SEO } from '@/lib/seo';
 import { getBrand } from '@/server/brand';
 import { loadPublishedDocument, type LegalDocument } from '@/server/documents';
 import { getLogger } from '@/server/logger';
 
 export const metadata: Metadata = {
-  title: 'Возврат и обмен',
+  title: PAGE_SEO.returns.title,
+  description: PAGE_SEO.returns.description,
   alternates: { canonical: '/returns' },
 };
 

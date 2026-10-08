@@ -17,6 +17,7 @@ import { getCartService } from '@/server/cart';
 import { CART_ERROR_MESSAGES, isCartErrorCode } from '@/server/cart/errors';
 import { FINAL_SCHEME_NOTE, STALE_PRICES_TEXT, summarizeCart } from '@/server/cart/summary';
 import { readCartToken } from '@/server/cart-store';
+import { shareCard } from '@/lib/seo';
 import { getBrand } from '@/server/brand';
 import type { CartView } from '@/server/cart/cart-service';
 import { currentCheckoutGate } from '@/server/checkout-gate';
@@ -25,10 +26,14 @@ import { planInstallForDate, type InstallPlanView } from '@/server/install';
 import { getLogger } from '@/server/logger';
 import { FindByArticleLink } from './FindByArticleLink';
 
-export const metadata: Metadata = {
-  title: 'Корзина',
-  robots: { index: false, follow: false },
-};
+export function generateMetadata(): Metadata {
+  return {
+    title: 'Корзина',
+    robots: { index: false, follow: false },
+    // The share card without its picture: a page behind a token or a cart (lib/seo.ts).
+    ...shareCard(getBrand().name, { image: false }),
+  };
+}
 
 type SearchParams = Record<string, string | string[] | undefined>;
 

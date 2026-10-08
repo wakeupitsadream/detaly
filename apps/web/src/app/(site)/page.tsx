@@ -8,22 +8,32 @@ import { Container } from '@/components/ui/Container';
 import { CtaCard } from '@/components/ui/CtaCard';
 import { VinCtaArt } from '@/components/vin/VinCtaArt';
 import { FullBleed, Section } from '@/components/ui/Section';
+import { brandedTitle, PAGE_SEO } from '@/lib/seo';
 import { vinRequestHref } from '@/lib/vin-link';
 import { getBrand } from '@/server/brand';
 
-export const metadata: Metadata = { alternates: { canonical: '/' } };
+/**
+ * «Автозапчасти в Оренбурге по артикулу и VIN — {BRAND_NAME}» (lib/seo.ts). Absolute: the
+ * layout's title template does not reach a page of its own segment.
+ */
+export function generateMetadata(): Metadata {
+  return {
+    title: { absolute: brandedTitle(PAGE_SEO.home.title, getBrand().name) },
+    description: PAGE_SEO.home.description,
+    alternates: { canonical: '/' },
+  };
+}
 
 /**
- * Home (docs/design-v2.md, section 4 «Главная»): the search lives in the brand header, then
- * makes, categories, the dark panel of advantages, the pickup point and the VIN prompt.
- * Pictures and short captions instead of paragraphs.
+ * Home (docs/design-v2.md, section 4 «Главная»): the search and the page's h1 («Автозапчасти в
+ * Оренбурге — по артикулу и VIN», HomeHeadline) live in the brand header, then makes,
+ * categories, the dark panel of advantages, the pickup point and the VIN prompt. Pictures and
+ * short captions instead of paragraphs.
  */
 export default function HomePage() {
   const brand = getBrand();
   return (
     <FullBleed>
-      {/* The header carries the search; the page title is for screen readers and search engines. */}
-      <h1 className="sr-only">{brand.name}: автозапчасти по артикулу и VIN в Оренбурге</h1>
       <Section aria-labelledby="brands-title" className="pt-8! lg:pt-12!">
         <BrandGrid />
       </Section>
@@ -31,7 +41,7 @@ export default function HomePage() {
         <CategoryGrid />
       </Section>
       <Container className="grid gap-12 pb-12 lg:gap-[4.5rem] lg:pb-[4.5rem]">
-        <WhyUs brandName={brand.name} pickupName={brand.pickup.name} />
+        <WhyUs brandName={brand.name} />
         <PickupCard brand={brand} />
         <CtaCard
           title="Не знаете артикул?"

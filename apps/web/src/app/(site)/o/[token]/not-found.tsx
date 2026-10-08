@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { IconHome, IconPhone, IconSearch } from '@/components/icons';
 import { EmptyPanel } from '@/components/page/EmptyPanel';
 import { ButtonLink } from '@/components/ui/Button';
@@ -8,6 +9,13 @@ import { getBrand, telHref } from '@/server/brand';
  * so the header, the footer and the phone of the point are there. The client is told where the
  * link comes from and gets the call button when a phone is set.
  */
+/**
+ * «Заказ не найден — {BRAND_NAME}»: the 404 of a link to no order. Next renders this boundary in
+ * the browser (a notFound() thrown while the page streams), the <title> of the shell it sends
+ * comes from here (audit perf-11).
+ */
+export const metadata: Metadata = { title: 'Заказ не найден' };
+
 export default function OrderNotFound() {
   const phone = getBrand().contactPhone;
   return (

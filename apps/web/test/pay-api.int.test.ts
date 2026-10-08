@@ -493,14 +493,12 @@ describe('POST /api/orders/<token>/pay', () => {
 
   it('the CSP lets the pay form follow its 303 to the YooKassa confirmation page', async () => {
     // Chromium applies form-action to the redirects of a form submission: with `form-action
-    // 'self'` alone the «Оплатить» click is blocked before it reaches YooKassa.
-    const { default: nextConfig } = await import('../next.config');
-    const rules = (await nextConfig.headers?.()) ?? [];
-    const csp = rules
-      .flatMap((rule) => rule.headers)
-      .find((h) => h.key === 'Content-Security-Policy')?.value;
+    // 'self'` alone the «Оплатить» click is blocked before it reaches YooKassa. The policy is
+    // sent by src/proxy.ts with a nonce per request (lib/csp.ts, audit tech-3).
+    const { contentSecurityPolicy } = await import('@/lib/csp');
+    const csp = contentSecurityPolicy('bm9uY2U=');
     const formAction = csp
-      ?.split(';')
+      .split(';')
       .map((d) => d.trim())
       .find((d) => d.startsWith('form-action '));
     expect(formAction?.split(/\s+/)).toEqual(

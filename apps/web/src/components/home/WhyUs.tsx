@@ -36,51 +36,51 @@ function glyph(Icon: IconComponent): ReactNode {
 /** The part of /about that explains the advantages (SectionHeading id there). */
 const ABOUT_WHY = '/about#about-why';
 
-/** No-break space: «по VIN», «при получении», «в Сервис56» never part at the line end. */
+/** No-break space: «по VIN», «при получении» never part at the line end. */
 const NB = '\u00a0';
 
-function advantages(pickupName: string | null): Advantage[] {
-  return [
-    // The condition (only for parts in Orenburg) is on every stock badge; the tile stays short.
-    {
-      key: 'cod',
-      icon: glyph(IconWallet),
-      title: `Оплата при${NB}получении`,
-      href: ABOUT_WHY,
-    },
-    {
-      key: 'date',
-      icon: glyph(IconCalendar),
-      title: 'Точная дата прибытия',
-      href: ABOUT_WHY,
-    },
-    {
-      key: 'vin',
-      icon: glyph(IconSts),
-      title: `Подбор по${NB}VIN бесплатно`,
-      href: vinRequestHref(),
-    },
-    {
-      key: 'install',
-      // A wrench like the other line glyphs (installation is a wrench everywhere): the
-      // partner's filled emblem stood out of the row.
-      icon: glyph(IconWrench),
-      title: pickupName ? `Установка в${NB}${pickupName}` : `Установка в${NB}автосервисе`,
-      href: '/about#pickup',
-    },
-    { key: 'return', icon: glyph(IconReturn), title: 'Возврат 7 дней', href: '/returns' },
-    {
-      key: 'receipt',
-      icon: glyph(IconReceipt),
-      title: 'Чек на каждую покупку',
-      href: ABOUT_WHY,
-    },
-  ];
-}
+const ADVANTAGES: readonly Advantage[] = [
+  // The condition (only for parts in Orenburg) is on every stock badge; the tile stays short.
+  {
+    key: 'cod',
+    icon: glyph(IconWallet),
+    title: `Оплата при${NB}получении`,
+    href: ABOUT_WHY,
+  },
+  {
+    key: 'date',
+    icon: glyph(IconCalendar),
+    title: 'Точная дата прибытия',
+    href: ABOUT_WHY,
+  },
+  {
+    key: 'vin',
+    icon: glyph(IconSts),
+    title: `Подбор по${NB}VIN бесплатно`,
+    href: vinRequestHref(),
+  },
+  {
+    key: 'install',
+    // A wrench like the other line glyphs (installation is a wrench everywhere). The tile
+    // offers the option, not a garage (decision of 08.10): installing is the pickup
+    // service's own job, paid there — the card at /about#pickup says so.
+    icon: glyph(IconWrench),
+    title: 'Можно сразу установить',
+    href: '/about#pickup',
+  },
+  { key: 'return', icon: glyph(IconReturn), title: 'Возврат 7 дней', href: '/returns' },
+  {
+    key: 'receipt',
+    icon: glyph(IconReceipt),
+    title: 'Чек на каждую покупку',
+    href: ABOUT_WHY,
+  },
+];
 
 /**
- * The dark panel (docs/design-v2.md, DarkPanel): `bg-dark rounded-panel`, the white title with
- * the brand from env, six `dark-2` tiles with a white glyph and a short caption. Each tile is a
+ * The dark panel (docs/design-v2.md, DarkPanel): `bg-dark rounded-panel`, the white title
+ * «{BRAND_NAME} — запчасти без сюрпризов» (the brand from env; the shop is an independent store,
+ * decision of 08.10), six `dark-2` tiles with a white glyph and a short caption. Each tile is a
  * link (a tile that looks like the category tiles above must lead where it says): VIN to the
  * request, installation to the pickup point, return to /returns, the rest to «Почему у нас» on
  * /about where each one is explained. No chevrons (six arrows turned the panel into a settings
@@ -89,15 +89,7 @@ function advantages(pickupName: string | null): Advantage[] {
  * title over a 2×3 grid (three columns of ~100 px broke every caption word by word), 3×2 from
  * sm; desktop: the title on the left, the tiles 3×2 on the right.
  */
-export function WhyUs({
-  brandName,
-  pickupName,
-  className,
-}: {
-  brandName: string;
-  pickupName: string | null;
-  className?: string;
-}) {
+export function WhyUs({ brandName, className }: { brandName: string; className?: string }) {
   return (
     <section
       aria-labelledby="why-title"
@@ -112,10 +104,10 @@ export function WhyUs({
         {brandName}
         {/* No-break space: the dash never starts a line. */}
         {'\u00a0— '}
-        запчасти от тех, кто их ставит
+        запчасти без сюрпризов
       </h2>
       <ul className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 md:gap-3">
-        {advantages(pickupName).map((item) => (
+        {ADVANTAGES.map((item) => (
           <li key={item.key} data-testid={`home-why-${item.key}`} className="min-w-0">
             <Link
               href={item.href}

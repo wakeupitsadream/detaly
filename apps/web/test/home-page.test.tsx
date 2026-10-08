@@ -78,6 +78,19 @@ describe('home: «Выберите марку»', () => {
     });
   });
 
+  it('says under the makes whose the marks are, in a small muted line (legal-7)', () => {
+    const note = tagOf(html, 'home-brands-note');
+    expect(note).toContain('text-caption');
+    expect(note).toContain('text-muted');
+    expect(text(html)).toContain(
+      'Товарные знаки принадлежат их владельцам. Мы не официальный дилер марок.',
+    );
+    // Under the whole grid, «Все марки» included.
+    expect(html.indexOf('data-testid="home-brands-note"')).toBeGreaterThan(
+      html.indexOf('data-testid="home-brands-all"'),
+    );
+  });
+
   it('never hyphenates a make inside the word; the two longest are shortened on phones', () => {
     expect(html).not.toContain('\u00ad');
     expect(phoneBrandName({ slug: 'volkswagen', name: 'Volkswagen' })).toBe('VW');
@@ -104,20 +117,15 @@ describe('home: «Популярные категории»', () => {
 });
 
 describe('home: the dark panel', () => {
-  it('takes the brand and the pickup point from props, six advantages', () => {
-    const html = renderToStaticMarkup(
-      createElement(WhyUs, {
-        brandName: 'Тестовый бренд',
-        pickupName: 'Тестовый сервис',
-      }),
-    );
+  it('takes the brand from props: «{BRAND} — запчасти без сюрпризов», six advantages', () => {
+    const html = renderToStaticMarkup(createElement(WhyUs, { brandName: 'Тестовый бренд' }));
     const t = text(html);
-    expect(t).toContain('Тестовый бренд — запчасти от тех, кто их ставит');
+    expect(t).toContain('Тестовый бренд — запчасти без сюрпризов');
     for (const caption of [
       'Оплата при получении',
       'Точная дата прибытия',
       'Подбор по VIN бесплатно',
-      'Установка в Тестовый сервис',
+      'Можно сразу установить',
       'Возврат 7 дней',
       'Чек на каждую покупку',
     ]) {
@@ -128,21 +136,29 @@ describe('home: the dark panel', () => {
     expect(html).not.toContain('<img');
   });
 
-  it('falls back to a generic caption without the point', () => {
-    const html = renderToStaticMarkup(
-      createElement(WhyUs, { brandName: 'Тестовый бренд', pickupName: null }),
-    );
-    expect(text(html)).toContain('Установка в автосервисе');
-    expect(html).not.toContain('<img');
+  it('never makes the shop a page of the service (decision of 08.10)', () => {
+    const html = renderToStaticMarkup(createElement(WhyUs, { brandName: 'Тестовый бренд' }));
+    const t = text(html);
+    expect(t).not.toContain('от тех, кто их ставит');
+    expect(t).not.toContain('Установка в');
+    expect(t).not.toContain('автосервис');
+    // The installation tile still leads to the pickup card, where the service is named.
+    expect(tagOf(html, 'home-why-install')).not.toBe('');
+    expect(html).toMatch(/data-testid="home-why-install"[^>]*>\s*<a[^>]*href="\/about#pickup"/);
   });
 });
 
-describe('home: «Точка выдачи»', () => {
-  it('is the #pickup anchor with the address, hours, phone, routes and the partner logo', () => {
+describe('home: «Пункт выдачи»', () => {
+  it('is the #pickup anchor with the name, address, hours, phone and routes', () => {
     const html = renderToStaticMarkup(createElement(PickupCard, { brand: BRAND }));
     expect(tagOf(html, 'home-pickup')).toContain('id="pickup"');
     const t = text(html);
-    expect(t).toContain('Точка выдачи');
+    expect(t).toContain('Пункт выдачи');
+    expect(t).not.toContain('Точка выдачи');
+    // The point's name is an ordinary line of text, logo or not.
+    expect(tagOf(html, 'home-pickup-name')).toContain('text-body');
+    expect(tagOf(html, 'home-pickup-name')).not.toContain('text-h3');
+    expect(t).toContain('Тестовый сервис');
     expect(t).toContain('Оренбург, ул. Тестовая, 1');
     expect(t).toContain('пн–пт 9–19');
     expect(hrefs(html)).toContain('tel:+73532111111');

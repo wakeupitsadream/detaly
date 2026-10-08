@@ -480,3 +480,103 @@ describe('proxy: /admin Basic auth', () => {
     expect(right.headers.get(MIDDLEWARE_NEXT)).toBe('1');
   });
 });
+
+describe('proxy: Content-Security-Policy with a nonce per request (audit tech-3)', () => {
+  const CSP = 'content-security-policy';
+  /** The CSP a response hands on to the app: Next reads the script nonce there. */
+  const APP_CSP = 'x-middleware-request-content-security-policy';
+
+  function directive(csp: string | null, name: string): string {
+    return (
+      (csp ?? '')
+        .split(';')
+        .map((part) => part.trim())
+        .find((part) => part.startsWith(`${name} `)) ?? ''
+    );
+  }
+
+  it('scripts only with this response nonce: strict-dynamic, no unsafe-inline', async () => {
+    const response = await proxy(request('GET', '/'));
+    const csp = response.headers.get(CSP);
+    expect(directive(csp, 'script-src')).toMatch(
+      /^script-src 'self' 'nonce-[A-Za-z0-9+/]{22}==' 'strict-dynamic'$/,
+    );
+    expect(csp).not.toContain('unsafe-eval');
+    expect(directive(csp, 'style-src')).toBe("style-src 'self' 'unsafe-inline'");
+    for (const fixed of [
+      "default-src 'self'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "frame-ancestors 'none'",
+      "connect-src 'self'",
+    ]) {
+      expect(csp?.split('; '), fixed).toContain(fixed);
+    }
+    // The pay and «Статусы в Telegram» forms follow their 303 to these hosts (form-action).
+    expect(directive(csp, 'form-action').split(' ')).toEqual(
+      expect.arrayContaining(["'self'", 'https://yoomoney.ru', 'https://t.me']),
+    );
+  });
+
+  it('the same policy goes on to the app with every header of the browser', async () => {
+    const response = await proxy(request('GET', '/search?q=OC90', { accept: 'text/html' }));
+    const csp = response.headers.get(CSP);
+    expect(response.headers.get(MIDDLEWARE_NEXT)).toBe('1');
+    expect(response.headers.get(APP_CSP)).toBe(csp);
+    const overridden = response.headers.get('x-middleware-override-headers')?.split(',') ?? [];
+    expect(overridden).toEqual(expect.arrayContaining([CSP, 'accept', 'x-real-ip']));
+    expect(response.headers.get('x-middleware-request-x-real-ip')).toBe('203.0.113.7');
+    expect(response.headers.get('x-middleware-request-accept')).toBe('text/html');
+  });
+
+  it('a new nonce for every request', async () => {
+    const nonces = new Set<string>();
+    for (let i = 0; i < 5; i += 1) {
+      const csp = (await proxy(request('GET', '/about'))).headers.get(CSP) ?? '';
+      nonces.add(/'nonce-([^']+)'/.exec(csp)?.[1] ?? '');
+    }
+    expect(nonces.size).toBe(5);
+  });
+
+  it('every answer of the proxy carries the policy: 429, HEAD, the admin, a broken env', async () => {
+    rejectWith(60);
+    const limited = await proxy(request('GET', '/search?q=OC90'));
+    expect(limited.status).toBe(429);
+    expect(directive(limited.headers.get(CSP), 'script-src')).toContain("'strict-dynamic'");
+    const head = await proxy(request('HEAD', '/search?q=OC90'));
+    expect(head.headers.get(CSP)).toContain("'nonce-");
+
+    state.env = env({ ADMIN_BASIC_AUTH: 'admin:correct horse battery staple' });
+    const challenge = await proxy(request('GET', '/admin'));
+    expect(challenge.status).toBe(401);
+    expect(challenge.headers.get(CSP)).toContain("'nonce-");
+    const admin = await proxy(
+      request('GET', '/admin', {
+        authorization: `Basic ${Buffer.from('admin:correct horse battery staple').toString('base64')}`,
+      }),
+    );
+    expect(admin.headers.get(MIDDLEWARE_NEXT)).toBe('1');
+    // The admin pages are rendered too: they get the nonce like the storefront.
+    expect(admin.headers.get(APP_CSP)).toBe(admin.headers.get(CSP));
+
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    state.env = new Error('invalid env');
+    try {
+      const site = await proxy(request('GET', '/about'));
+      expect(site.headers.get(MIDDLEWARE_NEXT)).toBe('1');
+      expect(site.headers.get(APP_CSP)).toBe(site.headers.get(CSP));
+      expect(site.headers.get(CSP)).toContain("'nonce-");
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it('next.config.ts sets no static CSP any more (one policy, the proxy one)', async () => {
+    const { default: nextConfig } = await import('../next.config');
+    const rules = (await nextConfig.headers?.()) ?? [];
+    const keys = rules.flatMap((rule) => rule.headers.map((header) => header.key.toLowerCase()));
+    expect(keys).not.toContain(CSP);
+    // The other static security headers stay.
+    expect(keys).toEqual(expect.arrayContaining(['x-content-type-options', 'x-frame-options']));
+  });
+});

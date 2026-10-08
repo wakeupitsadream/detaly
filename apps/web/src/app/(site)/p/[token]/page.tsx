@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
 import { ProposalSheet, type ProposalMode } from '@/components/vin/ProposalSheet';
+import { shareCard } from '@/lib/seo';
 import { getBrand } from '@/server/brand';
 import { getDb } from '@/server/db';
 import { buildDemoProposal, DEMO_PROPOSAL_TOKEN } from '@/server/demo/proposal-fixture';
@@ -18,11 +19,15 @@ import { proposalPageView, type ProposalPageView } from '@/server/vin/proposal-p
 // Reads the database (the proposal) and env on every request; the token is a bearer secret.
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Подборка мастера',
-  robots: { index: false, follow: false },
-  referrer: 'no-referrer',
-};
+export function generateMetadata(): Metadata {
+  return {
+    title: 'Подборка мастера',
+    robots: { index: false, follow: false },
+    referrer: 'no-referrer',
+    // The share card without its picture: a page behind a token or a cart (lib/seo.ts).
+    ...shareCard(getBrand().name, { image: false }),
+  };
+}
 
 type Params = Promise<{ token: string }>;
 

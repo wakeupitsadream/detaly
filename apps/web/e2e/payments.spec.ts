@@ -24,9 +24,10 @@ test.use({
     await use({ 'X-Real-IP': randomIp() });
   },
   // The CSP of the site lets a form submission redirect only to itself and to YooKassa
-  // (form-action, apps/web/next.config.ts, fixed at build time): the mock's http://127.0.0.1
+  // (form-action, apps/web/src/lib/csp.ts, sent by the proxy): the mock's http://127.0.0.1
   // page is neither, so Chromium would block the 303 of «Оплатить». The policy itself is
-  // covered by the web unit tests; here it is bypassed for the mock origin only by necessity.
+  // covered by the web unit tests and e2e/csp-404.spec.ts; here it is bypassed for the mock
+  // origin only by necessity.
   bypassCSP: true,
 });
 

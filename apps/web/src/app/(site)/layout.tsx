@@ -4,6 +4,7 @@ import { DemoStrip } from '@/components/DemoStrip';
 import { Footer } from '@/components/Footer';
 import { MobileCartBar } from '@/components/MobileCartBar';
 import { SiteHeader } from '@/components/SiteHeader';
+import { shareCard, titleTemplate } from '@/lib/seo';
 import { getBrand, telHref } from '@/server/brand';
 import { requestCartCount } from '@/server/cart/count';
 import { isDemoMode } from '@/server/mode';
@@ -22,10 +23,16 @@ export function generateMetadata(): Metadata {
   }
   return {
     metadataBase,
-    title: { default: `${brand.name} — автозапчасти по артикулу`, template: `%s — ${brand.name}` },
-    description:
-      'Автозапчасти по артикулу с ценой и датой получения. Со склада в городе — оплата при получении.',
+    // Every page names itself (lib/seo.ts holds the wording); the brand closes each title.
+    title: {
+      default: `${brand.name} — автозапчасти по артикулу`,
+      template: titleTemplate(brand.name),
+    },
+    // No description here: one text for every page told search engines nothing (audit perf-5);
+    // a page without its own simply has none.
     robots: brand.noindexAll ? { index: false, follow: false } : undefined,
+    // The share card of every page (perf-2): og:title and og:description follow the page.
+    ...shareCard(brand.name),
   };
 }
 
@@ -51,6 +58,7 @@ export default async function SiteLayout({ children }: { children: ReactNode }) 
         phoneHref={brand.contactPhone ? telHref(brand.contactPhone) : null}
         hours={brand.pickup.hours}
         pickupName={brand.pickup.name}
+        pickupAddress={brand.pickup.address}
         emblemSrc={brand.pickupLogo?.emblemWhite ?? null}
       />
       {/* A centred column by default; a page rooted in <FullBleed> lays out full-width

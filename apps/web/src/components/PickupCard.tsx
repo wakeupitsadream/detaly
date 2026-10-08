@@ -43,15 +43,17 @@ function Row({
 }
 
 /**
- * The pickup point, one design on every page (docs/design-v2.md: «Точка выдачи» on the home
+ * The pickup point, one design on every page (docs/design-v2.md: «Пункт выдачи» on the home
  * page and /about, «Куда принести» on /returns, «Где забрать» on the order page): a grey panel
- * with the marker, the title, the address, hours and phone with brand icons, the route buttons
- * and the partner's colour logo (PICKUP_LOGO_SRC).
+ * with the marker, the title, the point's name in plain text, the address, hours and phone with
+ * brand icons and the route buttons. The service appears here only as the pickup point
+ * (decision of 08.10): its name is a line of text, not a logo.
  *
- * `wide` (home, /about, /returns): the logo on a white plate beside the lines from md, above
- * them on phones; without a logo there is no empty plate, the point is named in text instead.
- * `stack` (the order page's side column): an h3 title without the marker, no logo (its
- * lettering is unreadable that small), the name in the lines.
+ * `wide` (home, /about, /returns): the name as an ordinary line over the address. A colour logo
+ * (PICKUP_LOGO_SRC; not set in production, the partner's marks are not shown) would stand on a
+ * white plate beside the lines from md, above them on phones; without it there is no plate.
+ * `stack` (the order page's side column): an h3 title without the marker, never a logo, the
+ * name in bold over the address.
  * `children` go right under the title (the pickup code of an order); `extra` after the lines.
  */
 export function PickupCard({
@@ -88,13 +90,12 @@ export function PickupCard({
   className?: string;
 }) {
   const wide = layout === 'wide';
-  const showName = Boolean(pickup.name) && (!logo || !wide);
-  const logoAlt = pickup.name ? `Логотип: ${pickup.name}` : 'Логотип точки выдачи';
+  const logoAlt = pickup.name ? `Логотип: ${pickup.name}` : 'Логотип пункта выдачи';
   const lines = (
     <div className="min-w-0">
-      {showName ? (
+      {pickup.name ? (
         <p
-          className={cn('wrap-anywhere', wide ? 'mb-4 text-h3' : 'mb-3 text-body font-bold')}
+          className={cn('wrap-anywhere', wide ? 'mb-4 text-body' : 'mb-3 text-body font-bold')}
           data-testid={nameTestId}
         >
           {pickup.name}

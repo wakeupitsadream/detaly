@@ -14,9 +14,17 @@ import { pickupRoutes } from '@/components/PickupRouteLinks';
 import { Requisites } from '@/components/Requisites';
 import { FeatureRow } from '@/components/ui/FeatureRow';
 import { SectionHeading } from '@/components/ui/Section';
+import { aboutDescription, PAGE_SEO } from '@/lib/seo';
 import { getBrand } from '@/server/brand';
 
-export const metadata: Metadata = { title: 'О магазине', alternates: { canonical: '/about' } };
+/** The description names the pickup point, its address and hours from env (lib/seo.ts). */
+export function generateMetadata(): Metadata {
+  return {
+    title: PAGE_SEO.about.title,
+    description: aboutDescription(getBrand().pickup),
+    alternates: { canonical: '/about' },
+  };
+}
 
 /**
  * A page link at the end of a feature line. py-3: an inline box grows its target to 47 px
@@ -26,9 +34,11 @@ const LINK =
   'py-3 font-semibold text-brand underline decoration-1 underline-offset-4 hover:text-brand-hover hover:decoration-2';
 
 /**
- * /about (docs/design-v2.md, «Инфостраницы»): the pickup point on top (anchor #pickup, the
- * header links «Как добраться» here; the shared PickupCard with the partner's colour logo from
- * env), four advantages as FeatureRows, the seller's requisites.
+ * /about (docs/design-v2.md, «Инфостраницы»): the shop in one line — an independent auto parts
+ * store whose orders are handed over at the service named in env, installation there being the
+ * service's own optional job (decision of 08.10); the pickup point on top (anchor #pickup, the
+ * header links «Как добраться» here; the shared PickupCard, the point named in text), five
+ * advantages as FeatureRows, the seller's requisites.
  */
 export default function AboutPage() {
   const brand = getBrand();
@@ -38,12 +48,18 @@ export default function AboutPage() {
       <PageBand
         tone="light"
         title={`О магазине ${brand.name}`}
-        lead="Запчасти по артикулу с точной датой. Забираете и ставите в одном месте."
+        lead={
+          <>
+            Независимый магазин автозапчастей. Выдача — в{'\u00a0'}автосервисе
+            {pickup.name ? ` ${pickup.name}` : ''}, установка по{'\u00a0'}желанию — услуга сервиса,
+            оплачивается там.
+          </>
+        }
       />
       <PageBody className="space-y-12 md:space-y-16">
         <PickupCard
           id="pickup"
-          title="Точка выдачи"
+          title="Пункт выдачи"
           titleId="about-pickup"
           pickup={pickup}
           phone={brand.contactPhone}

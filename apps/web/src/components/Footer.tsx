@@ -90,6 +90,7 @@ export function Footer({ brand, year }: { brand: Brand; year: number }) {
   const telegram = brand.pickupLinks?.telegram ?? null;
   const requisitesSet = hasSellerRequisites(seller);
   const showPickup = Boolean(pickup.address || pickup.name);
+  const pickupWhere = [pickup.name, pickup.address].filter(Boolean).join(', ');
   const showContact = Boolean(phone || telegram || requisitesSet);
   const columns = 1 + Number(showPickup) + Number(showContact);
   // The hours stand under the phone (when to call); without a phone, with the address.
@@ -119,23 +120,18 @@ export function Footer({ brand, year }: { brand: Brand; year: number }) {
 
         {showPickup ? (
           <section aria-labelledby="footer-pickup" className="min-w-0 space-y-3">
-            <div className="flex min-w-0 items-center gap-3">
-              {/* The partner's full logo lives only on the pickup card: at footer size its
-                  lettering is unreadable and the shop would read as the service's sub-page. */}
+            {/* «Пункт выдачи — Сервис56, г. Оренбург, ул. …» (decision of 08.10): the service is
+                where the parts are handed over, a fact with its name and address — not the
+                shop's «точка выдачи и установки». A pin, never the partner's logo. */}
+            <div className="flex min-w-0 items-start gap-3">
               <span className="grid size-10 shrink-0 place-items-center rounded-control bg-surface text-brand">
                 <IconPin size={24} />
               </span>
-              <div className="min-w-0">
-                <p className="text-small text-muted">Точка выдачи и установки</p>
-                <h2 id="footer-pickup" className="text-h3 wrap-anywhere">
-                  {pickup.name ?? 'Пункт выдачи'}
-                </h2>
-              </div>
+              <h2 id="footer-pickup" className="min-w-0 pt-2 text-body wrap-anywhere">
+                <span className="font-bold">Пункт выдачи</span>
+                {pickupWhere ? ` — ${pickupWhere}` : null}
+              </h2>
             </div>
-            {pickup.address ? (
-              // No second pin: the tile above already marks the point.
-              <p className="min-w-0 text-body wrap-anywhere">{pickup.address}</p>
-            ) : null}
             {pickup.hours && !hoursByPhone ? (
               <p className="flex min-w-0 items-start gap-2 text-body">
                 <IconClock size={22} className="mt-0.5 shrink-0 text-brand" />

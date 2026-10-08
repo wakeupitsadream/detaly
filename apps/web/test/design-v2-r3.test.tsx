@@ -62,9 +62,7 @@ describe('brand logos', () => {
 
 describe('dark panel', () => {
   it('every tile is a link to where its caption leads', () => {
-    const html = renderToStaticMarkup(
-      createElement(WhyUs, { brandName: 'Тест', pickupName: 'Сервис' }),
-    );
+    const html = renderToStaticMarkup(createElement(WhyUs, { brandName: 'Тест' }));
     const tile = (key: string) =>
       new RegExp(`data-testid="home-why-${key}"[^>]*>\\s*<a[^>]*href="([^"]*)"`).exec(html)?.[1];
     expect(tile('vin')).toBe(vinRequestHref());

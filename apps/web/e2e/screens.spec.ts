@@ -103,6 +103,19 @@ for (const { slug, path } of PAGES) {
       const form = page.locator('form[role="search"]');
       await expect(form).toHaveAttribute('action', '/search');
       await expect(form).toHaveAttribute('method', 'get');
+      // The first screen says what the shop is (ux-10): the page's one h1, visible.
+      const headline = page.getByRole('heading', { level: 1 });
+      await expect(headline).toHaveText('Автозапчасти в Оренбурге — по артикулу и VIN');
+      await expect(headline).toBeVisible();
+      await expect(page.locator('h1')).toHaveCount(1);
+      // Whose the make logos are (legal-7), under the grid.
+      await expect(page.getByTestId('home-brands-note')).toHaveText(
+        'Товарные знаки принадлежат их владельцам. Мы не официальный дилер марок.',
+      );
+      // The service is only the pickup point (decision of 08.10).
+      await expect(page.getByTestId('home-why')).toContainText('запчасти без сюрпризов');
+      await expect(page.locator('body')).not.toContainText('от тех, кто их ставит');
+      await expect(page.locator('body')).not.toContainText('Точка выдачи и установки');
     }
 
     await page.screenshot({

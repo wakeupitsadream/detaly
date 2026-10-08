@@ -27,6 +27,7 @@ import { cartCountLabel } from '@/components/SiteHeader';
 import { ButtonLink } from '@/components/ui/Button';
 import { CtaCard } from '@/components/ui/CtaCard';
 import { VinCtaArt } from '@/components/vin/VinCtaArt';
+import { searchTitle } from '@/lib/seo';
 import { vinRequestFromQuery, vinRequestHref } from '@/lib/vin-link';
 import { getBrand, telHref } from '@/server/brand';
 import { requestCartCount } from '@/server/cart/count';
@@ -57,7 +58,7 @@ export async function generateMetadata({
     .trim()
     .slice(0, 64);
   return {
-    title: q ? `Поиск «${q}»` : 'Поиск по артикулу',
+    title: searchTitle(q),
     robots: { index: false, follow: false },
   };
 }

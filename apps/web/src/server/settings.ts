@@ -5,24 +5,30 @@
  * back to those defaults plus DEFAULT_EXCLUDED_RULES, so search keeps working on cached
  * supplier data while Postgres is down.
  */
-import { settingsDefaultsFromEnv, type Env } from '@detaly/config';
+import { pctToBp, settingsDefaultsFromEnv, type Env } from '@detaly/config';
 import type { Database } from '@detaly/db';
 import {
   DEFAULT_EXCLUDED_RULES,
   parseWorkHours,
-  validateMarkupRules,
+  resolvePricingConfig,
   type EtaSettings,
   type ExcludedRule,
   type Kop,
-  type MarkupRule,
   type PaymentScheme,
+  type PricingConfig,
   type SettingsValues,
 } from '@detaly/domain';
 
 export const SETTINGS_TTL_MS = 60_000;
 
 const SEARCH_KEYS = [
+  // pricing (docs/pricing.md): the base table, group adjustments, floor and ceiling; the margin
+  // floor of «Заказать всё равно» lifts the markup floor (resolvePricingConfig)
   'pricing.markup_rules',
+  'pricing.group_adjustments',
+  'pricing.min_markup_bp',
+  'pricing.max_markup_bp',
+  'pricing.margin_floor_pct',
   'eta.buffer_days',
   'eta.supplier_invoice_lag_days',
   'rossko.prepay_invoice',
@@ -71,7 +77,8 @@ export function storageDays(
 }
 
 export interface SearchSettings {
-  markupRules: MarkupRule[];
+  /** What priceOffer needs; the worker resolves the same keys the same way (@detaly/orders). */
+  pricing: PricingConfig;
   excludedRules: ExcludedRule[];
   eta: EtaSettings;
   localStockIds: string[];
@@ -82,6 +89,11 @@ export interface SearchSettings {
 
 export interface SettingsReader {
   get(): Promise<SearchSettings>;
+  /**
+   * Drops the cached values: the next get() reads the database (the admin calls it after saving
+   * prices, so the next search already uses them).
+   */
+  invalidate(): void;
 }
 
 function isNonNegativeInt(value: unknown): value is number {
@@ -96,14 +108,9 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
-function validRules(value: unknown): MarkupRule[] | null {
-  if (!Array.isArray(value)) return null;
-  try {
-    validateMarkupRules(value as MarkupRule[]);
-    return value as MarkupRule[];
-  } catch {
-    return null;
-  }
+/** Percent with at most two decimals, 0..100 (as in @detaly/orders). */
+function isPct(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100;
 }
 
 /** Merges raw `settings` rows over env defaults, ignoring malformed values. */
@@ -121,7 +128,7 @@ export function resolveSearchSettings(
     return (value !== undefined && valid(value) ? value : defaults[key]) as SettingsValues[K];
   };
   return {
-    markupRules: validRules(rows.get('pricing.markup_rules')) ?? defaults['pricing.markup_rules'],
+    pricing: resolvePricingConfig(rows, defaults, pctToBp(pick('pricing.margin_floor_pct', isPct))),
     excludedRules,
     eta: {
       bufferDays: pick('eta.buffer_days', isNonNegativeInt),
@@ -161,8 +168,10 @@ export function createSettingsReader({
 }: SettingsReaderOptions): SettingsReader {
   let cached: { value: SearchSettings; at: number } | null = null;
   let inflight: Promise<SearchSettings> | null = null;
+  /** Bumped by invalidate(): a load started before it must not cache its (older) values. */
+  let generation = 0;
 
-  async function load(): Promise<SearchSettings> {
+  async function load(started: number): Promise<SearchSettings> {
     try {
       // Relational queries take operators from the callback: web does not import drizzle-orm.
       const [rows, excluded] = await Promise.all([
@@ -177,7 +186,7 @@ export function createSettingsReader({
       ]);
       const map = new Map(rows.map((row) => [row.key, row.value as unknown]));
       const value = { ...resolveSearchSettings(map, env, excluded), fromDatabase: true };
-      cached = { value, at: now() };
+      if (started === generation) cached = { value, at: now() };
       return value;
     } catch (error) {
       onError?.(error);
@@ -194,10 +203,19 @@ export function createSettingsReader({
   return {
     get() {
       if (cached && now() - cached.at < ttlMs) return Promise.resolve(cached.value);
-      inflight ??= load().finally(() => {
-        inflight = null;
-      });
+      if (inflight === null) {
+        const pending = load(generation).finally(() => {
+          if (inflight === pending) inflight = null;
+        });
+        inflight = pending;
+      }
       return inflight;
+    },
+    invalidate() {
+      generation += 1;
+      // Stale, not gone: a database failure on the next read still serves the last values.
+      if (cached) cached = { value: cached.value, at: Number.NEGATIVE_INFINITY };
+      inflight = null;
     },
   };
 }
@@ -211,5 +229,5 @@ export function createEnvSettingsReader(env: Env): SettingsReader {
     ...resolveSearchSettings(new Map(), env, [...DEFAULT_EXCLUDED_RULES]),
     fromDatabase: false,
   };
-  return { get: () => Promise.resolve(value) };
+  return { get: () => Promise.resolve(value), invalidate: () => undefined };
 }

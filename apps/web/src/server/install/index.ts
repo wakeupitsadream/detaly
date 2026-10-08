@@ -352,7 +352,7 @@ async function demoOffers(now: Date): Promise<OfferView[]> {
       try {
         const result = await supplier.rossko.search(article, { priority: 'search' });
         const views = buildOfferViews(result.offers, {
-          markupRules: settings.markupRules,
+          pricing: settings.pricing,
           excludedRules: settings.excludedRules,
           eta: settings.eta,
           now,

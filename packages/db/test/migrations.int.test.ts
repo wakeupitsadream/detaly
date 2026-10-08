@@ -44,10 +44,17 @@ describe('migrations on an empty database', () => {
       select table_name from information_schema.tables
       where table_schema = 'public' and table_type = 'BASE TABLE' order by table_name`;
     expect(tables.map((t) => t.table_name)).toEqual(schemaTables);
-    // 28 tables of phases 0 and 1A plus outbox, client_approvals and seller_cards (1B)
-    expect(schemaTables).toHaveLength(31);
+    // 28 tables of phases 0 and 1A plus outbox, client_approvals and seller_cards (1B), plus
+    // price_benchmarks and settings_audit (step 2, docs/pricing.md)
+    expect(schemaTables).toHaveLength(33);
     expect(schemaTables).toEqual(
-      expect.arrayContaining(['outbox', 'client_approvals', 'seller_cards']),
+      expect.arrayContaining([
+        'outbox',
+        'client_approvals',
+        'seller_cards',
+        'price_benchmarks',
+        'settings_audit',
+      ]),
     );
     expect(schemaTables).not.toContain('vehicles');
     expect(schemaTables).not.toContain('chat_messages');
@@ -93,6 +100,14 @@ describe('migrations on an empty database', () => {
       ['link_tokens', 'used_by_external_id'],
       ['seller_cards', 'vin_request_id'],
       ['notifications', 'vin_request_id'],
+      // step 2 (0006): money in *_kop, our snapshot next to the competitor's price
+      ['price_benchmarks', 'competitor_price_kop'],
+      ['price_benchmarks', 'competitor_delivery_kop'],
+      ['price_benchmarks', 'our_supplier_kop'],
+      ['price_benchmarks', 'our_price_kop'],
+      ['price_benchmarks', 'captured_by'],
+      ['settings_audit', 'old_value'],
+      ['settings_audit', 'changed_by'],
     ] as const) {
       expect(columns).toContainEqual({ table_name: table, column_name: column });
     }

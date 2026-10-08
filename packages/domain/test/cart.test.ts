@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  basePricingConfig,
   CartError,
   cartLineFromOffer,
   cartTotals,
@@ -21,7 +22,7 @@ const RULES: MarkupRule[] = [
 ];
 
 const ctx: RepriceContext = {
-  markupRules: RULES,
+  pricing: basePricingConfig(RULES),
   excludedRules: DEFAULT_EXCLUDED_RULES,
   eta: { bufferDays: 1, invoiceLagDays: 1, prepayInvoice: false },
   now: new Date('2026-10-01T10:00:00Z'),

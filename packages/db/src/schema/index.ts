@@ -10,4 +10,6 @@ export * from './supplier';
 export * from './service';
 export * from './system';
 export * from './workflow';
+// step 2: price benchmark and settings audit
+export * from './pricing';
 export * from './relations';

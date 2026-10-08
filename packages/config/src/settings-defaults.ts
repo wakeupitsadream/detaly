@@ -29,6 +29,12 @@ export function defaultMarkupRules(markupPct: number): MarkupRule[] {
 export function settingsDefaultsFromEnv(env: Env): SettingsValues {
   return {
     'pricing.markup_rules': defaultMarkupRules(env.PRICING_MARKUP_PCT),
+    // Step 2 (docs/pricing.md): no group adjustments, so prices are the base table's; the floor
+    // and the ceiling only bound adjustments (DEFAULT_MIN_MARKUP_BP / DEFAULT_MAX_MARKUP_BP of
+    // @detaly/domain, checked by settings-defaults.test.ts).
+    'pricing.group_adjustments': [],
+    'pricing.min_markup_bp': 1_000,
+    'pricing.max_markup_bp': 6_000,
     'pricing.drift_tolerance_pct': env.PRICE_DRIFT_TOLERANCE_PCT,
     'pricing.margin_floor_pct': env.MARGIN_FLOOR_PCT,
     'pricing.min_order_total_kop': env.MIN_ORDER_TOTAL * KOP_PER_RUB,

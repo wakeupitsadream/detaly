@@ -18,6 +18,7 @@ import type {
   PaymentMode,
   PaymentScheme,
   PaymentSubject,
+  PriceGroup,
   StaffRole,
 } from './statuses';
 import type { WeekSchedule } from './work-hours';
@@ -102,6 +103,47 @@ export interface PriceResult {
   markupBp: BasisPoints;
 }
 
+/**
+ * One entry of settings `pricing.group_adjustments` (docs/pricing.md): basis points added to the
+ * markup of the base table for offers of a price group (negative lowers it). A group without an
+ * entry keeps the base table as is.
+ */
+export interface GroupAdjustment {
+  group: PriceGroup;
+  /** Added to the base markup of Orenburg (local) stocks. */
+  localDeltaBp: number;
+  /** Added to the base markup of to-order stocks. */
+  orderDeltaBp: number;
+}
+
+/**
+ * Everything a client price depends on (resolvePricingConfig builds it from settings). Every
+ * place that prices an offer (search, cart, checkout, the VIN preview, the demo) takes this one
+ * object and calls priceOffer, so they cannot disagree.
+ */
+export interface PricingConfig {
+  /** settings pricing.markup_rules (validated). */
+  markupRules: readonly MarkupRule[];
+  /** settings pricing.group_adjustments (validated, without zero entries). */
+  groupAdjustments: readonly GroupAdjustment[];
+  /**
+   * An adjustment never lowers a markup below this: the larger of pricing.min_markup_bp and the
+   * markup that keeps the margin at pricing.margin_floor_pct.
+   */
+  minMarkupBp: BasisPoints;
+  /** settings pricing.max_markup_bp: an adjustment never raises a markup above this. */
+  maxMarkupBp: BasisPoints;
+}
+
+/** priceOffer: the price, the final markup and how it was made. */
+export interface OfferPrice extends PriceResult {
+  priceGroup: PriceGroup;
+  /** Markup of the base table for this supplier price and stock. */
+  baseMarkupBp: BasisPoints;
+  /** The applied group adjustment after the floor and the ceiling: markupBp − baseMarkupBp. */
+  adjustmentBp: number;
+}
+
 export interface EtaSettings {
   /** Days added to the latest item ETA (settings `eta.buffer_days`). */
   bufferDays: number;
@@ -147,7 +189,7 @@ export interface ExclusionResult {
 // ---------------------------------------------------------------------------
 
 export interface OfferViewContext {
-  markupRules: readonly MarkupRule[];
+  pricing: PricingConfig;
   excludedRules: readonly ExcludedRule[];
   eta: EtaSettings;
   now: Date;
@@ -235,7 +277,7 @@ export interface RepricedLine extends CartLine {
 }
 
 export interface RepriceContext {
-  markupRules: readonly MarkupRule[];
+  pricing: PricingConfig;
   excludedRules: readonly ExcludedRule[];
   eta: EtaSettings;
   now: Date;
@@ -278,6 +320,12 @@ export interface PaymentSchemeDecision {
 
 export interface SettingsValues {
   'pricing.markup_rules': MarkupRule[];
+  /** Step 2 (docs/pricing.md): per-group bp added to the base table; [] = the table as is. */
+  'pricing.group_adjustments': GroupAdjustment[];
+  /** An adjustment never lowers a markup below this (bp); the margin floor may raise it. */
+  'pricing.min_markup_bp': BasisPoints;
+  /** An adjustment never raises a markup above this (bp). */
+  'pricing.max_markup_bp': BasisPoints;
   'pricing.drift_tolerance_pct': number;
   'pricing.margin_floor_pct': number;
   'pricing.min_order_total_kop': Kop;

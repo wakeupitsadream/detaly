@@ -231,7 +231,7 @@ export async function handleVinAnswer(
   const preview = await previewVinAnswer({
     text,
     search: vinSearch(deps),
-    markupRules: settings.markupRules,
+    pricing: settings.pricing,
     excludedRules: await loadExcludedRules(deps.db),
     eta: settings.eta,
     now,

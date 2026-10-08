@@ -50,7 +50,7 @@ export const MAX_OFFER_ID_LENGTH = 200;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type CartSettings = Pick<SearchSettings, 'markupRules' | 'excludedRules' | 'eta' | 'order'>;
+export type CartSettings = Pick<SearchSettings, 'pricing' | 'excludedRules' | 'eta' | 'order'>;
 
 export interface CartServiceDeps {
   db: Executor;
@@ -248,7 +248,7 @@ export function createCartService(deps: CartServiceDeps): CartService {
 
   function repriceContext(settings: CartSettings, at: Date): RepriceContext {
     return {
-      markupRules: settings.markupRules,
+      pricing: settings.pricing,
       excludedRules: settings.excludedRules,
       eta: settings.eta,
       now: at,

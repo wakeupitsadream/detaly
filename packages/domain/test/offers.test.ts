@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildOfferViews, DEFAULT_EXCLUDED_RULES } from '../src';
+import { basePricingConfig, buildOfferViews, DEFAULT_EXCLUDED_RULES } from '../src';
 import type { MarkupRule, Offer, OfferViewContext } from '../src/types';
 
 const RULES: MarkupRule[] = [
@@ -38,7 +38,7 @@ function offer(
 }
 
 const ctx: OfferViewContext = {
-  markupRules: RULES,
+  pricing: basePricingConfig(RULES),
   excludedRules: DEFAULT_EXCLUDED_RULES,
   eta: { bufferDays: 1, invoiceLagDays: 1, prepayInvoice: false },
   now: new Date('2026-10-01T10:00:00Z'),

@@ -423,3 +423,45 @@ export const FILE_KEY_PATTERN =
 /** link_tokens.channel (pgEnum messenger_channel): MAX links come in phase 2. */
 export const LINK_TOKEN_CHANNELS = MESSENGER_CHANNELS;
 export type LinkTokenChannel = MessengerChannel;
+
+// ---------------------------------------------------------------------------
+// Step 2 (docs/pricing.md): price groups and the internal price benchmark
+// ---------------------------------------------------------------------------
+
+/**
+ * Price group of an offer (priceGroupOf in price-groups.ts): the markup adjustment of settings
+ * `pricing.group_adjustments` is chosen by it, and price_benchmarks.price_group (text + check)
+ * stores it. The keys mean the same as the category tiles of the storefront
+ * (apps/web/src/lib/part-categories.ts; `bearings` is its «Ступицы и подшипники» tile); `other`
+ * is everything else. Appending a value requires a migration (the check constraint).
+ */
+export const PRICE_GROUPS = [
+  'filters',
+  'brakes',
+  'suspension',
+  'ignition',
+  'timing',
+  'bearings',
+  'clutch',
+  'cooling',
+  'wipers',
+  'lighting',
+  'engine',
+  'body',
+  'other',
+] as const;
+export type PriceGroup = (typeof PRICE_GROUPS)[number];
+
+/**
+ * price_benchmarks.competitor (text + check): where the compared price was seen. Competitor
+ * prices are internal data for the markup decisions and are never shown to clients.
+ */
+export const BENCHMARK_COMPETITORS = [
+  'emex',
+  'exist',
+  'autodoc',
+  'rossko_retail',
+  'avito',
+  'other',
+] as const;
+export type BenchmarkCompetitor = (typeof BENCHMARK_COMPETITORS)[number];

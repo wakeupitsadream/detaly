@@ -96,7 +96,7 @@ async function proposal(answer = '> Колодки передние\nMANN W914/2
   const preview = await previewVinAnswer({
     text: answer,
     search: vinSearchOf(supplier.rossko),
-    markupRules: settings.markupRules,
+    pricing: settings.pricing,
     excludedRules: settings.excludedRules,
     eta: settings.eta,
     now: new Date(),

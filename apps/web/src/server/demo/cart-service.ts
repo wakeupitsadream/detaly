@@ -98,7 +98,7 @@ export function createDemoCartService(deps: DemoCartServiceDeps): CartService {
 
   function context(settings: CartSettings, at: Date): RepriceContext {
     return {
-      markupRules: settings.markupRules,
+      pricing: settings.pricing,
       excludedRules: settings.excludedRules,
       eta: settings.eta,
       now: at,

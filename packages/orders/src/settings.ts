@@ -6,16 +6,14 @@
  */
 import { pctToBp, settingsDefaultsFromEnv, type Env } from '@detaly/config';
 import { inArray, settings, type Executor } from '@detaly/db';
-import {
-  parseWorkHours,
-  validateMarkupRules,
-  type MarkupRule,
-  type SettingsValues,
-} from '@detaly/domain';
+import { parseWorkHours, resolvePricingConfig, type SettingsValues } from '@detaly/domain';
 import type { OrderSettings } from './types';
 
 const KEYS = [
   'pricing.markup_rules',
+  'pricing.group_adjustments',
+  'pricing.min_markup_bp',
+  'pricing.max_markup_bp',
   'pricing.drift_tolerance_pct',
   'pricing.margin_floor_pct',
   'pricing.min_order_total_kop',
@@ -46,16 +44,6 @@ const isPct = (v: unknown): v is number =>
 const isPositiveIntList = (v: unknown): v is number[] =>
   Array.isArray(v) && v.every((x) => isPositiveInt(x));
 
-function validRules(value: unknown): MarkupRule[] | null {
-  if (!Array.isArray(value)) return null;
-  try {
-    validateMarkupRules(value as MarkupRule[]);
-    return value as MarkupRule[];
-  } catch {
-    return null;
-  }
-}
-
 /** Pure merge of raw rows (key -> jsonb value) over env defaults. */
 export function resolveOrderSettings(rows: ReadonlyMap<string, unknown>, env: Env): OrderSettings {
   const defaults = settingsDefaultsFromEnv(env);
@@ -66,8 +54,10 @@ export function resolveOrderSettings(rows: ReadonlyMap<string, unknown>, env: En
     const value = rows.get(key);
     return (value !== undefined && valid(value) ? value : defaults[key]) as SettingsValues[K];
   };
+  const marginFloorBp = pctToBp(pick('pricing.margin_floor_pct', isPct));
   return {
-    markupRules: validRules(rows.get('pricing.markup_rules')) ?? defaults['pricing.markup_rules'],
+    // The same resolver as web (apps/web/src/server/settings.ts): one PricingConfig everywhere.
+    pricing: resolvePricingConfig(rows, defaults, marginFloorBp),
     eta: {
       bufferDays: pick('eta.buffer_days', isNonNegativeInt),
       invoiceLagDays: pick('eta.supplier_invoice_lag_days', isNonNegativeInt),
@@ -75,7 +65,7 @@ export function resolveOrderSettings(rows: ReadonlyMap<string, unknown>, env: En
       pickupSchedule: parseWorkHours(env.PICKUP_HOURS ?? null),
     },
     driftToleranceBp: pctToBp(pick('pricing.drift_tolerance_pct', isPct)),
-    marginFloorBp: pctToBp(pick('pricing.margin_floor_pct', isPct)),
+    marginFloorBp,
     minOrderTotalKop: pick('pricing.min_order_total_kop', isNonNegativeInt),
     minMarginKop: pick('pricing.min_margin_kop', isNonNegativeInt),
     onPickupMaxTotalKop: pick('order.on_pickup_max_total_kop', isNonNegativeInt),

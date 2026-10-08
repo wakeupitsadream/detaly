@@ -4,6 +4,7 @@ import { createRedis, type Redis } from '@detaly/config';
 import { deleteKeysByPrefix, testKeyPrefix, testRedisUrl } from '@detaly/config/testing';
 import { cartItems, carts, createDb, eq, type Db } from '@detaly/db';
 import {
+  basePricingConfig,
   cartLineFromOffer,
   DEFAULT_EXCLUDED_RULES,
   repriceCartLines,
@@ -61,7 +62,7 @@ const caller: RosskoCaller = {
 let supplier: Supplier;
 
 const ctx = (): RepriceContext => ({
-  markupRules: [{ fromKop: 0, toKop: null, localBp: 2800, orderBp: 2800 }],
+  pricing: basePricingConfig([{ fromKop: 0, toKop: null, localBp: 2800, orderBp: 2800 }]),
   excludedRules: DEFAULT_EXCLUDED_RULES,
   eta: { bufferDays: 1, invoiceLagDays: 1, prepayInvoice: false },
   now: new Date(),

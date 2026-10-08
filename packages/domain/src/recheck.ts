@@ -29,7 +29,14 @@ import type {
   RecheckReason,
   RecheckResult,
 } from './recheck-types';
-import type { BasisPoints, EtaSettings, ExcludedRule, IsoDate, MarkupRule, Offer } from './types';
+import type {
+  BasisPoints,
+  EtaSettings,
+  ExcludedRule,
+  IsoDate,
+  Offer,
+  PricingConfig,
+} from './types';
 
 /** Alternatives offered per problem item. */
 export const RECHECK_MAX_ALTERNATIVES = 3;
@@ -52,11 +59,12 @@ export interface RecheckOrderInput {
    */
   freshBySearch: FreshOffersBySearch;
   /**
-   * Accepted for parity with the cart context (Б12). Alternatives are sold at the client price
-   * of the item they replace, so the markup table does not set their price; their markupBp is
-   * the effective markup at that price.
+   * Accepted for parity with the cart context (Б12): the same PricingConfig as search, cart and
+   * checkout. Alternatives are sold at the client price of the item they replace, so neither the
+   * markup table nor a group adjustment sets their price; their markupBp is the effective markup
+   * at that price.
    */
-  markupRules: readonly MarkupRule[];
+  pricing: PricingConfig;
   excludedRules: readonly ExcludedRule[];
   /** Accepted for parity with the cart context; promisedDate is computed by the engine. */
   eta: EtaSettings;

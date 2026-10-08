@@ -233,6 +233,7 @@ S3 — `docs/external.md`, раздел 8. Живые Telegram, S3, ЮKassa и R
 | `/vin`, `POST /api/vin`, `/vin/sent`, `/vin/sent/<код>` | форма VIN-заявки (только при открытом гейте РКН), до 3 фото; 5 в час и 20 в сутки |
 | `/p/<token>`, `POST /api/proposals/<token>/take` | подборка мастера (noindex, `no-referrer`) и перенос её в корзину → `/checkout`; 30 в час |
 | `/admin/vin`, `/admin/vin/<id>`, блоки «Претензии», «Запись на установку», «Фото» в карточке заказа, `GET /api/admin/files/<ключ>` | админка 1C за Basic auth |
+| `/admin/prices`, `POST /api/admin/prices`, `/admin/pricing`, `POST /api/admin/pricing` | шаг 2 (`docs/pricing.md`): сравнение цен с конкурентами и отчёт по группам; поправки к наценке по группам с предпросмотром, «подтверждаю» и журналом `settings_audit`; Basic auth |
 | `/print/pamyatka-vozvrat.pdf`, `/print/akt-vydachi.pdf` | статические памятка о возврате и акт выдачи (реквизиты от руки) |
 
 ### Очереди и задачи 1C
@@ -243,6 +244,7 @@ S3 — `docs/external.md`, раздел 8. Живые Telegram, S3, ЮKassa и R
 | `notify` | `vin` `{vinRequestId, audience, template, key}` | карточка заявки продавцам, `vin_received` и `vin_proposal` клиенту (в allowlist SMS только `vin_proposal`) |
 | `housekeeping` | `reminders` (+ виды 1C) | VIN без ответа 4 ч (в рабочие часы), дедлайн претензии за 2 дня владельцу, установка за 24 ч клиенту; напоминания 3/6/9 «приехало» из 1B остаются |
 | `housekeeping` | `retention` (04:40 Asia/Yekaterinburg) | удаление фото VIN-заявок старше 90 дней; в логе только счётчики |
+| `housekeeping` | `price-check` (пн 10:00 Asia/Yekaterinburg) | шаг 2: «Пора сверить цены» в чат продавцов со ссылкой на `/admin/prices`, если за 7 дней меньше 20 сравнений |
 
 ### Переменные 1C
 

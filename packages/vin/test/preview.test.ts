@@ -2,6 +2,7 @@
 // typos of the master (W9142X, BOSH, quantity 0), choice of the offer, errors line by line.
 import {
   addDays,
+  basePricingConfig,
   DEFAULT_EXCLUDED_RULES,
   formatPromise,
   localDate,
@@ -50,7 +51,7 @@ function preview(text: string, search: VinSearch = fixtureSearch()) {
   return previewVinAnswer({
     text,
     search,
-    markupRules: RULES,
+    pricing: basePricingConfig(RULES),
     excludedRules: DEFAULT_EXCLUDED_RULES,
     eta: ETA,
     now: NOW,

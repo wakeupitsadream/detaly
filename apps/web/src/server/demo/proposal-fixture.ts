@@ -34,7 +34,7 @@ const DAY_MS = 86_400_000;
 
 export interface DemoProposalDeps {
   rossko: Pick<RosskoClient, 'search'>;
-  loadSettings: () => Promise<Pick<SearchSettings, 'markupRules' | 'excludedRules' | 'eta'>>;
+  loadSettings: () => Promise<Pick<SearchSettings, 'pricing' | 'excludedRules' | 'eta'>>;
   now?: Date;
 }
 
@@ -80,7 +80,7 @@ export async function buildDemoProposal(deps: DemoProposalDeps): Promise<DemoPro
   const now = deps.now ?? new Date();
   const settings = await deps.loadSettings();
   const ctx: RepriceContext = {
-    markupRules: settings.markupRules,
+    pricing: settings.pricing,
     excludedRules: settings.excludedRules,
     eta: settings.eta,
     now,

@@ -30,11 +30,11 @@ import type {
   InstallSlot,
   IsoDate,
   Kop,
-  MarkupRule,
   OrderEvent,
   OrderItemState,
   OrderStatus,
   PhotoKind,
+  PricingConfig,
   RecheckAlternative,
   StaffRole,
   TransitionContext,
@@ -139,7 +139,11 @@ export interface OrderSnapshot {
 
 /** Settings the engine uses: `settings` rows over env defaults (settingsDefaultsFromEnv). */
 export interface OrderSettings {
-  markupRules: MarkupRule[];
+  /**
+   * Base markup table, group adjustments, floor and ceiling (resolvePricingConfig): the same
+   * values web prices search, cart and checkout with (docs/pricing.md).
+   */
+  pricing: PricingConfig;
   eta: EtaSettings;
   /** pricing.drift_tolerance_pct in basis points. */
   driftToleranceBp: number;

@@ -46,6 +46,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <Link href="/admin?status=install_requested" className="text-sm text-accent underline">
             Записи
           </Link>
+          <Link href="/admin/prices" className="text-sm text-accent underline">
+            Цены
+          </Link>
+          <Link href="/admin/pricing" className="text-sm text-accent underline">
+            Наценка
+          </Link>
         </nav>
       </header>
       <main className="mx-auto w-full max-w-6xl min-w-0 flex-1 px-4 py-6">{children}</main>

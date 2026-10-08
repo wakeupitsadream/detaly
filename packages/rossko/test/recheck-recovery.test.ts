@@ -4,6 +4,7 @@
  * and 6 on the package level; the worker tests repeat them with the database.
  */
 import {
+  basePricingConfig,
   DEFAULT_EXCLUDED_RULES,
   offerViewId,
   price,
@@ -68,7 +69,7 @@ async function recheckWithFactor(priceFactorBp: number) {
   return recheckOrder({
     items: [item],
     freshBySearch: new Map([['OC90', fresh.offers]]),
-    markupRules: RULES,
+    pricing: basePricingConfig(RULES),
     excludedRules: DEFAULT_EXCLUDED_RULES,
     eta: { bufferDays: 1, invoiceLagDays: 1, prepayInvoice: false },
     now: NOW,

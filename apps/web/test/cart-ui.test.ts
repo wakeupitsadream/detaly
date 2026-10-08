@@ -1,6 +1,7 @@
 // Cart page pieces without a database: the summary (payment scheme, split advice, minimums,
 // dates) and the rendered components (forms, links, no price from the client).
 import {
+  basePricingConfig,
   DEFAULT_EXCLUDED_RULES,
   type MarkupRule,
   type Offer,
@@ -57,7 +58,7 @@ const RULES: MarkupRule[] = [{ fromKop: 0, toKop: null, localBp: 2800, orderBp: 
 
 function settings(order: Partial<CartSettings['order']> = {}): CartSettings {
   return {
-    markupRules: RULES,
+    pricing: basePricingConfig(RULES),
     excludedRules: [...DEFAULT_EXCLUDED_RULES],
     eta: { bufferDays: 1, invoiceLagDays: 1, prepayInvoice: false },
     order: {

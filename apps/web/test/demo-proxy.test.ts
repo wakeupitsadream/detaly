@@ -52,6 +52,11 @@ describe('demo proxy: hidden paths', () => {
     expect(demoBlockedPath('/admin')).toBe('page');
     expect(demoBlockedPath('/admin/orders/1')).toBe('page');
     expect(demoBlockedPath('/api/admin/orders/1/actions')).toBe('api');
+    // step 2: the price benchmark and the markup editor exist only with a database
+    expect(demoBlockedPath('/admin/prices')).toBe('page');
+    expect(demoBlockedPath('/admin/pricing')).toBe('page');
+    expect(demoBlockedPath('/api/admin/prices')).toBe('api');
+    expect(demoBlockedPath('/api/admin/pricing')).toBe('api');
     expect(demoBlockedPath('/api/webhooks/yookassa')).toBe('api');
     expect(demoBlockedPath('/api/orders/abc/cancel')).toBe('api');
     expect(demoBlockedPath('/o/some-real-looking-token-1234')).toBe('page');
@@ -69,6 +74,8 @@ describe('demo proxy: hidden paths', () => {
       '/api/webhooks/yookassa',
       '/api/orders/abcdefghijklmnop/cancel',
       '/api/admin/orders/1/actions',
+      '/api/admin/prices',
+      '/api/admin/pricing',
     ]) {
       const response = await proxy(request('POST', path));
       expect(response.status, path).toBe(404);
@@ -79,7 +86,14 @@ describe('demo proxy: hidden paths', () => {
   });
 
   it('sends /admin and real order pages to the not-found page', async () => {
-    for (const path of ['/admin', '/admin/orders/1', '/o/abcdefghijklmnopqrstu', '/%6f/x']) {
+    for (const path of [
+      '/admin',
+      '/admin/orders/1',
+      '/admin/prices',
+      '/admin/pricing',
+      '/o/abcdefghijklmnopqrstu',
+      '/%6f/x',
+    ]) {
       const response = await proxy(request('GET', path));
       expect(response.headers.get('x-middleware-rewrite'), path).toMatch(/\/_demo\/not-found$/);
       expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');

@@ -121,7 +121,7 @@ export async function loadCheckoutPage(
     ),
   ]);
   const repriced = repriceCartLines(partLines, fresh, {
-    markupRules: settings.markupRules,
+    pricing: settings.pricing,
     excludedRules: settings.excludedRules,
     eta: settings.eta,
     now,

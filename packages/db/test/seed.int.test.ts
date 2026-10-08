@@ -50,8 +50,11 @@ describe('seed (globalSetup already ran it once)', () => {
         'pickup.window_cod_days',
         'pickup.window_prepaid_days',
         'pricing.drift_tolerance_pct',
+        'pricing.group_adjustments',
         'pricing.margin_floor_pct',
         'pricing.markup_rules',
+        'pricing.max_markup_bp',
+        'pricing.min_markup_bp',
         'pricing.min_margin_kop',
         'pricing.min_order_total_kop',
         'reminder.days',
@@ -66,6 +69,10 @@ describe('seed (globalSetup already ran it once)', () => {
       { fromKop: 500_000, toKop: null, localBp: 2800, orderBp: 2800 },
     ]);
     expect(byKey['order.on_pickup_max_total_kop']).toBe(1_500_000);
+    // step 2: no group adjustments, the floor and the ceiling of the adjustments in bp
+    expect(byKey['pricing.group_adjustments']).toEqual([]);
+    expect(byKey['pricing.min_markup_bp']).toBe(1000);
+    expect(byKey['pricing.max_markup_bp']).toBe(6000);
     expect(byKey['reminder.days']).toEqual([3, 6, 9]);
     expect(byKey['rossko.prepay_invoice']).toBe(false);
     // Stored as real jsonb, not a JSON string.

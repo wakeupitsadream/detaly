@@ -42,7 +42,7 @@ function everywhere(hours: string | undefined) {
   const web = resolveSearchSettings(new Map(), env, []);
   const order = resolveOrderSettings(new Map(), env);
   const [view] = buildOfferViews([offer(2)], {
-    markupRules: web.markupRules,
+    pricing: web.pricing,
     excludedRules: [],
     eta: web.eta,
     now: NOW,

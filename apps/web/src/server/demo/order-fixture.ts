@@ -65,7 +65,7 @@ const HOUR_MS = 3_600_000;
 
 export interface DemoOrderDeps {
   rossko: Pick<RosskoClient, 'search'>;
-  loadSettings: () => Promise<Pick<SearchSettings, 'markupRules' | 'excludedRules' | 'eta'>>;
+  loadSettings: () => Promise<Pick<SearchSettings, 'pricing' | 'excludedRules' | 'eta'>>;
   now?: Date;
 }
 
@@ -91,7 +91,7 @@ export async function buildDemoOrderView(deps: DemoOrderDeps): Promise<OrderView
     const { offers } = await deps.rossko.search(article, { priority: 'search' });
     const view = pickView(
       buildOfferViews(offers, {
-        markupRules: settings.markupRules,
+        pricing: settings.pricing,
         excludedRules: settings.excludedRules,
         eta: settings.eta,
         now,

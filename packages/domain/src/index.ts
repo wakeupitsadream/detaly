@@ -6,6 +6,8 @@ export type * from './types';
 
 export * from './money';
 export * from './pricing';
+export * from './price-groups';
+export * from './benchmarks';
 export * from './dates';
 export * from './excluded';
 export * from './offers';

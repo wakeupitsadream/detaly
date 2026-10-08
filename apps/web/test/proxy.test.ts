@@ -406,7 +406,16 @@ describe('proxy: /admin Basic auth', () => {
   });
 
   it('challenges a request without credentials, without counting it', async () => {
-    for (const path of ['/admin', '/admin/', '/admin//orders/1', '/api/admin/orders/1/actions']) {
+    for (const path of [
+      '/admin',
+      '/admin/',
+      '/admin//orders/1',
+      '/api/admin/orders/1/actions',
+      '/admin/prices',
+      '/admin/pricing',
+      '/api/admin/prices',
+      '/api/admin/pricing',
+    ]) {
       const response = await proxy(request('GET', path));
       expect(response.status, path).toBe(401);
       expect(response.headers.get('www-authenticate'), path).toBe(

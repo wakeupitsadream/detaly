@@ -26,9 +26,11 @@ import {
   explainPaymentScheme,
   formatPromise,
   MAX_ORDER_TOTAL_KOP,
+  nextPickupDay,
   type ExcludedRule,
   type IsoDate,
   type Offer,
+  type PricingConfig,
   type RepriceContext,
 } from '@detaly/domain';
 import {
@@ -97,6 +99,8 @@ let supplier: Supplier;
 let rossko: Pick<RosskoClient, 'search'>;
 let settingsOverride: Partial<CheckoutSettings['order']> = {};
 let excludedOverride: ExcludedRule[] | null = null;
+/** Step 2: group adjustments injected like the other settings (never written to the table). */
+let pricingOverride: PricingConfig | null = null;
 let gateEnv = intEnv({ RKN_NOTICE_NUMBER: 'TEST-1' });
 let logs: { level: string; details: Record<string, unknown>; message: string }[] = [];
 /** Engine env of the service: APP_BASE_URL of the test, settings defaults from env. */
@@ -114,6 +118,7 @@ async function loadSettings(): Promise<CheckoutSettings> {
   const base = await supplier.settings.get();
   return {
     ...base,
+    pricing: pricingOverride ?? base.pricing,
     excludedRules: excludedOverride ?? base.excludedRules,
     order: { ...base.order, ...settingsOverride },
   };
@@ -154,6 +159,7 @@ beforeEach(() => {
   failSearch = false;
   settingsOverride = {};
   excludedOverride = null;
+  pricingOverride = null;
   gateEnv = intEnv({ RKN_NOTICE_NUMBER: 'TEST-1' });
   logs = [];
 });
@@ -183,8 +189,8 @@ function randomIp(): string {
 }
 
 async function repriceCtx(): Promise<RepriceContext> {
-  const s = await supplier.settings.get();
-  return { markupRules: s.markupRules, excludedRules: [], eta: s.eta, now: new Date() };
+  const s = await loadSettings();
+  return { pricing: s.pricing, excludedRules: [], eta: s.eta, now: new Date() };
 }
 
 async function offerOf(query: string, brand: string, stockId: string): Promise<Offer> {
@@ -583,6 +589,55 @@ describe('POST /api/checkout: success', () => {
     const [after] = await db.select().from(carts).where(eq(carts.id, cart.id));
     expect(after?.status).toBe('converted');
     expect(await page(cart.token)).toEqual({ kind: 'no_cart' });
+  });
+});
+
+describe('POST /api/checkout: group adjustments of the markup (step 2, docs/pricing.md)', () => {
+  async function adjusted(localDeltaBp: number, orderDeltaBp: number): Promise<PricingConfig> {
+    const base = (await supplier.settings.get()).pricing;
+    return { ...base, groupAdjustments: [{ group: 'filters', localDeltaBp, orderDeltaBp }] };
+  }
+
+  it('cart, page and submit price alike: no false 409, the items keep the final markup', async () => {
+    pricingOverride = await adjusted(300, 200);
+    const cart = await makeCart(KNECHT_LOCAL, BOSCH_ORDER);
+    const p = ready(await page(cart.token));
+    // 412.50 ₽ × 1.31 -> 541 ₽ (Orenburg); BOSCH 501.30 ₽ × 1.30 -> 652 ₽ (to order)
+    expect(p.lines.map((l) => [l.offerKey, l.priceClientKop, l.markupBp])).toEqual([
+      ['OC90:Knecht:ORB1', 54_100, 3100],
+      ['0451103079:BOSCH:MSK7', 65_200, 3000],
+    ]);
+    expect(p.changes).toEqual([]);
+    const res = await submit({ token: cart.token, page: p });
+    expect(res.status).toBe(201);
+    const order = await orderByUrl(res.json.orderUrl);
+    expect(order.totalKop).toBe(54_100 + 65_200);
+    expect(
+      order.items
+        .map((i) => [i.offerKey, i.priceClientKop, i.markupBp])
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    ).toEqual([
+      ['0451103079:BOSCH:MSK7', 65_200, 3000],
+      ['OC90:Knecht:ORB1', 54_100, 3100],
+    ]);
+  });
+
+  it('an adjustment saved between the page and the submit: 409 with the new price', async () => {
+    pricingOverride = await adjusted(300, 0);
+    const cart = await makeCart(KNECHT_LOCAL);
+    const p = ready(await page(cart.token));
+    expect(p.totals.subtotalKop).toBe(54_100);
+    pricingOverride = await adjusted(600, 0);
+    const phone = randomPhone();
+    const res = await submit({ token: cart.token, page: p, phone: phone.typed });
+    expect(res.status).toBe(409);
+    const changes = res.json.changes as { kind: string; newPriceKop: number }[];
+    // 412.50 ₽ × 1.34 -> 553 ₽
+    expect(changes).toMatchObject([{ kind: 'price', oldPriceKop: 54_100, newPriceKop: 55_300 }]);
+    await nothingCreated(phone.e164, p.checkoutKey);
+    const again = ready(await page(cart.token));
+    const ok = await submit({ token: cart.token, page: again, phone: phone.typed });
+    expect(ok.status).toBe(201);
   });
 });
 
@@ -1002,12 +1057,17 @@ describe('/checkout page data', () => {
     expect(p.offerSplit).toBe(true);
     expect(p.explanation[0]).toContain('детали под заказ');
     expect(p.promisedDate).not.toBeNull();
-    // Per line: the eta buffer is added as on /cart, never the raw supplier date.
+    // Per line: the eta buffer is added as on /cart, never the raw supplier date, and a day off
+    // of the pickup point (PICKUP_HOURS of the test env: Пн–Пт) moves to its next working day,
+    // so the expectation holds on any day of the week the suite runs.
     const { eta } = await supplier.settings.get();
+    expect(eta.pickupSchedule).not.toBeNull();
     for (const line of p.lines) {
       expect(line.etaDate).not.toBeNull();
       expect(p.linePromises[line.id]).toBe(
-        formatPromise(addDays(line.etaDate as IsoDate, eta.bufferDays)),
+        formatPromise(
+          nextPickupDay(addDays(line.etaDate as IsoDate, eta.bufferDays), eta.pickupSchedule),
+        ),
       );
     }
     expect(eta.bufferDays).toBeGreaterThan(0);

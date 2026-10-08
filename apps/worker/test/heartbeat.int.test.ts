@@ -65,7 +65,15 @@ describe.skipIf(!inject('workerDatabaseUrl'))('heartbeat via the Job Scheduler',
     const housekeeping = await queues.housekeeping.getJobSchedulers();
     const byKey = Object.fromEntries(housekeeping.map((s) => [s.key, s]));
     expect(Object.keys(byKey).sort()).toEqual(
-      ['deferred-1a', 'heartbeat', 'reminders', 'retention', 'sms-budget', 'timers'].sort(),
+      [
+        'deferred-1a',
+        'heartbeat',
+        'price-check',
+        'reminders',
+        'retention',
+        'sms-budget',
+        'timers',
+      ].sort(),
     );
     expect(byKey['heartbeat']).toMatchObject({ name: 'heartbeat', every: 30_000 });
     expect(byKey['timers']).toMatchObject({ every: 60_000 });
@@ -74,13 +82,15 @@ describe.skipIf(!inject('workerDatabaseUrl'))('heartbeat via the Job Scheduler',
     expect(byKey['deferred-1a']).toMatchObject({ every: 600_000 });
     // phase 1C: VIN photo retention, daily at 04:40 local
     expect(byKey['retention']).toMatchObject({ pattern: '40 4 * * *', tz: SCHEDULER_TZ });
+    // step 2: the weekly price check, Mondays at 10:00 local
+    expect(byKey['price-check']).toMatchObject({ pattern: '0 10 * * 1', tz: SCHEDULER_TZ });
 
     const reconciliation = await queues.reconciliation.getJobSchedulers();
     const rec = Object.fromEntries(reconciliation.map((s) => [s.key, s]));
     expect(Object.keys(rec).sort()).toEqual(['nightly', 'sweep']);
     expect(rec['sweep']).toMatchObject({ every: 600_000 });
     expect(rec['nightly']).toMatchObject({ pattern: '15 3 * * *', tz: SCHEDULER_TZ });
-    expect(await queues.housekeeping.getJobSchedulersCount()).toBe(6);
+    expect(await queues.housekeeping.getJobSchedulersCount()).toBe(7);
   });
 });
 

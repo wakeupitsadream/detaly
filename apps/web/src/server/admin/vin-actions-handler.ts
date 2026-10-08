@@ -159,7 +159,7 @@ export async function handleAdminVinAction(
         const preview = await previewVinAnswer({
           text: answer,
           search: vinSearchOf(deps.supplier.rossko),
-          markupRules: settings.markupRules,
+          pricing: settings.pricing,
           excludedRules: settings.excludedRules,
           eta: settings.eta,
           now: now(),

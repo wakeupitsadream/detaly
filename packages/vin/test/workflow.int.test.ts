@@ -20,6 +20,7 @@ import {
   type Db,
 } from '@detaly/db';
 import {
+  basePricingConfig,
   DEFAULT_EXCLUDED_RULES,
   PROPOSAL_TTL_DAYS,
   type EtaSettings,
@@ -68,7 +69,7 @@ function previewOf(text: string, now = T0): Promise<VinPreview> {
   return previewVinAnswer({
     text,
     search: async (article) => (await rossko.search(article)).offers,
-    markupRules: RULES,
+    pricing: basePricingConfig(RULES),
     excludedRules: DEFAULT_EXCLUDED_RULES,
     eta: ETA,
     now,

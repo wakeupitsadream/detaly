@@ -59,6 +59,11 @@ export const HOUSEKEEPING_JOBS = {
   deferred1a: 'deferred-1a',
   /** Daily at 04:40 local: VIN request photos older than 90 days are deleted (phase 1C, С16). */
   retention: 'retention',
+  /**
+   * Mondays at 10:00 local (step 2, docs/pricing.md): «Пора сверить цены» to the sellers chat
+   * unless the last week already has 20 price comparisons.
+   */
+  priceCheck: 'price-check',
 } as const;
 
 /** Job names of the reconciliation queue (decision Б29, PLAN section 1). */

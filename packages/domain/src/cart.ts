@@ -12,7 +12,7 @@ import { CLIENT_TIME_ZONE, DateError, etaDate } from './dates';
 import { isExcluded } from './excluded';
 import { MoneyError, safeMul, sumKop } from './money';
 import { offerViewId } from './offers';
-import { price } from './pricing';
+import { priceOffer } from './pricing';
 import type {
   CartLine,
   CartPart,
@@ -84,8 +84,11 @@ interface PricedOffer {
   etaDate: IsoDate;
 }
 
-/** Client price and date of an offer, or null when its price or delivery term is unusable. */
-function priceOffer(offer: Offer, ctx: RepriceContext): PricedOffer | null {
+/**
+ * Client price (priceOffer: the base table and the group adjustment) and date of an offer, or
+ * null when its price or delivery term is unusable.
+ */
+function pricedOffer(offer: Offer, ctx: RepriceContext): PricedOffer | null {
   if (!Number.isSafeInteger(offer.priceSupplierKop) || offer.priceSupplierKop <= 0) return null;
   let eta: IsoDate;
   try {
@@ -95,8 +98,8 @@ function priceOffer(offer: Offer, ctx: RepriceContext): PricedOffer | null {
     throw error;
   }
   try {
-    const priced = price(ctx.markupRules, offer.priceSupplierKop, offer.stock.isLocal);
-    return { offer, ...priced, etaDate: eta };
+    const { priceClientKop, markupBp } = priceOffer(ctx.pricing, offer);
+    return { offer, priceClientKop, markupBp, etaDate: eta };
   } catch (error) {
     if (error instanceof MoneyError) return null;
     throw error;
@@ -121,7 +124,7 @@ export function cartLineFromOffer(
   if (exclusion.excluded) {
     throw new CartError('excluded', 'Не продаём онлайн, спросите в сервисе');
   }
-  const priced = priceOffer(offer, ctx);
+  const priced = pricedOffer(offer, ctx);
   if (priced === null) {
     throw new CartError('price', 'У предложения нет цены или срока поставки');
   }
@@ -183,7 +186,7 @@ export function repriceCartLines(
     let best: PricedOffer | null = null;
     for (const offer of fresh) {
       if (offerViewId(offer) !== line.offerKey) continue;
-      const priced = priceOffer(offer, ctx);
+      const priced = pricedOffer(offer, ctx);
       if (priced !== null && (best === null || priced.priceClientKop < best.priceClientKop)) {
         best = priced;
       }

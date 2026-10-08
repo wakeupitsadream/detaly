@@ -97,7 +97,7 @@ export interface SearchLogRow {
 export interface SearchServiceDeps {
   rossko: Pick<RosskoClient, 'search'>;
   limiter: Pick<RosskoLimiter, 'status'>;
-  loadSettings: () => Promise<Pick<SearchSettings, 'markupRules' | 'excludedRules' | 'eta'>>;
+  loadSettings: () => Promise<Pick<SearchSettings, 'pricing' | 'excludedRules' | 'eta'>>;
   /** Fire-and-forget; failures go to onBackgroundError. */
   logSearch?: (row: SearchLogRow) => Promise<unknown>;
   onBackgroundError?: (error: unknown, what: string) => void;
@@ -182,7 +182,7 @@ export function createSearchService(deps: SearchServiceDeps): SearchService {
       }
       const searchSettings = await settingsPromise;
       const views = buildOfferViews(result.offers, {
-        markupRules: searchSettings.markupRules,
+        pricing: searchSettings.pricing,
         excludedRules: searchSettings.excludedRules,
         eta: searchSettings.eta,
         now: now(),

@@ -198,7 +198,7 @@ export async function processRecheck(job: Job, deps: WorkerDeps): Promise<Rechec
     result = recheckOrder({
       items: items.map(toRecheckInput),
       freshBySearch: fresh,
-      markupRules: settings.markupRules,
+      pricing: settings.pricing,
       excludedRules,
       eta: settings.eta,
       now: deps.now(),

@@ -101,7 +101,7 @@ export interface CheckoutLogger {
 
 export type CheckoutSettings = Pick<
   SearchSettings,
-  'markupRules' | 'excludedRules' | 'eta' | 'order' | 'fromDatabase'
+  'pricing' | 'excludedRules' | 'eta' | 'order' | 'fromDatabase'
 >;
 
 export interface CheckoutServiceDeps {
@@ -643,7 +643,7 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
 
     const at = now();
     const repriced = repriceCartLines(partLines, fresh, {
-      markupRules: settings.markupRules,
+      pricing: settings.pricing,
       excludedRules: settings.excludedRules,
       eta: settings.eta,
       now: at,

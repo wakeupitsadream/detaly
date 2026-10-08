@@ -5,7 +5,7 @@
 import { CLIENT_TIME_ZONE, DateError, etaDate, formatPromise, promisedDate } from './dates';
 import { isExcluded } from './excluded';
 import { formatRub } from './money';
-import { price } from './pricing';
+import { priceOffer } from './pricing';
 import type { Offer, OfferView, OfferViewContext } from './types';
 
 export function offerViewId(offer: Pick<Offer, 'articleNorm' | 'brand' | 'stock'>): string {
@@ -31,7 +31,7 @@ export function buildOfferViews(offers: readonly Offer[], ctx: OfferViewContext)
       if (error instanceof DateError) continue;
       throw error;
     }
-    const { priceClientKop } = price(ctx.markupRules, offer.priceSupplierKop, offer.stock.isLocal);
+    const { priceClientKop } = priceOffer(ctx.pricing, offer);
     const exclusion = isExcluded({ name: offer.name, group: offer.group }, ctx.excludedRules);
     const view: OfferView = {
       id: offerViewId(offer),

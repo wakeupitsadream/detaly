@@ -1,0 +1,710 @@
+{
+  "_meta": {
+    "note": "Prices of the Rossko fixtures recorded with the code before group adjustments (d9f0084). pricing-parity.test.ts checks that the code without adjustments gives exactly these.",
+    "now": "2026-10-08T04:00:00.000Z",
+    "articles": ["OC90", "W9142", "GDB1330", "EDGE5W40", "NOTFOUND"],
+    "vinText": "KNECHT OC90 1\nTRW GDB1330 2\nMANN W914/2 1\nCASTROL EDGE5W40 1\nLUCAS GDB1330 1",
+    "custom": [
+      {
+        "fromKop": 0,
+        "toKop": 30000,
+        "localBp": 4500,
+        "orderBp": 5000
+      },
+      {
+        "fromKop": 30000,
+        "toKop": 100000,
+        "localBp": 3000,
+        "orderBp": 3550
+      },
+      {
+        "fromKop": 100000,
+        "toKop": null,
+        "localBp": 2000,
+        "orderBp": 2575
+      }
+    ]
+  },
+  "default": {
+    "search": {
+      "OC90": [
+        {
+          "id": "OC90:Knecht:MSK7",
+          "priceClientKop": 49800,
+          "priceText": "498 ₽",
+          "excluded": false
+        },
+        {
+          "id": "OC90:Knecht:ORB1",
+          "priceClientKop": 52800,
+          "priceText": "528 ₽",
+          "excluded": false
+        },
+        {
+          "id": "OC90:MAHLE:EKB2",
+          "priceClientKop": 51000,
+          "priceText": "510 ₽",
+          "excluded": false
+        },
+        {
+          "id": "W71275:MANN-FILTER:ORB1",
+          "priceClientKop": 58300,
+          "priceText": "583 ₽",
+          "excluded": false
+        },
+        {
+          "id": "0451103079:BOSCH:MSK7",
+          "priceClientKop": 64200,
+          "priceText": "642 ₽",
+          "excluded": false
+        }
+      ],
+      "W9142": [
+        {
+          "id": "W9142:MANN-FILTER:MSK7",
+          "priceClientKop": 79800,
+          "priceText": "798 ₽",
+          "excluded": false
+        }
+      ],
+      "GDB1330": [
+        {
+          "id": "GDB1330:LUCAS:MSK7",
+          "priceClientKop": 211200,
+          "priceText": "2 112 ₽",
+          "excluded": false
+        },
+        {
+          "id": "GDB1330:TRW:SPB3",
+          "priceClientKop": 219200,
+          "priceText": "2 192 ₽",
+          "excluded": false
+        },
+        {
+          "id": "GDB1330:TRW:ORB1",
+          "priceClientKop": 234800,
+          "priceText": "2 348 ₽",
+          "excluded": false
+        }
+      ],
+      "EDGE5W40": [
+        {
+          "id": "EDGE5W40:CASTROL:ORB1",
+          "priceClientKop": 498000,
+          "priceText": "4 980 ₽",
+          "excluded": true
+        }
+      ],
+      "NOTFOUND": []
+    },
+    "lines": {
+      "OC90": [
+        {
+          "offerKey": "OC90:Knecht:ORB1",
+          "priceSupplierKop": 41250,
+          "priceClientKop": 52800,
+          "markupBp": 2800
+        },
+        {
+          "offerKey": "OC90:Knecht:MSK7",
+          "priceSupplierKop": 38900,
+          "priceClientKop": 49800,
+          "markupBp": 2800
+        },
+        {
+          "offerKey": "OC90:MAHLE:EKB2",
+          "priceSupplierKop": 39810,
+          "priceClientKop": 51000,
+          "markupBp": 2800
+        },
+        {
+          "offerKey": "W71275:MANN-FILTER:ORB1",
+          "priceSupplierKop": 45500,
+          "priceClientKop": 58300,
+          "markupBp": 2800
+        },
+        {
+          "offerKey": "0451103079:BOSCH:MSK7",
+          "priceSupplierKop": 50130,
+          "priceClientKop": 64200,
+          "markupBp": 2800
+        }
+      ],
+      "W9142": [
+        {
+          "offerKey": "W9142:MANN-FILTER:MSK7",
+          "priceSupplierKop": 62340,
+          "priceClientKop": 79800,
+          "markupBp": 2800
+        }
+      ],
+      "GDB1330": [
+        {
+          "offerKey": "GDB1330:TRW:ORB1",
+          "priceSupplierKop": 183400,
+          "priceClientKop": 234800,
+          "markupBp": 2800
+        },
+        {
+          "offerKey": "GDB1330:TRW:SPB3",
+          "priceSupplierKop": 171240,
+          "priceClientKop": 219200,
+          "markupBp": 2800
+        },
+        {
+          "offerKey": "GDB1330:LUCAS:MSK7",
+          "priceSupplierKop": 165000,
+          "priceClientKop": 211200,
+          "markupBp": 2800
+        }
+      ],
+      "EDGE5W40": [
+        {
+          "offerKey": "EDGE5W40",
+          "error": "excluded"
+        }
+      ],
+      "NOTFOUND": []
+    },
+    "reprice": {
+      "OC90": {
+        "lines": [
+          {
+            "offerKey": "OC90:Knecht:ORB1",
+            "status": "ok",
+            "priceClientKop": 52800,
+            "markupBp": 2800
+          },
+          {
+            "offerKey": "OC90:Knecht:MSK7",
+            "status": "ok",
+            "priceClientKop": 49800,
+            "markupBp": 2800
+          },
+          {
+            "offerKey": "OC90:MAHLE:EKB2",
+            "status": "ok",
+            "priceClientKop": 51000,
+            "markupBp": 2800
+          },
+          {
+            "offerKey": "W71275:MANN-FILTER:ORB1",
+            "status": "ok",
+            "priceClientKop": 58300,
+            "markupBp": 2800
+          },
+          {
+            "offerKey": "0451103079:BOSCH:MSK7",
+            "status": "ok",
+            "priceClientKop": 64200,
+            "markupBp": 2800
+          }
+        ],
+        "changes": [
+          {
+            "kind": "price",
+            "offerKey": "OC90:Knecht:ORB1",
+            "newPriceKop": 52800,
+            "deltaKop": 100
+          },
+          {
+            "kind": "price",
+            "offerKey": "OC90:Knecht:MSK7",
+            "newPriceKop": 49800,
+            "deltaKop": 100
+          },
+          {
+            "kind": "price",
+            "offerKey": "OC90:MAHLE:EKB2",
+            "newPriceKop": 51000,
+            "deltaKop": 100
+          },
+          {
+            "kind": "price",
+            "offerKey": "W71275:MANN-FILTER:ORB1",
+            "newPriceKop": 58300,
+            "deltaKop": 100
+          },
+          {
+            "kind": "price",
+            "offerKey": "0451103079:BOSCH:MSK7",
+            "newPriceKop": 64200,
+            "deltaKop": 100
+          }
+        ]
+      },
+      "W9142": {
+        "lines": [
+          {
+            "offerKey": "W9142:MANN-FILTER:MSK7",
+            "status": "ok",
+            "priceClientKop": 79800,
+            "markupBp": 2800
+          }
+        ],
+        "changes": [
+          {
+            "kind": "price",
+            "offerKey": "W9142:MANN-FILTER:MSK7",
+            "newPriceKop": 79800,
+            "deltaKop": 100
+          }
+        ]
+      },
+      "GDB1330": {
+        "lines": [
+          {
+            "offerKey": "GDB1330:TRW:ORB1",
+            "status": "ok",
+            "priceClientKop": 234800,
+            "markupBp": 2800
+          },
+          {
+            "offerKey": "GDB1330:TRW:SPB3",
+            "status": "ok",
+            "priceClientKop": 219200,
+            "markupBp": 2800
+          },
+          {
+            "offerKey": "GDB1330:LUCAS:MSK7",
+            "status": "ok",
+            "priceClientKop": 211200,
+            "markupBp": 2800
+          }
+        ],
+        "changes": [
+          {
+            "kind": "price",
+            "offerKey": "GDB1330:TRW:ORB1",
+            "newPriceKop": 234800,
+            "deltaKop": 100
+          },
+          {
+            "kind": "price",
+            "offerKey": "GDB1330:TRW:SPB3",
+            "newPriceKop": 219200,
+            "deltaKop": 100
+          },
+          {
+            "kind": "price",
+            "offerKey": "GDB1330:LUCAS:MSK7",
+            "newPriceKop": 211200,
+            "deltaKop": 100
+          }
+        ]
+      },
+      "EDGE5W40": {
+        "lines": [],
+        "changes": []
+      },
+      "NOTFOUND": {
+        "lines": [],
+        "changes": []
+      }
+    },
+    "vin": {
+      "totalKop": 602200,
+      "lines": [
+        {
+          "line": 1,
+          "status": "ok",
+          "offerKey": "OC90:Knecht:ORB1",
+          "priceClientKop": 52800,
+          "markupBp": 2800
+        },
+        {
+          "line": 2,
+          "status": "ok",
+          "offerKey": "GDB1330:TRW:ORB1",
+          "priceClientKop": 234800,
+          "markupBp": 2800
+        },
+        {
+          "line": 3,
+          "status": "ok",
+          "offerKey": "W9142:MANN-FILTER:MSK7",
+          "priceClientKop": 79800,
+          "markupBp": 2800
+        },
+        {
+          "line": 4,
+          "status": "error",
+          "reason": "excluded"
+        },
+        {
+          "line": 5,
+          "status": "error",
+          "reason": "no_stock"
+        }
+      ]
+    },
+    "demoOrder": {
+      "totalKop": 287600,
+      "items": [
+        {
+          "article": "OC 90",
+          "brand": "Knecht",
+          "priceClientKop": 52800
+        },
+        {
+          "article": "GDB1330",
+          "brand": "TRW",
+          "priceClientKop": 234800
+        }
+      ]
+    },
+    "demoProposal": [
+      {
+        "offerKey": "W9142:MANN-FILTER:MSK7",
+        "priceClientKop": 79800,
+        "markupBp": 2800
+      },
+      {
+        "offerKey": "GDB1330:TRW:ORB1",
+        "priceClientKop": 234800,
+        "markupBp": 2800
+      }
+    ]
+  },
+  "custom": {
+    "search": {
+      "OC90": [
+        {
+          "id": "OC90:Knecht:MSK7",
+          "priceClientKop": 52800,
+          "priceText": "528 ₽",
+          "excluded": false
+        },
+        {
+          "id": "OC90:Knecht:ORB1",
+          "priceClientKop": 53700,
+          "priceText": "537 ₽",
+          "excluded": false
+        },
+        {
+          "id": "OC90:MAHLE:EKB2",
+          "priceClientKop": 54000,
+          "priceText": "540 ₽",
+          "excluded": false
+        },
+        {
+          "id": "W71275:MANN-FILTER:ORB1",
+          "priceClientKop": 59200,
+          "priceText": "592 ₽",
+          "excluded": false
+        },
+        {
+          "id": "0451103079:BOSCH:MSK7",
+          "priceClientKop": 68000,
+          "priceText": "680 ₽",
+          "excluded": false
+        }
+      ],
+      "W9142": [
+        {
+          "id": "W9142:MANN-FILTER:MSK7",
+          "priceClientKop": 84500,
+          "priceText": "845 ₽",
+          "excluded": false
+        }
+      ],
+      "GDB1330": [
+        {
+          "id": "GDB1330:LUCAS:MSK7",
+          "priceClientKop": 207500,
+          "priceText": "2 075 ₽",
+          "excluded": false
+        },
+        {
+          "id": "GDB1330:TRW:SPB3",
+          "priceClientKop": 215400,
+          "priceText": "2 154 ₽",
+          "excluded": false
+        },
+        {
+          "id": "GDB1330:TRW:ORB1",
+          "priceClientKop": 220100,
+          "priceText": "2 201 ₽",
+          "excluded": false
+        }
+      ],
+      "EDGE5W40": [
+        {
+          "id": "EDGE5W40:CASTROL:ORB1",
+          "priceClientKop": 466800,
+          "priceText": "4 668 ₽",
+          "excluded": true
+        }
+      ],
+      "NOTFOUND": []
+    },
+    "lines": {
+      "OC90": [
+        {
+          "offerKey": "OC90:Knecht:ORB1",
+          "priceSupplierKop": 41250,
+          "priceClientKop": 53700,
+          "markupBp": 3000
+        },
+        {
+          "offerKey": "OC90:Knecht:MSK7",
+          "priceSupplierKop": 38900,
+          "priceClientKop": 52800,
+          "markupBp": 3550
+        },
+        {
+          "offerKey": "OC90:MAHLE:EKB2",
+          "priceSupplierKop": 39810,
+          "priceClientKop": 54000,
+          "markupBp": 3550
+        },
+        {
+          "offerKey": "W71275:MANN-FILTER:ORB1",
+          "priceSupplierKop": 45500,
+          "priceClientKop": 59200,
+          "markupBp": 3000
+        },
+        {
+          "offerKey": "0451103079:BOSCH:MSK7",
+          "priceSupplierKop": 50130,
+          "priceClientKop": 68000,
+          "markupBp": 3550
+        }
+      ],
+      "W9142": [
+        {
+          "offerKey": "W9142:MANN-FILTER:MSK7",
+          "priceSupplierKop": 62340,
+          "priceClientKop": 84500,
+          "markupBp": 3550
+        }
+      ],
+      "GDB1330": [
+        {
+          "offerKey": "GDB1330:TRW:ORB1",
+          "priceSupplierKop": 183400,
+          "priceClientKop": 220100,
+          "markupBp": 2000
+        },
+        {
+          "offerKey": "GDB1330:TRW:SPB3",
+          "priceSupplierKop": 171240,
+          "priceClientKop": 215400,
+          "markupBp": 2575
+        },
+        {
+          "offerKey": "GDB1330:LUCAS:MSK7",
+          "priceSupplierKop": 165000,
+          "priceClientKop": 207500,
+          "markupBp": 2575
+        }
+      ],
+      "EDGE5W40": [
+        {
+          "offerKey": "EDGE5W40",
+          "error": "excluded"
+        }
+      ],
+      "NOTFOUND": []
+    },
+    "reprice": {
+      "OC90": {
+        "lines": [
+          {
+            "offerKey": "OC90:Knecht:ORB1",
+            "status": "ok",
+            "priceClientKop": 53700,
+            "markupBp": 3000
+          },
+          {
+            "offerKey": "OC90:Knecht:MSK7",
+            "status": "ok",
+            "priceClientKop": 52800,
+            "markupBp": 3550
+          },
+          {
+            "offerKey": "OC90:MAHLE:EKB2",
+            "status": "ok",
+            "priceClientKop": 54000,
+            "markupBp": 3550
+          },
+          {
+            "offerKey": "W71275:MANN-FILTER:ORB1",
+            "status": "ok",
+            "priceClientKop": 59200,
+            "markupBp": 3000
+          },
+          {
+            "offerKey": "0451103079:BOSCH:MSK7",
+            "status": "ok",
+            "priceClientKop": 68000,
+            "markupBp": 3550
+          }
+        ],
+        "changes": [
+          {
+            "kind": "price",
+            "offerKey": "OC90:Knecht:ORB1",
+            "newPriceKop": 53700,
+            "deltaKop": 100
+          },
+          {
+            "kind": "price",
+            "offerKey": "OC90:Knecht:MSK7",
+            "newPriceKop": 52800,
+            "deltaKop": 100
+          },
+          {
+            "kind": "price",
+            "offerKey": "OC90:MAHLE:EKB2",
+            "newPriceKop": 54000,
+            "deltaKop": 100
+          },
+          {
+            "kind": "price",
+            "offerKey": "W71275:MANN-FILTER:ORB1",
+            "newPriceKop": 59200,
+            "deltaKop": 100
+          },
+          {
+            "kind": "price",
+            "offerKey": "0451103079:BOSCH:MSK7",
+            "newPriceKop": 68000,
+            "deltaKop": 100
+          }
+        ]
+      },
+      "W9142": {
+        "lines": [
+          {
+            "offerKey": "W9142:MANN-FILTER:MSK7",
+            "status": "ok",
+            "priceClientKop": 84500,
+            "markupBp": 3550
+          }
+        ],
+        "changes": [
+          {
+            "kind": "price",
+            "offerKey": "W9142:MANN-FILTER:MSK7",
+            "newPriceKop": 84500,
+            "deltaKop": 100
+          }
+        ]
+      },
+      "GDB1330": {
+        "lines": [
+          {
+            "offerKey": "GDB1330:TRW:ORB1",
+            "status": "ok",
+            "priceClientKop": 220100,
+            "markupBp": 2000
+          },
+          {
+            "offerKey": "GDB1330:TRW:SPB3",
+            "status": "ok",
+            "priceClientKop": 215400,
+            "markupBp": 2575
+          },
+          {
+            "offerKey": "GDB1330:LUCAS:MSK7",
+            "status": "ok",
+            "priceClientKop": 207500,
+            "markupBp": 2575
+          }
+        ],
+        "changes": [
+          {
+            "kind": "price",
+            "offerKey": "GDB1330:TRW:ORB1",
+            "newPriceKop": 220100,
+            "deltaKop": 100
+          },
+          {
+            "kind": "price",
+            "offerKey": "GDB1330:TRW:SPB3",
+            "newPriceKop": 215400,
+            "deltaKop": 100
+          },
+          {
+            "kind": "price",
+            "offerKey": "GDB1330:LUCAS:MSK7",
+            "newPriceKop": 207500,
+            "deltaKop": 100
+          }
+        ]
+      },
+      "EDGE5W40": {
+        "lines": [],
+        "changes": []
+      },
+      "NOTFOUND": {
+        "lines": [],
+        "changes": []
+      }
+    },
+    "vin": {
+      "totalKop": 578400,
+      "lines": [
+        {
+          "line": 1,
+          "status": "ok",
+          "offerKey": "OC90:Knecht:ORB1",
+          "priceClientKop": 53700,
+          "markupBp": 3000
+        },
+        {
+          "line": 2,
+          "status": "ok",
+          "offerKey": "GDB1330:TRW:ORB1",
+          "priceClientKop": 220100,
+          "markupBp": 2000
+        },
+        {
+          "line": 3,
+          "status": "ok",
+          "offerKey": "W9142:MANN-FILTER:MSK7",
+          "priceClientKop": 84500,
+          "markupBp": 3550
+        },
+        {
+          "line": 4,
+          "status": "error",
+          "reason": "excluded"
+        },
+        {
+          "line": 5,
+          "status": "error",
+          "reason": "no_stock"
+        }
+      ]
+    },
+    "demoOrder": {
+      "totalKop": 273800,
+      "items": [
+        {
+          "article": "OC 90",
+          "brand": "Knecht",
+          "priceClientKop": 53700
+        },
+        {
+          "article": "GDB1330",
+          "brand": "TRW",
+          "priceClientKop": 220100
+        }
+      ]
+    },
+    "demoProposal": [
+      {
+        "offerKey": "W9142:MANN-FILTER:MSK7",
+        "priceClientKop": 84500,
+        "markupBp": 3550
+      },
+      {
+        "offerKey": "GDB1330:TRW:ORB1",
+        "priceClientKop": 220100,
+        "markupBp": 2000
+      }
+    ]
+  }
+}

@@ -1,3 +1,4 @@
+import { DEFAULT_MAX_MARKUP_BP, DEFAULT_MIN_MARKUP_BP } from '@detaly/domain';
 import { describe, expect, it } from 'vitest';
 import { parseEnv } from '../src/env';
 import { pctToBp, settingsDefaultsFromEnv } from '../src/settings-defaults';
@@ -18,6 +19,10 @@ describe('settingsDefaultsFromEnv', () => {
     expect(settings['rossko.prepay_invoice']).toBe(false);
     expect(settings['no_show.limit']).toBe(2);
     expect(settings['approval.timeout_h']).toBe(24);
+    // Step 2: no group adjustments by default, the floor and the ceiling of the domain.
+    expect(settings['pricing.group_adjustments']).toEqual([]);
+    expect(settings['pricing.min_markup_bp']).toBe(DEFAULT_MIN_MARKUP_BP);
+    expect(settings['pricing.max_markup_bp']).toBe(DEFAULT_MAX_MARKUP_BP);
   });
 
   it('converts percents with decimals exactly', () => {

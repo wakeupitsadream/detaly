@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyMarkup,
+  basePricingConfig,
   DEFAULT_EXCLUDED_RULES,
   MoneyError,
   offerViewId,
@@ -107,7 +108,7 @@ function input(over: Partial<RecheckOrderInput> = {}): RecheckOrderInput {
   return {
     items: [item()],
     freshBySearch: { OC90 },
-    markupRules: RULES,
+    pricing: basePricingConfig(RULES),
     excludedRules: DEFAULT_EXCLUDED_RULES,
     eta: { bufferDays: 1, invoiceLagDays: 1, prepayInvoice: false },
     now: NOW,

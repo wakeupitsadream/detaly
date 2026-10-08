@@ -10,8 +10,9 @@
  * Choice among the supplier offers of a line: the same brand (see brandMatches) and the same
  * normalized article, not marked goods, a usable price and date, enough stock for the quantity
  * (and its multiplicity); then a local (Orenburg) stock first, the nearest date, the lower price.
- * Prices come from price() and dates from etaDate() through cartLineFromOffer(), so an `ok`
- * line is exactly the cart line the proposal will hold.
+ * Prices come from priceOffer() (the base table and the group adjustment of the offer's price
+ * group, docs/pricing.md) and dates from etaDate() through cartLineFromOffer(), so an `ok` line
+ * is exactly the cart line the proposal will hold, priced as search, cart and checkout price it.
  *
  * Pure apart from `search`: no database, no logging (the seller's text may contain anything).
  */
@@ -27,7 +28,7 @@ import {
   MAX_LINE_QTY,
   MoneyError,
   offerViewId,
-  price,
+  priceOffer,
   promisedDate,
   safeMul,
   sumKop,
@@ -36,8 +37,8 @@ import {
   type EtaSettings,
   type ExcludedRule,
   type IsoDate,
-  type MarkupRule,
   type Offer,
+  type PricingConfig,
   type RepriceContext,
   type VinPreview,
   type VinPreviewErrorReason,
@@ -67,7 +68,8 @@ export interface VinPreviewInput {
   /** The master's answer as typed. */
   text: string;
   search: VinSearch;
-  markupRules: readonly MarkupRule[];
+  /** The shop's PricingConfig (settings): the same object search, cart and checkout use. */
+  pricing: PricingConfig;
   excludedRules: readonly ExcludedRule[];
   eta: EtaSettings;
   now: Date;
@@ -129,7 +131,7 @@ function priceOf(offer: Offer, ctx: RepriceContext): PricedOffer | null {
   if (!Number.isSafeInteger(offer.priceSupplierKop) || offer.priceSupplierKop <= 0) return null;
   try {
     const eta = offerEtaDate(offer.stock, ctx.now, ctx.timeZone ?? CLIENT_TIME_ZONE);
-    const { priceClientKop } = price(ctx.markupRules, offer.priceSupplierKop, offer.stock.isLocal);
+    const { priceClientKop } = priceOffer(ctx.pricing, offer);
     return { offer, priceClientKop, etaDate: eta };
   } catch (error) {
     if (error instanceof DateError || error instanceof MoneyError) return null;
@@ -310,7 +312,7 @@ function resolveLine(
  */
 export async function previewVinAnswer(input: VinPreviewInput): Promise<VinPreview> {
   const ctx: RepriceContext = {
-    markupRules: input.markupRules,
+    pricing: input.pricing,
     excludedRules: input.excludedRules,
     eta: input.eta,
     now: input.now,

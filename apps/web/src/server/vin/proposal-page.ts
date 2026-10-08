@@ -141,7 +141,7 @@ export async function proposalPageView(
     { priority: 'search', cacheOnly: true },
   );
   const { lines, changes } = repriceCartLines(source.lines, fresh, {
-    markupRules: settings.markupRules,
+    pricing: settings.pricing,
     excludedRules: settings.excludedRules,
     eta: settings.eta,
     now,

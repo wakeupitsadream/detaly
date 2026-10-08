@@ -13,7 +13,12 @@
  * may carry dates, the pickup point (the point's address and hours, not the client's), the pickup
  * code and the packaging photo. Claim decision texts and claim/VIN photos never go out.
  */
-import { CLAIM_KIND_LABELS, type OrderNotifyTemplate } from '@detaly/domain';
+import {
+  CLAIM_KIND_LABELS,
+  REVIEW_BUTTON_TEXTS,
+  reviewRedirectPath,
+  type OrderNotifyTemplate,
+} from '@detaly/domain';
 import type { CallbackAction } from '../actions';
 import { deadline, formatReplyBy, itemsLine, lines, maskPhone, promise, rub } from '../format';
 import type { MessageButton, OrderTemplateData, RenderedMessage } from '../types';
@@ -38,6 +43,19 @@ const orderLink = (
 });
 /** «Претензия» opens the claim form of the order page (decision С5: confirmed there). */
 const claimLink = (d: OrderTemplateData): MessageButton => orderLink(d, 'Претензия', 'claim');
+/**
+ * Step 3 (docs/reviews.md): one button per configured platform, to our redirect under the order
+ * page (it records that the link was opened). No review gating: whoever gets the message gets
+ * the buttons, with an equal «Есть проблема» next to them.
+ */
+const reviewButtons = (d: OrderTemplateData): MessageButton[] =>
+  (d.reviewPlatforms ?? []).map((platform) => ({
+    kind: 'url',
+    text: REVIEW_BUTTON_TEXTS[platform],
+    url: reviewRedirectPath(d.orderUrl, platform),
+  }));
+/** «Есть проблема»: the claim form of the order page, as «Претензия». */
+const problemLink = (d: OrderTemplateData): MessageButton => orderLink(d, 'Есть проблема', 'claim');
 const adminLink = (d: OrderTemplateData): MessageButton[] =>
   d.adminUrl ? [{ kind: 'url', text: 'Открыть в админке', url: d.adminUrl }] : [];
 
@@ -262,12 +280,24 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
       ),
       [orderLink(d)],
     ),
+  // completed = handed + 7 days. With a review link (step 3) the buttons ask for a review and
+  // offer «Есть проблема» alike; without one the message is exactly the phase 1C one.
   how_is_it: (d) =>
-    msg(
-      lines(head(d), 'Как деталь? Если что-то не так, оформите претензию на странице заказа.'),
-      [claimLink(d)],
-      [orderLink(d)],
-    ),
+    reviewButtons(d).length === 0
+      ? msg(
+          lines(head(d), 'Как деталь? Если что-то не так, оформите претензию на странице заказа.'),
+          [claimLink(d)],
+          [orderLink(d)],
+        )
+      : msg(
+          lines(
+            head(d),
+            `Как деталь? Если всё в порядке — оставьте, пожалуйста, отзыв о ${d.brandName}: он помогает другим водителям найти нас. Если что-то не так — нажмите «Есть проблема», разберёмся.`,
+          ),
+          reviewButtons(d),
+          [problemLink(d)],
+          [orderLink(d)],
+        ),
   // PLAN section 3 «Претензия»: the client gets the order of actions.
   claim_received: (d) =>
     msg(
@@ -352,6 +382,16 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
         installPaid(d),
       ),
       [orderLink(d, 'Запись на странице заказа', 'install')],
+    ),
+
+  // --- client, step 3 (docs/reviews.md) ----------------------------------------------------
+  // The one reminder of housekeeping, messenger only (not in the SMS allowlist): it goes out
+  // only with a review link configured, so the review buttons are there.
+  review_reminder: (d) =>
+    msg(
+      lines(head(d), `Если будет минутка — оставьте отзыв о ${d.brandName} в Картах. Спасибо!`),
+      reviewButtons(d),
+      [problemLink(d)],
     ),
 
   // --- staff -------------------------------------------------------------------------------

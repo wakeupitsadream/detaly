@@ -58,6 +58,9 @@ describe('seed (globalSetup already ran it once)', () => {
         'pricing.min_margin_kop',
         'pricing.min_order_total_kop',
         'reminder.days',
+        'reviews.max_age_days',
+        'reviews.min_count',
+        'reviews.reminder_days',
         'rossko.local_stock_ids',
         'rossko.prepay_invoice',
         'supplier.return_days',
@@ -74,6 +77,11 @@ describe('seed (globalSetup already ran it once)', () => {
     expect(byKey['pricing.min_markup_bp']).toBe(1000);
     expect(byKey['pricing.max_markup_bp']).toBe(6000);
     expect(byKey['reminder.days']).toEqual([3, 6, 9]);
+    // step 3: the review reminder and the storefront rating line; no snapshot is seeded
+    expect(byKey['reviews.reminder_days']).toBe(3);
+    expect(byKey['reviews.min_count']).toBe(5);
+    expect(byKey['reviews.max_age_days']).toBe(45);
+    expect(byKey['reviews.snapshot']).toBeUndefined();
     expect(byKey['rossko.prepay_invoice']).toBe(false);
     // Stored as real jsonb, not a JSON string.
     const [typed] = await db.$client<{ t: string }[]>`

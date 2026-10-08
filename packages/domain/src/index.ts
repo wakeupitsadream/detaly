@@ -30,3 +30,5 @@ export * from './install-load-demo';
 export * from './claims';
 export * from './vin-requests';
 export * from './install-params';
+// step 3 (docs/reviews.md)
+export * from './reviews';

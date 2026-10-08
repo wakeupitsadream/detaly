@@ -8,6 +8,7 @@ import type {
   MessengerChannel,
   NotificationChannel,
   PaymentScheme,
+  ReviewPlatform,
 } from '@detaly/domain/statuses';
 import type { IsoDate, Kop } from '@detaly/domain/types';
 
@@ -122,6 +123,12 @@ export interface OrderTemplateData {
    * claim photos (decision С2).
    */
   photos?: readonly string[];
+  /**
+   * Step 3 (docs/reviews.md): platforms whose review link (REVIEW_URL_*) is set, for how_is_it
+   * and review_reminder. The buttons lead to our redirect `<orderUrl>/review/<platform>`, never
+   * to the map service itself; empty or absent: how_is_it is the message of phase 1C.
+   */
+  reviewPlatforms?: readonly ReviewPlatform[] | null;
 }
 
 /**

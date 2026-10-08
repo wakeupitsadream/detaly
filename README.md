@@ -234,6 +234,9 @@ S3 — `docs/external.md`, раздел 8. Живые Telegram, S3, ЮKassa и R
 | `/p/<token>`, `POST /api/proposals/<token>/take` | подборка мастера (noindex, `no-referrer`) и перенос её в корзину → `/checkout`; 30 в час |
 | `/admin/vin`, `/admin/vin/<id>`, блоки «Претензии», «Запись на установку», «Фото» в карточке заказа, `GET /api/admin/files/<ключ>` | админка 1C за Basic auth |
 | `/admin/prices`, `POST /api/admin/prices`, `/admin/pricing`, `POST /api/admin/pricing` | шаг 2 (`docs/pricing.md`): сравнение цен с конкурентами и отчёт по группам; поправки к наценке по группам с предпросмотром, «подтверждаю» и журналом `settings_audit`; Basic auth |
+| `GET /o/<token>/review/<yandex\|2gis>` | шаг 3 (`docs/reviews.md`): кнопки отзывов из сообщений и со страницы заказа; первое открытие по площадке — журнал `review_link_opened` (статус не меняется), затем 302 на `REVIEW_URL_*`; `no-referrer`, `no-store`, noindex; неизвестная площадка, ссылка не задана, чужой токен — 404; в демо `/o/demo/review/*` без записи |
+| `/review` | шаг 3: страница для QR-таблички — большие кнопки «Яндекс Карты» и «2ГИС» (прямые ссылки), телефон пункта выдачи; noindex, не в sitemap; без ссылок — 404 |
+| `/admin/reviews`, `POST /api/admin/reviews`, `/admin/reviews/sign`, `GET /api/admin/reviews/qr` | шаг 3: ссылки на отзывы (заданы или нет), рейтинг с карточек (`reviews.snapshot` через писатель настроек с `settings_audit`), что видно на витрине, воронка за 30 и 90 дней, табличка A5/A4 с QR на `/review` и QR файлом SVG; Basic auth |
 | `/print/pamyatka-vozvrat.pdf`, `/print/akt-vydachi.pdf` | статические памятка о возврате и акт выдачи (реквизиты от руки) |
 
 ### Очереди и задачи 1C
@@ -245,6 +248,8 @@ S3 — `docs/external.md`, раздел 8. Живые Telegram, S3, ЮKassa и R
 | `housekeeping` | `reminders` (+ виды 1C) | VIN без ответа 4 ч (в рабочие часы), дедлайн претензии за 2 дня владельцу, установка за 24 ч клиенту; напоминания 3/6/9 «приехало» из 1B остаются |
 | `housekeeping` | `retention` (04:40 Asia/Yekaterinburg) | удаление фото VIN-заявок старше 90 дней; в логе только счётчики |
 | `housekeeping` | `price-check` (пн 10:00 Asia/Yekaterinburg) | шаг 2: «Пора сверить цены» в чат продавцов со ссылкой на `/admin/prices`, если за 7 дней меньше 20 сравнений |
+| `housekeeping` | `reminders` (вид `review`) | шаг 3: одно напоминание об отзыве через `reviews.reminder_days` (3) после завершения, только в мессенджер и если ссылку не открывали, претензий после выдачи нет, ссылки заданы; ещё раз проверяется перед отправкой |
+| `housekeeping` | `reviews-check` (пн 10:05 Asia/Yekaterinburg) | шаг 3: «Отзывы: обновите рейтинг в /admin/reviews…» в чат продавцов, если ссылки заданы и рейтинг не обновляли 7 дней |
 
 ### Переменные 1C
 

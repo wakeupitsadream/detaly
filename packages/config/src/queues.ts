@@ -64,6 +64,11 @@ export const HOUSEKEEPING_JOBS = {
    * unless the last week already has 20 price comparisons.
    */
   priceCheck: 'price-check',
+  /**
+   * Mondays at 10:05 local (step 3, docs/reviews.md): «Отзывы: обновите рейтинг…» to the sellers
+   * chat while a review link is set and the rating snapshot is older than 7 days.
+   */
+  reviewsCheck: 'reviews-check',
 } as const;
 
 /** Job names of the reconciliation queue (decision Б29, PLAN section 1). */

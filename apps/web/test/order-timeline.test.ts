@@ -66,6 +66,8 @@ describe('client timeline phrases', () => {
     }
     expect(HIDDEN_TIMELINE_EVENTS.has('messenger_unbound')).toBe(true);
     expect(HIDDEN_TIMELINE_EVENTS.has('install_reminder')).toBe(true);
+    // step 3: opening a review link is the shop's counter, not an order event
+    expect(HIDDEN_TIMELINE_EVENTS.has('review_link_opened')).toBe(true);
     expect(
       eventPhrase({ type: 'receipt_succeeded', toStatus: null, payload: { kind: 'offset' } }),
     ).toBe('Чек о получении заказа отправлен');

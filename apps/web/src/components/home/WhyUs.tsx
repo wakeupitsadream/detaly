@@ -1,3 +1,4 @@
+import type { RatingBlock } from '@detaly/domain';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import {
@@ -9,6 +10,7 @@ import {
   IconWallet,
   IconWrench,
 } from '@/components/icons';
+import { RatingLine } from '@/components/reviews/RatingLine';
 import { cn } from '@/components/ui/cn';
 import { vinRequestHref } from '@/lib/vin-link';
 
@@ -88,8 +90,19 @@ const ADVANTAGES: readonly Advantage[] = [
  * ring. Phones: the
  * title over a 2×3 grid (three columns of ~100 px broke every caption word by word), 3×2 from
  * sm; desktop: the title on the left, the tiles 3×2 on the right.
+ *
+ * Step 3 (docs/reviews.md): the shop's rating on its own map cards stands under the title when
+ * there is one to show (RatingLine; never in the demo, never made up).
  */
-export function WhyUs({ brandName, className }: { brandName: string; className?: string }) {
+export function WhyUs({
+  brandName,
+  rating = null,
+  className,
+}: {
+  brandName: string;
+  rating?: RatingBlock | null;
+  className?: string;
+}) {
   return (
     <section
       aria-labelledby="why-title"
@@ -100,12 +113,15 @@ export function WhyUs({ brandName, className }: { brandName: string; className?:
         className,
       )}
     >
-      <h2 id="why-title" className="min-w-0 px-2 text-h2 text-balance sm:px-0">
-        {brandName}
-        {/* No-break space: the dash never starts a line. */}
-        {'\u00a0— '}
-        запчасти без сюрпризов
-      </h2>
+      <div className="min-w-0 px-2 sm:px-0">
+        <h2 id="why-title" className="min-w-0 text-h2 text-balance">
+          {brandName}
+          {/* No-break space: the dash never starts a line. */}
+          {'\u00a0— '}
+          запчасти без сюрпризов
+        </h2>
+        {rating ? <RatingLine block={rating} tone="dark" className="mt-3 lg:mt-4" /> : null}
+      </div>
       <ul className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 md:gap-3">
         {ADVANTAGES.map((item) => (
           <li key={item.key} data-testid={`home-why-${item.key}`} className="min-w-0">

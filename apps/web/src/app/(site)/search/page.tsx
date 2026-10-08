@@ -1,3 +1,4 @@
+import type { RatingBlock } from '@detaly/domain';
 import { normalizeVin } from '@detaly/vin/vin';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
@@ -13,6 +14,7 @@ import {
   IconSts,
 } from '@/components/icons';
 import { Notice } from '@/components/page/Notice';
+import { RatingLine } from '@/components/reviews/RatingLine';
 import { InnerPage, PageBody } from '@/components/page/PageBand';
 import {
   FilterChips,
@@ -35,6 +37,7 @@ import { currentCheckoutGate } from '@/server/checkout-gate';
 import { isNamedError } from '@/server/errors';
 import { planInstallForOffers, type InstallPlanView } from '@/server/install';
 import { getLogger } from '@/server/logger';
+import { storefrontRating } from '@/server/reviews/rating';
 import { getSearchService } from '@/server/search';
 import {
   SearchInputError,
@@ -136,6 +139,7 @@ function Results({
   plans,
   demoData,
   contactPhone,
+  rating,
 }: {
   result: SearchResponse;
   stock: StockFilter;
@@ -143,6 +147,8 @@ function Results({
   contactPhone: string | null;
   orderingOpen: boolean;
   plans: ReadonlyMap<string, InstallPlanView | null>;
+  /** Step 3: the shop's rating on its map cards, above the offers (one compact line). */
+  rating: RatingBlock | null;
 }) {
   const { query, brand } = result;
   if (result.totalBeforeFilters === 0) return <EmptyState query={query} demoData={demoData} />;
@@ -155,6 +161,7 @@ function Results({
     <div className="min-w-0 space-y-7 md:space-y-14">
       <div className="min-w-0 space-y-5">
         <ResultsHeader query={query} count={offers.length} />
+        {rating ? <RatingLine block={rating} compact className="-mt-3" /> : null}
         <FilterChips
           query={query}
           brand={brand}
@@ -263,6 +270,9 @@ export default async function SearchPage({
     }
   }
 
+  // Step 3: the rating line above the offers (null: nothing to show, or no offers at all).
+  const rating = result && result.totalBeforeFilters > 0 ? await storefrontRating() : null;
+
   // One lift-load snapshot for the whole page; a failure only drops the install lines.
   let plans: ReadonlyMap<string, InstallPlanView | null> = new Map();
   if (result && result.offers.length > 0) {
@@ -292,6 +302,7 @@ export default async function SearchPage({
             plans={plans}
             demoData={brand.demoData}
             contactPhone={brand.contactPhone}
+            rating={rating}
           />
         ) : problem ? null : (
           <SearchIdle demoData={brand.demoData} />

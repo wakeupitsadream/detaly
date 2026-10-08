@@ -11,6 +11,7 @@ export {
   type EnvKey,
 } from './env';
 export { defaultMarkupRules, pctToBp, settingsDefaultsFromEnv } from './settings-defaults';
+export { reviewPlatforms, reviewUrls, type ReviewUrls } from './reviews';
 export { createRedis, createWorkerRedis, Redis, type RedisOptions } from './redis';
 export {
   DAILY_COUNTER_TTL_SEC,

@@ -24,6 +24,7 @@ import {
 } from '@/server/orders/order-services';
 import { loadOrderView, type OrderView } from '@/server/orders/order-view';
 import { parsePayNotice } from '@/server/orders/pay-notice';
+import { orderReviewLinks } from '@/server/reviews/links';
 
 type Params = Promise<{ token: string }>;
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -124,6 +125,7 @@ export default async function OrderPage({
       cartReminder={cartReminder}
       notice={notice}
       nowMs={nowMs}
+      reviews={orderReviewLinks(serverEnv(), view.token)}
     />
   );
 }

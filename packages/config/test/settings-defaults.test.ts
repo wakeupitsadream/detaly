@@ -1,4 +1,11 @@
-import { DEFAULT_MAX_MARKUP_BP, DEFAULT_MIN_MARKUP_BP } from '@detaly/domain';
+import {
+  DEFAULT_MAX_MARKUP_BP,
+  DEFAULT_MIN_MARKUP_BP,
+  DEFAULT_REVIEW_MAX_AGE_DAYS,
+  DEFAULT_REVIEW_MIN_COUNT,
+  DEFAULT_REVIEW_REMINDER_DAYS,
+  REVIEW_SNAPSHOT_KEY,
+} from '@detaly/domain';
 import { describe, expect, it } from 'vitest';
 import { parseEnv } from '../src/env';
 import { pctToBp, settingsDefaultsFromEnv } from '../src/settings-defaults';
@@ -23,6 +30,15 @@ describe('settingsDefaultsFromEnv', () => {
     expect(settings['pricing.group_adjustments']).toEqual([]);
     expect(settings['pricing.min_markup_bp']).toBe(DEFAULT_MIN_MARKUP_BP);
     expect(settings['pricing.max_markup_bp']).toBe(DEFAULT_MAX_MARKUP_BP);
+    // Step 3: the review reminder 3 days after completed, the rating line from 5 reviews and a
+    // snapshot of at most 45 days; the snapshot itself is never seeded (the admin writes it).
+    expect(settings['reviews.reminder_days']).toBe(DEFAULT_REVIEW_REMINDER_DAYS);
+    expect(settings['reviews.reminder_days']).toBe(3);
+    expect(settings['reviews.min_count']).toBe(DEFAULT_REVIEW_MIN_COUNT);
+    expect(settings['reviews.min_count']).toBe(5);
+    expect(settings['reviews.max_age_days']).toBe(DEFAULT_REVIEW_MAX_AGE_DAYS);
+    expect(settings['reviews.max_age_days']).toBe(45);
+    expect(Object.keys(settings)).not.toContain(REVIEW_SNAPSHOT_KEY);
   });
 
   it('converts percents with decimals exactly', () => {

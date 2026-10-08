@@ -13,6 +13,7 @@ import type { OrderFlash } from '@/server/orders/flash';
 import type { MessengerView, OrderServicesView } from '@/server/orders/order-services';
 import type { OrderView } from '@/server/orders/order-view';
 import { payCheckState, type PayNotice } from '@/server/orders/pay-notice';
+import type { ReviewLink } from '@/server/reviews/links';
 import { CancelOrderForm } from './CancelOrderForm';
 import { ClaimBlock } from './ClaimBlock';
 import { MessengerBlock } from './MessengerBlock';
@@ -37,6 +38,7 @@ import {
   type PickupRoute,
 } from './OrderSections';
 import { OrderStepper } from './OrderStepper';
+import { REVIEW_CARD_STATUSES, ReviewCard } from './ReviewCard';
 
 /**
  * One column on phones in reading order. From lg two: everything in the left column, and on the
@@ -116,7 +118,8 @@ function InstallCard({ plan }: { plan: InstallPlanView | null }) {
  * One column, like a receipt: the head (number, a large status badge, the date and how it is
  * paid), the stepper, whatever needs the client's decision or money, where to collect it (the
  * pickup code), the installation line with the booking chips, the parts, the claims, then the
- * secondary actions (statuses in a messenger, cancel, refuse) and the folded history.
+ * secondary actions (statuses in a messenger, cancel, refuse) and the folded history. Step 3:
+ * after the handover «Оцените нас» stands below all of it, above the history (ReviewCard).
  */
 export function OrderDetails({
   view,
@@ -130,6 +133,7 @@ export function OrderDetails({
   flash = null,
   demo = false,
   routes = [],
+  reviews = [],
 }: {
   view: OrderView;
   pickup: PickupInfo;
@@ -148,6 +152,8 @@ export function OrderDetails({
   demo?: boolean;
   /** Route links to the pickup point (pickupRoutes(brand)). */
   routes?: readonly PickupRoute[];
+  /** Step 3: the review buttons (orderReviewLinks); the card shows after the handover. */
+  reviews?: readonly ReviewLink[];
 }) {
   const check = payCheckState(view, notice, nowMs);
   const stopped = STOPPED.has(view.status);
@@ -308,6 +314,9 @@ export function OrderDetails({
               notice={flashFor('claim')}
             />
           ) : null}
+
+          {/* Below every action the client may need, the same for everyone (step 3). */}
+          {REVIEW_CARD_STATUSES.has(view.status) ? <ReviewCard links={reviews} /> : null}
 
           <TimelineBlock entries={view.timeline} />
         </PageBody>

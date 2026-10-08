@@ -14,6 +14,10 @@
 // expires_at = send time + approval.timeout_h, journal approval_notified; skipped or failed ->
 // journal approval_unreachable and staff_approval_unreachable to the sellers; the timer does
 // not start (Б16).
+//
+// review_reminder (step 3, docs/reviews.md) is checked again right before sending: a review
+// link opened, a claim opened or the order changed meanwhile -> `skipped` with
+// `review_not_due:<why>`, nothing is sent.
 import {
   and,
   asc,
@@ -51,6 +55,7 @@ import {
 } from '@detaly/orders';
 import { UnrecoverableError, type Job } from 'bullmq';
 import type { WorkerDeps } from '../../deps';
+import { reviewReminderCheck } from '../housekeeping/review-reminder';
 import { refreshCard } from '../receipts/offset';
 import {
   clientDrivers,
@@ -283,6 +288,9 @@ async function notifySellers(ctx: NotifyContext): Promise<NotifyOrderOutcome> {
 /** fallback_reason of a decision_needed whose approval is no longer open. */
 export const APPROVAL_CLOSED = 'approval_closed';
 
+/** fallback_reason prefix of a review_reminder that is no longer due (step 3). */
+export const REVIEW_NOT_DUE = 'review_not_due';
+
 interface OpenApproval {
   id: string;
 }
@@ -406,6 +414,29 @@ async function notifyClient(ctx: NotifyContext): Promise<NotifyOrderOutcome> {
           kind: 'done',
           result: { status: 'skipped', fallbackReason: APPROVAL_CLOSED, blocked: [] },
         };
+      }
+    }
+
+    // The review reminder asks for a review only while nothing happened since it was queued.
+    if (data.template === 'review_reminder') {
+      const verdict = await reviewReminderCheck(tx, {
+        orderId,
+        now: sendAt,
+        settings: ctx.settings,
+        env: deps.env,
+      });
+      if (verdict !== 'due') {
+        const fallbackReason = `${REVIEW_NOT_DUE}:${verdict}`;
+        await tx
+          .update(notifications)
+          .set({
+            status: 'skipped',
+            fallbackReason,
+            attempts: sql`${notifications.attempts} + 1`,
+            updatedAt: sendAt,
+          })
+          .where(eq(notifications.id, row.id));
+        return { kind: 'done', result: { status: 'skipped', fallbackReason, blocked: [] } };
       }
     }
 

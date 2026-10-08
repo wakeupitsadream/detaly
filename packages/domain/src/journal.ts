@@ -78,6 +78,13 @@ export const JOURNAL_EVENTS = [
   'photo_added',
   /** The order was checked out from a VIN proposal (/p/<token>). */
   'vin_order',
+  // step 3 (docs/reviews.md)
+  /**
+   * The client opened a review link of the order (/o/<token>/review/<platform>) for the first
+   * time on that platform: payload {platform}. A service record, not on the timeline; the
+   * review reminder and the funnel of /admin/reviews read it.
+   */
+  'review_link_opened',
 ] as const;
 export type JournalEvent = (typeof JOURNAL_EVENTS)[number];
 

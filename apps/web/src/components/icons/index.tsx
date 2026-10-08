@@ -488,6 +488,15 @@ export const IconMax = icon(
   'IconMax',
 );
 
+/**
+ * A five-point star: the shop's rating and the review buttons (step 3). Outlined; pass
+ * fill="currentColor" for the solid star of the rating line. Never a map service's logo.
+ */
+export const IconStar = icon(
+  <path d="M12 3.6l2.55 5.17 5.7.83-4.12 4.02.97 5.68L12 16.62l-5.1 2.68.97-5.68-4.12-4.02 5.7-.83z" />,
+  'IconStar',
+);
+
 /** Route arrow on a map: directions to the pickup point. */
 export const IconRoute = icon(
   <>

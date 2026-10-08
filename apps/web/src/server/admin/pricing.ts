@@ -28,10 +28,11 @@ import {
   type PricingConfig,
 } from '@detaly/domain';
 import { loadBenchmarks, type AdminPriceRow } from './prices';
+import { settingsVersion } from './settings-writer';
+
+export { ADMIN_ACTOR } from './settings-writer';
 
 export const ADJUSTMENTS_KEY = 'pricing.group_adjustments';
-/** Who edits settings from the admin (one Basic auth account, decision Б19). */
-export const ADMIN_ACTOR = 'admin';
 /** Positions of the preview. */
 export const PREVIEW_EXAMPLES = 3;
 /** Audit rows shown under the editor. */
@@ -55,7 +56,7 @@ export function bpField(side: 'local' | 'order', group: PriceGroup): string {
 
 /** settings.updated_at of the adjustments row as the optimistic version of the editor. */
 export function adjustmentsVersion(row: { updatedAt: Date } | null | undefined): string {
-  return row ? row.updatedAt.toISOString() : 'none';
+  return settingsVersion(row);
 }
 
 export interface DraftField {

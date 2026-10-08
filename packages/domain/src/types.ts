@@ -347,6 +347,16 @@ export interface SettingsValues {
   'rossko.prepay_invoice': boolean;
   /** Hours the client has to answer «Согласен» / «Вернуть деньги» after the message was sent. */
   'approval.timeout_h': number;
+  /**
+   * Step 3 (docs/reviews.md): days after `completed` for the one review reminder; 0 = off. The
+   * rating snapshot itself (`reviews.snapshot`, REVIEW_SNAPSHOT_KEY) has no default: the admin
+   * writes it on /admin/reviews.
+   */
+  'reviews.reminder_days': number;
+  /** The storefront rating line needs at least this many reviews on a platform. */
+  'reviews.min_count': number;
+  /** A snapshot older than this many days is not shown on the storefront. */
+  'reviews.max_age_days': number;
 }
 export type SettingsKey = keyof SettingsValues;
 

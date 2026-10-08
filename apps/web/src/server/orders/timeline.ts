@@ -102,6 +102,8 @@ export const HIDDEN_TIMELINE_EVENTS: ReadonlySet<OrderEvent | JournalEvent> = ne
   // is the person's choice in the bot and says nothing about the order.
   'install_reminder',
   'messenger_unbound',
+  // Step 3 (docs/reviews.md): opening a review link is the shop's counter, not an order event.
+  'review_link_opened',
 ]);
 
 type PhraseInput = Pick<TimelineEvent, 'type' | 'toStatus'> &
@@ -343,6 +345,7 @@ function journalPhrase(event: PhraseInput): string | null {
     // Hidden (HIDDEN_TIMELINE_EVENTS).
     case 'install_reminder':
     case 'messenger_unbound':
+    case 'review_link_opened':
       return null;
     default:
       // Not a JournalEvent: an unknown type.

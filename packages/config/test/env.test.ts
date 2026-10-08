@@ -324,6 +324,34 @@ describe('parseEnv', () => {
   });
 });
 
+describe('review links (step 3, docs/reviews.md)', () => {
+  it('REVIEW_URL_YANDEX and REVIEW_URL_2GIS are optional https links', () => {
+    const none = parseEnv(minimalEnvSource());
+    expect(none.REVIEW_URL_YANDEX).toBeUndefined();
+    expect(none.REVIEW_URL_2GIS).toBeUndefined();
+    const env = parseEnv(
+      minimalEnvSource({
+        REVIEW_URL_YANDEX: 'https://yandex.ru/maps/org/test/1/reviews/',
+        REVIEW_URL_2GIS: 'https://2gis.ru/orenburg/firm/1',
+      }),
+    );
+    expect(env.REVIEW_URL_YANDEX).toBe('https://yandex.ru/maps/org/test/1/reviews/');
+    expect(env.REVIEW_URL_2GIS).toBe('https://2gis.ru/orenburg/firm/1');
+    // An empty line in .env is «not set».
+    expect(parseEnv(minimalEnvSource({ REVIEW_URL_2GIS: '' })).REVIEW_URL_2GIS).toBeUndefined();
+  });
+
+  it('refuses anything but https', () => {
+    for (const [key, value] of [
+      ['REVIEW_URL_YANDEX', 'http://yandex.ru/maps/org/test/1/reviews/'],
+      ['REVIEW_URL_2GIS', 'javascript:alert(1)'],
+      ['REVIEW_URL_2GIS', '2gis.ru/orenburg/firm/1'],
+    ] as const) {
+      expect(() => parseEnv(minimalEnvSource({ [key]: value })), value).toThrow(new RegExp(key));
+    }
+  });
+});
+
 describe('.env.example', () => {
   const example = readEnvExample();
 

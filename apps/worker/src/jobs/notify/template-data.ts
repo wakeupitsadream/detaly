@@ -4,7 +4,7 @@
 // section 4); staff templates get it and print it masked. Phase 1C adds the installation
 // partner, the packaging photo of `arrived`, the slot of install_* and the claim of claim_*
 // (addPhase1cData) — never the client's claim text or the master's decision text.
-import type { Env } from '@detaly/config';
+import { reviewPlatforms, type Env } from '@detaly/config';
 import {
   and,
   asc,
@@ -214,9 +214,17 @@ export async function loadTemplateData(
     if (refund) data.deadlineDate = localDate(refund.deadlineAt);
   }
   await addPhase1cData(db, { env, order, template, eventPayload, data });
+  if (REVIEW_TEMPLATES.includes(template)) {
+    // Step 3 (docs/reviews.md): the platforms with a review link; the template builds the
+    // buttons to our redirect under the order page from them.
+    data.reviewPlatforms = reviewPlatforms(env);
+  }
   if (data.deadlineDate && !isIsoDate(data.deadlineDate)) data.deadlineDate = null;
   return { order, data };
 }
+
+/** Templates with the review buttons (step 3): «Как деталь?» and the one reminder. */
+const REVIEW_TEMPLATES: readonly OrderNotifyTemplate[] = ['how_is_it', 'review_reminder'];
 
 const CLAIM_TEMPLATES: readonly OrderNotifyTemplate[] = [
   'claim_received',

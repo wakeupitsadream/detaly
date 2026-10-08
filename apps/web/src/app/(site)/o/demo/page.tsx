@@ -15,6 +15,7 @@ import { planInstallForDate } from '@/server/install';
 import { isDemoMode } from '@/server/mode';
 import { FLASH_MESSAGES, parseDemoScreen, type OrderFlash } from '@/server/orders/flash';
 import { installPartner } from '@/server/orders/order-services';
+import { orderReviewLinks } from '@/server/reviews/links';
 import { getSupplier } from '@/server/supplier';
 
 // Reads env and the fixtures on every request (DEMO_MODE is a runtime switch).
@@ -87,6 +88,8 @@ export default async function DemoOrderPage({ searchParams }: { searchParams?: S
         contactPhone={brand.contactPhone}
         cartReminder={null}
         demo
+        // The sample is at the supplier: «Оцените нас» appears only after a handover (step 3).
+        reviews={orderReviewLinks(serverEnv(), 'demo')}
       />
     </FullBleed>
   );

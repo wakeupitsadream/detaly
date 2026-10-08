@@ -194,6 +194,12 @@ const envShape = {
   PICKUP_EMBLEM_WHITE_SRC: sitePath.optional(),
   STAFF_SEED_JSON: staffSeedJson.default([]),
 
+  // --- Reviews [шаг 3] (docs/reviews.md): the shop's own cards in the map services ---
+  // The reviews tab of the card (https). A platform is offered only when its link is set;
+  // with neither set the review buttons, /review and the rating line do not exist.
+  REVIEW_URL_YANDEX: z.url({ protocol: /^https$/ }).optional(),
+  REVIEW_URL_2GIS: z.url({ protocol: /^https$/ }).optional(),
+
   // --- Installation partner [ф1C] (decision С6): without the name booking is hidden ---
   /** The service that installs parts and bills the client itself (e.g. «Сервис56»). */
   INSTALL_PARTNER_NAME: optionalString,

@@ -196,6 +196,8 @@ export const ORDER_NOTIFY_TEMPLATES = [
   'install_confirmed',
   'install_declined',
   'install_reminder',
+  // client, step 3 (docs/reviews.md): the one review reminder of housekeeping, outside TRANSITIONS
+  'review_reminder',
   // staff (sellers chat or owner)
   'staff_new_order',
   'staff_amount_mismatch',

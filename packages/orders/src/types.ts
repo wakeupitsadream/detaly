@@ -164,6 +164,8 @@ export interface OrderSettings {
   courierFeeKop: Kop;
   /** approval.timeout_h */
   approvalTimeoutH: number;
+  /** reviews.reminder_days: the review reminder after `completed`; 0 = off (docs/reviews.md). */
+  reviewReminderDays: number;
 }
 
 // ---------------------------------------------------------------------------------------------

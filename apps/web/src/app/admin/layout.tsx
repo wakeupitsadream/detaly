@@ -22,7 +22,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   if (isDemoMode()) notFound();
   return (
     <div className="flex min-h-screen min-w-0 flex-col">
-      <header className="border-b border-line bg-card">
+      <header className="border-b border-line bg-card" data-print-hide>
         <nav
           className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3"
           aria-label="Разделы админки"
@@ -52,9 +52,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <Link href="/admin/pricing" className="text-sm text-accent underline">
             Наценка
           </Link>
+          <Link href="/admin/reviews" className="text-sm text-accent underline">
+            Отзывы
+          </Link>
         </nav>
       </header>
-      <main className="mx-auto w-full max-w-6xl min-w-0 flex-1 px-4 py-6">{children}</main>
+      <main className="mx-auto w-full max-w-6xl min-w-0 flex-1 px-4 py-6 print:max-w-none print:p-0">
+        {children}
+      </main>
     </div>
   );
 }

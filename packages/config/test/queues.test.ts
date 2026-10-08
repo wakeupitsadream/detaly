@@ -41,6 +41,7 @@ describe('queue names', () => {
       'deferred1a',
       'retention',
       'priceCheck',
+      'reviewsCheck',
     ]);
     expect(RECONCILIATION_JOBS).toEqual({ sweep: 'sweep', nightly: 'nightly' });
   });
@@ -49,6 +50,12 @@ describe('queue names', () => {
 describe('step 2 jobs', () => {
   it('the weekly price check reminder', () => {
     expect(HOUSEKEEPING_JOBS.priceCheck).toBe('price-check');
+  });
+});
+
+describe('step 3 jobs', () => {
+  it('the weekly reviews reminder', () => {
+    expect(HOUSEKEEPING_JOBS.reviewsCheck).toBe('reviews-check');
   });
 });
 

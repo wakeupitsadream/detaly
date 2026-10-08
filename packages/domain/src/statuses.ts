@@ -465,3 +465,15 @@ export const BENCHMARK_COMPETITORS = [
   'other',
 ] as const;
 export type BenchmarkCompetitor = (typeof BENCHMARK_COMPETITORS)[number];
+
+// ---------------------------------------------------------------------------
+// Step 3 (docs/reviews.md): reviews after the handover
+// ---------------------------------------------------------------------------
+
+/**
+ * Map services where the shop's own card collects reviews (REVIEW_URL_YANDEX, REVIEW_URL_2GIS).
+ * The value is the last segment of the redirect /o/<token>/review/<platform> and the
+ * `platform` of the order_events journal row `review_link_opened` (jsonb payload, no check).
+ */
+export const REVIEW_PLATFORMS = ['yandex', '2gis'] as const;
+export type ReviewPlatform = (typeof REVIEW_PLATFORMS)[number];

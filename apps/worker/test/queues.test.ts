@@ -45,6 +45,8 @@ describe('schedulers', () => {
       ['housekeeping', 'retention', { pattern: '40 4 * * *', tz: 'Asia/Yekaterinburg' }],
       // step 2: «Пора сверить цены», Mondays at 10:00 local
       ['housekeeping', 'price-check', { pattern: '0 10 * * 1', tz: 'Asia/Yekaterinburg' }],
+      // step 3: «Отзывы: обновите рейтинг…», Mondays at 10:05 local
+      ['housekeeping', 'reviews-check', { pattern: '5 10 * * 1', tz: 'Asia/Yekaterinburg' }],
       ['reconciliation', 'sweep', { every: 600_000 }],
       ['reconciliation', 'nightly', { pattern: '15 3 * * *', tz: 'Asia/Yekaterinburg' }],
     ]);
@@ -54,9 +56,9 @@ describe('schedulers', () => {
   it('registers housekeeping only when the reconciliation queue is not passed', async () => {
     const housekeeping = vi.fn(async () => ({}));
     await registerSchedulers({ housekeeping: { upsertJobScheduler: housekeeping } as never });
-    // heartbeat, timers, reminders, sms-budget, deferred-1a, the phase 1C retention and the
-    // step 2 price check
-    expect(housekeeping).toHaveBeenCalledTimes(7);
+    // heartbeat, timers, reminders, sms-budget, deferred-1a, the phase 1C retention, the
+    // step 2 price check and the step 3 reviews check
+    expect(housekeeping).toHaveBeenCalledTimes(8);
 
     const reconciliation = vi.fn(async () => ({}));
     await registerSchedulers({

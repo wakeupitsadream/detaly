@@ -2,18 +2,19 @@
  * POST /api/admin/pricing (step 2, docs/pricing.md): «Сохранить поправки» of /admin/pricing.
  *
  * The form carries the draft in bp (`lbp_<group>`, `obp_<group>`), the version of the
- * adjustments row it was previewed against and the «подтверждаю» tick. In one transaction under
- * the row lock: the version must still match (409 otherwise: another tab saved meanwhile), the
- * adjustments are validated (validateGroupAdjustments) and stored in normal form in `settings`
- * (updated_by 'admin'), and `settings_audit` gets the old and the new value. After the commit the
- * settings cache of this process is dropped, so the next search, cart and checkout use the new
- * markups at once (the worker reads settings per job).
+ * adjustments row it was previewed against and the «подтверждаю» tick. The adjustments are
+ * validated (validateGroupAdjustments) and stored in normal form by the audited settings writer
+ * (settings-writer.ts): in one transaction under the row lock the version must still match (409
+ * otherwise: another tab saved meanwhile), `settings` gets updated_by 'admin' and
+ * `settings_audit` the old and the new value. After the commit the settings cache of this
+ * process is dropped, so the next search, cart and checkout use the new markups at once (the
+ * worker reads settings per job).
  *
  * Order of checks as in the other admin handlers: Basic auth -> Origin (403) -> urlencoded body
  * (400/413) -> action and tick (400) -> values (422) -> version (409).
  */
 import type { Env } from '@detaly/config';
-import { eq, settings, settingsAudit, type Database } from '@detaly/db';
+import type { Database } from '@detaly/db';
 import {
   formatPercentPoints,
   GroupAdjustmentsError,
@@ -30,13 +31,8 @@ import { isSameOrigin } from '../request-guards';
 import { CONFIRM_FIELD, CONFIRM_VALUE } from './destructive';
 import { formField } from './form-fields';
 import { adminAuthFailure, adminDone, adminPage } from './http';
-import {
-  ADJUSTMENTS_KEY,
-  ADMIN_ACTOR,
-  adjustmentsVersion,
-  bpField,
-  sameAdjustments,
-} from './pricing';
+import { ADJUSTMENTS_KEY, bpField, sameAdjustments } from './pricing';
+import { writeAuditedSetting } from './settings-writer';
 
 export const MAX_ADMIN_PRICING_BODY_BYTES = 8 * 1024;
 
@@ -81,8 +77,6 @@ export function adjustmentsSummary(list: readonly GroupAdjustment[]): string {
     )
     .join('; ');
 }
-
-type SaveOutcome = 'saved' | 'unchanged' | 'conflict';
 
 export async function handleAdminPricingAction(
   request: Request,
@@ -138,31 +132,12 @@ async function handle(request: Request, deps: AdminPricingDeps): Promise<Respons
   const version = formField(form, 'version', 64);
   const now = (deps.now ?? (() => new Date()))();
 
-  const outcome = await deps.db.transaction(async (tx): Promise<SaveOutcome> => {
-    const [row] = await tx
-      .select({ value: settings.value, updatedAt: settings.updatedAt })
-      .from(settings)
-      .where(eq(settings.key, ADJUSTMENTS_KEY))
-      .for('update');
-    if (adjustmentsVersion(row) !== version) return 'conflict';
-    const old = row?.value ?? null;
-    const current = parseGroupAdjustments(old) ?? [];
-    if (row !== undefined && sameAdjustments(current, next)) return 'unchanged';
-    await tx
-      .insert(settings)
-      .values({ key: ADJUSTMENTS_KEY, value: next, updatedBy: ADMIN_ACTOR, updatedAt: now })
-      .onConflictDoUpdate({
-        target: settings.key,
-        set: { value: next, updatedBy: ADMIN_ACTOR, updatedAt: now },
-      });
-    await tx.insert(settingsAudit).values({
-      key: ADJUSTMENTS_KEY,
-      oldValue: old,
-      newValue: next,
-      changedBy: ADMIN_ACTOR,
-      changedAt: now,
-    });
-    return 'saved';
+  const outcome = await writeAuditedSetting(deps.db, {
+    key: ADJUSTMENTS_KEY,
+    value: next,
+    version,
+    same: (stored) => sameAdjustments(parseGroupAdjustments(stored) ?? [], next),
+    at: now,
   });
 
   deps.logger?.info({ action: 'save', outcome, groups: next.length }, 'admin pricing action');

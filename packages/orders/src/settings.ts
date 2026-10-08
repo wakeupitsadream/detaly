@@ -33,6 +33,7 @@ const KEYS = [
   'courier.fee_kop',
   'rossko.prepay_invoice',
   'approval.timeout_h',
+  'reviews.reminder_days',
 ] as const satisfies readonly (keyof SettingsValues)[];
 
 const isNonNegativeInt = (v: unknown): v is number =>
@@ -80,6 +81,7 @@ export function resolveOrderSettings(rows: ReadonlyMap<string, unknown>, env: En
     reminderDays: [...pick('reminder.days', isPositiveIntList)],
     courierFeeKop: pick('courier.fee_kop', isNonNegativeInt),
     approvalTimeoutH: pick('approval.timeout_h', isPositiveInt),
+    reviewReminderDays: pick('reviews.reminder_days', isNonNegativeInt),
   };
 }
 

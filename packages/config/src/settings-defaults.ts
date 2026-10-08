@@ -56,5 +56,11 @@ export function settingsDefaultsFromEnv(env: Env): SettingsValues {
     'rossko.prepay_invoice': false,
     // PLAN section 3: the client has 24 hours to answer an alternative / new date.
     'approval.timeout_h': 24,
+    // Step 3 (docs/reviews.md): the review reminder 3 days after `completed` (0 = off) and the
+    // storefront rating line from 5 reviews and a snapshot of at most 45 days
+    // (DEFAULT_REVIEW_* of @detaly/domain, checked by settings-defaults.test.ts).
+    'reviews.reminder_days': 3,
+    'reviews.min_count': 5,
+    'reviews.max_age_days': 45,
   };
 }

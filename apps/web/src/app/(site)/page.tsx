@@ -11,6 +11,7 @@ import { FullBleed, Section } from '@/components/ui/Section';
 import { brandedTitle, PAGE_SEO } from '@/lib/seo';
 import { vinRequestHref } from '@/lib/vin-link';
 import { getBrand } from '@/server/brand';
+import { storefrontRating } from '@/server/reviews/rating';
 
 /**
  * «Автозапчасти в Оренбурге по артикулу и VIN — {BRAND_NAME}» (lib/seo.ts). Absolute: the
@@ -27,11 +28,13 @@ export function generateMetadata(): Metadata {
 /**
  * Home (docs/design-v2.md, section 4 «Главная»): the search and the page's h1 («Автозапчасти в
  * Оренбурге — по артикулу и VIN», HomeHeadline) live in the brand header, then makes,
- * categories, the dark panel of advantages, the pickup point and the VIN prompt. Pictures and
- * short captions instead of paragraphs.
+ * categories, the dark panel of advantages (with the shop's rating on its map cards when there
+ * is one to show, step 3), the pickup point and the VIN prompt. Pictures and short captions
+ * instead of paragraphs.
  */
-export default function HomePage() {
+export default async function HomePage() {
   const brand = getBrand();
+  const rating = await storefrontRating();
   return (
     <FullBleed>
       <Section aria-labelledby="brands-title" className="pt-8! lg:pt-12!">
@@ -41,7 +44,7 @@ export default function HomePage() {
         <CategoryGrid />
       </Section>
       <Container className="grid gap-12 pb-12 lg:gap-[4.5rem] lg:pb-[4.5rem]">
-        <WhyUs brandName={brand.name} />
+        <WhyUs brandName={brand.name} rating={rating} />
         <PickupCard brand={brand} />
         <CtaCard
           title="Не знаете артикул?"

@@ -31,7 +31,7 @@
  *    request of the bucket gets 429, the right password included. Redis down: the gate still
  *    checks the password, only the counter fails open (with a warning). Every admin response
  *    carries X-Robots-Tag noindex, Cache-Control no-store and Referrer-Policy no-referrer.
- * 3. Headers: X-Robots-Tag always on /search, /cart and /checkout, everywhere when
+ * 3. Headers: X-Robots-Tag always on /search, /cart, /checkout and /review, everywhere when
  *    NOINDEX_ALL=true (stage); the order page /o/* and /api/orders/* also get
  *    Referrer-Policy: no-referrer (the token is in the URL) and Cache-Control: no-store. This
  *    runs here and not in next.config headers() because the same image serves prod and stage;
@@ -43,7 +43,8 @@
  * 4. DEMO_MODE (docs/design.md, section 5): the rate limits are counted in memory
  *    (server/demo/rate-limit.ts, Redis is never touched); /admin, /api/admin/*,
  *    /api/webhooks/* and /api/orders/* answer 404, and so does every order page but the sample
- *    /o/demo (its handlers check the same again). Phase 1C (decision С21): the demo forms are
+ *    /o/demo and its review buttons /o/demo/review/<platform> (step 3; its handlers check the
+ *    same again). Phase 1C (decision С21): the demo forms are
  *    answered here WITHOUT reading the body — POST /api/vin -> 303 /vin/sent?demo=1 (only
  *    for a client that posts it anyway: the demo VIN form has no action and no submit), POST
  *    /api/orders/demo/{link,install,claims} -> 303 /o/demo?demo=<what>, POST
@@ -54,7 +55,10 @@
  *    goes on to the app (NextResponse.next / rewrite), which is where Next reads the nonce for
  *    its own scripts. No 'unsafe-inline' in script-src: a page rendered without the nonce
  *    (prerendered at build time) would lose its scripts, so every page is rendered per request.
+ * 6. Step 3 (docs/reviews.md): /review without REVIEW_URL_* answers the site's not-found page
+ *    (the page checks the same again).
  */
+import { reviewPlatforms } from '@detaly/config';
 import { NextResponse, type NextRequest } from 'next/server';
 import { contentSecurityPolicy, createNonce } from './lib/csp';
 import {
@@ -252,8 +256,11 @@ function isWebhookPath(path: string): boolean {
   return under(path, '/api/webhooks');
 }
 
+/** Never indexed: search results, the cart, checkout and the QR target /review (step 3). */
 function isNoindexPath(path: string): boolean {
-  return path === '/search' || under(path, '/cart') || under(path, '/checkout');
+  return (
+    path === '/search' || under(path, '/cart') || under(path, '/checkout') || path === '/review'
+  );
 }
 
 /** Path-dependent response headers; applied to every response the proxy produces. */
@@ -279,6 +286,14 @@ export const DEMO_ORDER_PATH = '/o/demo';
 export const DEMO_PROPOSAL_PATH = '/p/demo';
 
 /**
+ * The review buttons of the sample order (step 3, docs/reviews.md): /o/demo/review/<platform>
+ * redirects without journaling (server/reviews/redirect.ts decides the platform).
+ */
+function isDemoReviewPath(path: string): boolean {
+  return path.startsWith(`${DEMO_ORDER_PATH}/review/`) && path.split('/').length === 5;
+}
+
+/**
  * DEMO_MODE: paths that do not exist without a database (the admin, payment webhooks, the
  * order API, real order pages, real proposals and their API, VIN confirmations with a link
  * token). null = serve as usual.
@@ -287,7 +302,7 @@ export function demoBlockedPath(path: string): 'api' | 'page' | null {
   if (under(path, '/api/admin') || isWebhookPath(path) || under(path, '/api/orders')) return 'api';
   if (under(path, '/api/proposals') && !under(path, '/api/proposals/demo')) return 'api';
   if (under(path, '/admin')) return 'page';
-  if (under(path, '/o') && path !== DEMO_ORDER_PATH) return 'page';
+  if (under(path, '/o') && path !== DEMO_ORDER_PATH && !isDemoReviewPath(path)) return 'page';
   if (under(path, '/p') && path !== DEMO_PROPOSAL_PATH) return 'page';
   if (under(path, '/vin/sent') && path !== '/vin/sent') return 'page';
   return null;
@@ -347,8 +362,11 @@ function appRequest(request: NextRequest, csp: string): { request: { headers: He
   return { request: { headers } };
 }
 
-/** 404 of a demo-blocked path: JSON for the API, the site's not-found page otherwise. */
-function demoNotFoundResponse(
+/**
+ * 404 of a path that does not exist here (a demo-blocked path, /review without a review link):
+ * JSON for the API, the site's not-found page otherwise.
+ */
+function siteNotFoundResponse(
   request: NextRequest,
   kind: 'api' | 'page',
   csp: string,
@@ -435,7 +453,7 @@ async function route(request: NextRequest, csp: string): Promise<NextResponse> {
       if (redirect !== null) return demoSeeOther(request.nextUrl, redirect);
       const blocked = demoBlockedPath(path);
       if (blocked !== null) {
-        return demoNotFoundResponse(request, path.startsWith('/api/') ? 'api' : blocked, csp);
+        return siteNotFoundResponse(request, path.startsWith('/api/') ? 'api' : blocked, csp);
       }
     }
     return NextResponse.next(appRequest(request, csp));
@@ -454,10 +472,14 @@ async function route(request: NextRequest, csp: string): Promise<NextResponse> {
     }
     const blocked = isAdminPath(pathname) ? 'page' : demoBlockedPath(path);
     if (blocked !== null) {
-      return demoNotFoundResponse(request, path.startsWith('/api/') ? 'api' : blocked, csp);
+      return siteNotFoundResponse(request, path.startsWith('/api/') ? 'api' : blocked, csp);
     }
   }
   if (isAdminPath(pathname)) return adminGate(request, env, csp);
+  // Step 3: the QR target /review exists only with a review link (REVIEW_URL_*).
+  if (path === '/review' && reviewPlatforms(env).length === 0) {
+    return siteNotFoundResponse(request, 'page', csp);
+  }
 
   const limited = classifyLimitedRequest({
     method: request.method,

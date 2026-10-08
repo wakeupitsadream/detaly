@@ -84,6 +84,10 @@ export SMS_PROVIDER=none
 # The seller bot would long-poll api.telegram.org: no token, no bot (cards are skipped).
 export TG_SELLER_BOT_TOKEN=''
 
+# --- env: step 3 (docs/reviews.md): no review links, the feature is off (e2e-1c sets them) ---
+export REVIEW_URL_YANDEX="${REVIEW_URL_YANDEX:-}"
+export REVIEW_URL_2GIS="${REVIEW_URL_2GIS:-}"
+
 # --- what the specs read -------------------------------------------------------------------
 export E2E_BASE_URL="$WEB_URL"
 export E2E_PAYMENTS=on

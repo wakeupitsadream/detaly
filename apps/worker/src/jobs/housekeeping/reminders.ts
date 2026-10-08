@@ -13,6 +13,7 @@
 // | payment        | half of the payment TTL, once per deadline             | client  | payment_link                |
 // | confirmation   | half of the confirmation TTL, once per deadline        | client  | confirm_request             |
 // | vin, claim_deadline, install (phase 1C) — see reminders-1c.ts                                          |
+// | review (step 3) — reviews.reminder_days after `completed`, once — see review-reminder.ts              |
 //
 // After a gap (worker stopped) only the latest due reminder of a kind is sent: no backlog of
 // «day 3» after «day 6».
@@ -37,6 +38,7 @@ import { loadOrderSettings } from '@detaly/orders';
 import type { WorkerDeps } from '../../deps';
 import { BATCH, DAY_MS, HOUR_MS, MINUTE_MS, notAfter, nudge, queueReminder } from './common';
 import { runReminders1c } from './reminders-1c';
+import { runReviewReminders } from './review-reminder';
 
 /** The sellers get the supplier return reminder this long before the deadline. */
 export const SUPPLIER_RETURN_WARN_MS = 3 * DAY_MS;
@@ -264,6 +266,9 @@ export async function runReminders(deps: WorkerDeps): Promise<RemindersResult> {
 
   // 9–11. phase 1C: VIN request without an answer, claim deadline, installation slot.
   await runReminders1c(deps, now, add);
+
+  // 12. step 3: the one review reminder after `completed` (docs/reviews.md).
+  await runReviewReminders(deps, now, settings, add);
 
   if (result.queued > 0) nudge(deps);
   return result;

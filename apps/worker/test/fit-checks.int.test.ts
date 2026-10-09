@@ -1,7 +1,8 @@
 // Step 4 (docs/fit-check.md) in the worker, on a database of its own (housekeeping scans every
 // fit check): notify/fit (the sellers card once per request, the SLA reminder, the redraw), the
-// 5-minute housekeeping (24-hour expiry, the SLA reminder once, counted in the pickup point's
-// working hours only) and the daily retention of the VIN and the comment.
+// 5-minute housekeeping (expiry at the closing of the next working day, the SLA reminder once,
+// both counted in the pickup point's working hours) and the daily retention of the VIN and the
+// comment.
 import { randomBytes } from 'node:crypto';
 import {
   cartItems,
@@ -15,7 +16,7 @@ import {
   type Db,
 } from '@detaly/db';
 import { prepareTestDb } from '@detaly/db/testing';
-import { FIT_CHECK_SLA_KEY, offerViewId, type Offer } from '@detaly/domain';
+import { FIT_CHECK_SLA_KEY, offerViewId, parseWorkHours, type Offer } from '@detaly/domain';
 import {
   answerFitCheck,
   createFitCheckRequest,
@@ -117,6 +118,8 @@ describe.skipIf(!inject('workerDatabaseUrl'))('fit checks in the worker', () => 
       vin: VIN,
       comment: 'двигатель 1.6, 2019',
       now: createdAt,
+      // As the site sends it: the pickup hours the worker counts the SLA in.
+      schedule: parseWorkHours(ENV.PICKUP_HOURS),
     });
     if (!created.ok) throw new Error(`not created: ${created.reason}`);
     const rows = await db
@@ -303,31 +306,65 @@ describe.skipIf(!inject('workerDatabaseUrl'))('fit checks in the worker', () => 
       }
     });
 
-    it('expiry: 24 hours without an answer -> expired, the card redrawn, once', async () => {
-      // Friday 18:50: 10 working minutes before closing, so the SLA cannot pass before expiry.
-      const sent = local('2026-10-16T18:50');
+    it('expiry at the closing of the next working day: Friday evening -> Monday 19:00, once', async () => {
+      // Friday 18:59 (Mon–Fri 10–19): one working minute before closing.
+      const sent = local('2026-10-16T18:59');
       const { requestId, ids } = await request(sent, 2);
       await answerFitCheck(db, { id: ids[1]!, answer: 'call_needed', staffId: null, now: sent });
-      clock.now = new Date(sent.getTime() + DAY - MIN);
-      await run();
-      const before = await db.select().from(fitChecks).where(eq(fitChecks.requestId, requestId));
-      expect(before.map((r) => r.status).sort()).toEqual(['call_needed', 'pending']);
+      const [stored] = await db.select().from(fitChecks).where(eq(fitChecks.id, ids[0]!));
+      expect(stored?.expiresAt.toISOString()).toBe(local('2026-10-19T19:00').toISOString());
 
-      clock.now = new Date(sent.getTime() + DAY);
+      const statuses = async () =>
+        (await db.select().from(fitChecks).where(eq(fitChecks.requestId, requestId)))
+          .map((r) => r.status)
+          .sort();
+      // Wall-clock 24 hours later (Saturday) and on Sunday nothing expires, and no reminder
+      // goes either: one working minute has passed. (The counters of run() cover the other
+      // requests of this database too: this request is checked by its rows and keys.)
+      for (const wall of ['2026-10-17T19:00', '2026-10-18T23:00']) {
+        clock.now = local(wall);
+        await run();
+        expect(await statuses(), wall).toEqual(['call_needed', 'pending']);
+        expect(await outboxOf(fitReminderKey(requestId)), wall).toEqual([]);
+      }
+      // Monday: the 60 working minutes ended at 10:59, the line still waits.
+      clock.now = local('2026-10-19T18:59');
+      await run();
+      expect(await statuses()).toEqual(['call_needed', 'pending']);
+      expect(await outboxOf(fitReminderKey(requestId))).toHaveLength(1);
+
+      clock.now = local('2026-10-19T19:00');
       const result = await run();
       expect(result.expired).toBeGreaterThanOrEqual(1);
-      const after = await db.select().from(fitChecks).where(eq(fitChecks.requestId, requestId));
-      expect(after.map((r) => r.status).sort()).toEqual(['call_needed', 'expired']);
+      expect(await statuses()).toEqual(['call_needed', 'expired']);
       const [refresh] = await outboxOf(fitRefreshKey(requestId, 'expired'));
       expect(refresh?.data).toEqual({
         requestId,
         kind: 'refresh',
         key: fitRefreshKey(requestId, 'expired'),
       });
-      // An expired request never gets the SLA reminder afterwards, and expiry runs once.
-      clock.now = new Date(sent.getTime() + DAY + HOUR);
+      // Expiry runs once.
+      clock.now = local('2026-10-19T20:00');
       expect((await run()).expired).toBe(0);
-      expect(await outboxOf(fitReminderKey(requestId))).toEqual([]);
+    });
+
+    it('a Saturday-evening request still waits on Sunday and expires after Monday closes', async () => {
+      // Saturday 18:30 is outside the hours (Mon–Fri 10–19): wall-clock 24 hours would end on
+      // Sunday 18:30, before the master could even see the card.
+      const sent = local('2026-10-17T18:30');
+      const { requestId } = await request(sent);
+      const statuses = async () =>
+        (await db.select().from(fitChecks).where(eq(fitChecks.requestId, requestId))).map(
+          (r) => r.status,
+        );
+      for (const wall of ['2026-10-18T18:30', '2026-10-18T23:59', '2026-10-19T18:59']) {
+        clock.now = local(wall);
+        await run();
+        expect(await statuses(), wall).toEqual(['pending']);
+      }
+      clock.now = local('2026-10-19T19:01');
+      await run();
+      expect(await statuses()).toEqual(['expired']);
     });
   });
 

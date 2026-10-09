@@ -8,7 +8,8 @@
  * the per-cart limit, 10 requests a day (429; the per-ip limit of 20 a day is counted in
  * src/proxy.ts) -> createFitCheckRequest: every line id must be a line of that cart (422 when
  * one is not — ids from a form are never trusted), lines already waiting are skipped (409 when
- * all are) -> the outbox nudge -> 303 back to the cart (or JSON for the sheet with JavaScript).
+ * all are), the checks wait until the closing of the next working day of PICKUP_HOURS (at least
+ * 24 hours) -> the outbox nudge -> 303 back to the cart (or JSON for the sheet with JavaScript).
  *
  * A refused form post without JavaScript returns to `/cart?fit_error=<code>&check=<line>`:
  * codes, never values (the VIN never goes into a URL). Logs carry the request id and counts:
@@ -16,6 +17,7 @@
  */
 import type { Env } from '@detaly/config';
 import type { Database } from '@detaly/db';
+import { parseWorkHours } from '@detaly/domain';
 import { createFitCheckRequest, type CreateFitCheckRefusal } from '@detaly/vin';
 import { readBoundedText } from '../body';
 import { findActiveCart, readCartToken } from '../cart-store';
@@ -43,7 +45,8 @@ export interface FitSubmitLogger {
 
 export interface FitSubmitDeps {
   db: Database;
-  env: Pick<Env, 'APP_BASE_URL' | 'PICKUP_PHONE' | 'SELLER_REQUISITES_PHONE'>;
+  /** PICKUP_HOURS: the checks wait until the closing of the next working day (fitCheckExpiresAt). */
+  env: Pick<Env, 'APP_BASE_URL' | 'PICKUP_HOURS' | 'PICKUP_PHONE' | 'SELLER_REQUISITES_PHONE'>;
   /** getCheckoutGate bound to env and db: checks open with online orders (like /vin). */
   gate: () => Promise<CheckoutGate>;
   /**
@@ -237,6 +240,8 @@ export async function handleFitSubmit(request: Request, deps: FitSubmitDeps): Pr
       vin: input.vin,
       comment: input.comment,
       now: now(),
+      // The same schedule as the SLA of the worker and the promise of the cart.
+      schedule: parseWorkHours(deps.env.PICKUP_HOURS ?? null),
     });
     if (!created.ok) {
       const refusal = REFUSALS[created.reason];

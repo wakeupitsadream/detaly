@@ -26,7 +26,11 @@ import type { WeekSchedule } from './work-hours';
 
 /** «Комментарий для мастера», characters (CHECK in the database). */
 export const FIT_CHECK_COMMENT_MAX = 200;
-/** A check nobody answered expires 24 hours after it was sent (fit_checks.expires_at). */
+/**
+ * The shortest life of a check nobody answered: 24 hours after it was sent. With the working
+ * hours of the pickup point it lives longer — to the closing of the next working day
+ * (fitCheckExpiresAt, fit_checks.expires_at).
+ */
 export const FIT_CHECK_TTL_MS = 24 * 60 * 60 * 1000;
 /** fit_checks.vin and comment are cleared this many days after the request (as VIN photos). */
 export const FIT_CHECK_RETENTION_DAYS = 90;
@@ -99,11 +103,6 @@ export function fitRequestNumber(requestId: string): string {
 export function cleanFitComment(text: string | null | undefined): string | null {
   const clean = (text ?? '').replace(/\s+/gu, ' ').trim();
   return clean === '' ? null : clean;
-}
-
-/** When an unanswered check expires (fit_checks.expires_at). */
-export function fitCheckExpiresAt(createdAt: Date): Date {
-  return new Date(createdAt.getTime() + FIT_CHECK_TTL_MS);
 }
 
 // ---------------------------------------------------------------------------
@@ -298,6 +297,32 @@ export function nextWorkingStart(
     date = addDays(date, 1);
   }
   return null;
+}
+
+/**
+ * When a check nobody answered expires (fit_checks.expires_at): the closing time of the next
+ * working day of the pickup point after the day it was sent, and never earlier than 24 hours
+ * after it was sent. The master always gets a whole working day: a request of Saturday 18:30
+ * waits until Monday's closing when Sunday is a day off (with wall-clock 24 hours it would
+ * expire on Sunday, before anybody could see it). Without a schedule (PICKUP_HOURS not set or
+ * not understood): 24 hours.
+ */
+export function fitCheckExpiresAt(
+  createdAt: Date,
+  schedule: WeekSchedule | null | undefined,
+  timeZone: string = CLIENT_TIME_ZONE,
+): Date {
+  const dayLater = instantOf(createdAt, 'createdAt') + FIT_CHECK_TTL_MS;
+  if (!hasWeek(schedule)) return new Date(dayLater);
+  // Calendar days after the day of sending (in the zone of the point): the first one open.
+  let date = addDays(localDate(createdAt, timeZone), 1);
+  for (let i = 0; i < 7; i += 1) {
+    const hours = schedule[isoWeekday(date)];
+    if (hours) return new Date(Math.max(zonedInstant(date, hours.closeMin, timeZone), dayLater));
+    date = addDays(date, 1);
+  }
+  // A week without a working day: as without a schedule.
+  return new Date(dayLater);
 }
 
 /** The request waits for an answer longer than the SLA, counted in working minutes. */

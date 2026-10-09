@@ -21,6 +21,7 @@ import {
   DEFAULT_EXCLUDED_RULES,
   FIT_CHECK_SLA_KEY,
   offerViewId,
+  parseWorkHours,
   type EtaSettings,
   type MarkupRule,
   type Offer,
@@ -137,6 +138,8 @@ describe.skipIf(!DB_URL)('fit checks', () => {
       vin: VIN,
       comment: '  двигатель 1.6,   2019 ',
       now: T0,
+      // Mon–Sat 9–19: sent on Thursday at 12:00, the checks wait until Friday 19:00.
+      schedule: parseWorkHours('Пн–Сб 9:00–19:00'),
     });
     expect(result).toMatchObject({ ok: true, lines: 2, skipped: 0 });
     if (!result.ok) return;
@@ -149,7 +152,7 @@ describe.skipIf(!DB_URL)('fit checks', () => {
         comment: 'двигатель 1.6, 2019',
         cartId,
       });
-      expect(row.expiresAt.getTime() - row.createdAt.getTime()).toBe(DAY_MS);
+      expect(row.expiresAt.toISOString()).toBe('2026-10-09T14:00:00.000Z');
     }
     const jobs = await db
       .select()
@@ -167,7 +170,14 @@ describe.skipIf(!DB_URL)('fit checks', () => {
 
     // The same lines again while they wait: nothing new; a new line goes alone.
     expect(
-      await createFitCheckRequest(db, { cartId, lineIds, vin: VIN, comment: null, now: T0 }),
+      await createFitCheckRequest(db, {
+        cartId,
+        lineIds,
+        vin: VIN,
+        comment: null,
+        now: T0,
+        schedule: null,
+      }),
     ).toEqual({ ok: false, reason: 'pending' });
   });
 
@@ -183,6 +193,7 @@ describe.skipIf(!DB_URL)('fit checks', () => {
         vin: VIN,
         comment: null,
         now: T0,
+        schedule: null,
       }),
     ).toEqual({ ok: false, reason: 'foreign_lines' });
     expect(
@@ -192,6 +203,7 @@ describe.skipIf(!DB_URL)('fit checks', () => {
         vin: VIN,
         comment: null,
         now: T0,
+        schedule: null,
       }),
     ).toEqual({ ok: false, reason: 'foreign_lines' });
     const after = await db.select().from(fitChecks).where(eq(fitChecks.cartId, mine.cartId));
@@ -204,7 +216,7 @@ describe.skipIf(!DB_URL)('fit checks', () => {
   it('refuses a bad VIN, a long comment, no lines and a converted cart', async () => {
     const knecht = await offerOf('OC90', 'Knecht');
     const { cartId, lineIds } = await cartWith(knecht);
-    const base = { cartId, lineIds, vin: VIN, comment: null, now: T0 };
+    const base = { cartId, lineIds, vin: VIN, comment: null, now: T0, schedule: null };
     expect(await createFitCheckRequest(db, { ...base, vin: 'XTA2109901234567O' })).toEqual({
       ok: false,
       reason: 'vin',
@@ -230,6 +242,7 @@ describe.skipIf(!DB_URL)('fit checks', () => {
       vin: VIN,
       comment: null,
       now: T0,
+      schedule: null,
     });
     if (!created.ok) throw new Error('not created');
     const [row] = await rowsOf(created.requestId);
@@ -321,6 +334,7 @@ describe.skipIf(!DB_URL)('fit checks', () => {
         vin: VIN,
         comment: null,
         now: T0,
+        schedule: null,
       });
       if (!created.ok) throw new Error('not created');
       const [row] = await rowsOf(created.requestId);
@@ -341,7 +355,7 @@ describe.skipIf(!DB_URL)('fit checks', () => {
     });
   });
 
-  it('expiry: pending past 24 hours -> expired, once; answers stay', async () => {
+  it('expiry: pending past expires_at (24 hours without the hours) -> expired, once', async () => {
     const knecht = await offerOf('OC90', 'Knecht');
     const trw = await offerOf('GDB1330', 'TRW');
     const { cartId, lineIds } = await cartWith(knecht, trw);
@@ -351,6 +365,7 @@ describe.skipIf(!DB_URL)('fit checks', () => {
       vin: VIN,
       comment: null,
       now: T0,
+      schedule: null,
     });
     if (!created.ok) throw new Error('not created');
     const rows = await rowsOf(created.requestId);
@@ -376,6 +391,7 @@ describe.skipIf(!DB_URL)('fit checks', () => {
       vin: VIN,
       comment: null,
       now: T0,
+      schedule: null,
     });
     if (!created.ok) throw new Error('not created');
     const rows = await rowsOf(created.requestId);
@@ -407,8 +423,15 @@ describe.skipIf(!DB_URL)('fit checks', () => {
       vin: VIN,
       comment: 'старая',
       now: longAgo,
+      schedule: null,
     });
-    const b = await createFitCheckRequest(db, { ...fresh, vin: VIN2, comment: 'новая', now: T0 });
+    const b = await createFitCheckRequest(db, {
+      ...fresh,
+      vin: VIN2,
+      comment: 'новая',
+      now: T0,
+      schedule: null,
+    });
     if (!a.ok || !b.ok) throw new Error('not created');
     expect(await retainFitChecks(db, T0)).toBeGreaterThanOrEqual(1);
     expect(await retainFitChecks(db, T0)).toBe(0);
@@ -428,6 +451,7 @@ describe.skipIf(!DB_URL)('fit checks', () => {
       vin: VIN,
       comment: null,
       now: T0,
+      schedule: null,
     });
     if (!first.ok) throw new Error('not created');
     const [firstRow] = await rowsOf(first.requestId);
@@ -439,6 +463,7 @@ describe.skipIf(!DB_URL)('fit checks', () => {
       vin: VIN2,
       comment: 'двигатель 1.6',
       now: later,
+      schedule: null,
     });
     if (!second.ok) throw new Error('not created');
 

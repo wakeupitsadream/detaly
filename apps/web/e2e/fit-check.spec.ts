@@ -250,7 +250,8 @@ test.describe('fit check: the client, the master and the order', () => {
 
     await page.goto('/cart');
     const lucasId = await lineIdOf(cartLine(page, 'LUCAS'));
-    // 25 hours ago (the row keeps expires_at = created_at + 24 h).
+    // Sent 25 hours ago and expired an hour ago (expires_at stays after created_at, as the
+    // database requires): the cart reads the line as expired.
     const sentAt = new Date(Date.now() - 25 * 3_600_000);
     await database()
       .update(fitChecks)

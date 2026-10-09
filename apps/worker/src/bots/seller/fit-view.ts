@@ -50,7 +50,7 @@ const STATUS_MARKS: Record<Exclude<FitLineStaffView['status'], 'analog'>, string
   fits: '✓ Подходит',
   not_fit: '✗ Не подходит',
   call_needed: '☎ Нужен звонок: клиент увидит телефон точки и позвонит',
-  expired: '⌛ Не успели ответить за 24 часа',
+  expired: '⌛ Не успели ответить в срок',
   cancelled: '— Отменена: позиции больше нет в корзине',
 };
 

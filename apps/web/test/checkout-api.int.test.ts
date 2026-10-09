@@ -29,6 +29,7 @@ import {
   formatPromise,
   MAX_ORDER_TOTAL_KOP,
   nextPickupDay,
+  parseWorkHours,
   type ExcludedRule,
   type IsoDate,
   type Offer,
@@ -1335,6 +1336,7 @@ describe("step 4: the master's check goes into the order (docs/fit-check.md)", (
       vin: VIN,
       comment: null,
       now: new Date(),
+      schedule: parseWorkHours(serviceEnv.PICKUP_HOURS ?? null),
     });
     if (!created.ok) throw new Error(`fit check refused: ${created.reason}`);
     const [master] = await db

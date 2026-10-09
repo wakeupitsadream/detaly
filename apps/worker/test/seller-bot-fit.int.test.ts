@@ -17,7 +17,7 @@ import {
   sellerCards,
   staff,
 } from '@detaly/db';
-import { offerViewId, type Offer } from '@detaly/domain';
+import { offerViewId, parseWorkHours, type Offer } from '@detaly/domain';
 import { CALLBACK_DATA_MAX_BYTES, parseCallbackData } from '@detaly/notify';
 import { openClaim } from '@detaly/orders';
 import { createFitCheckRequest, newVinRequestId } from '@detaly/vin';
@@ -226,6 +226,7 @@ async function postedRequest(
     vin: VIN,
     comment: `двигатель 1.6, 2019, звоните 8 ${COMMENT_PHONE_DIGITS}`,
     now: new Date(),
+    schedule: parseWorkHours(t.deps.env.PICKUP_HOURS ?? null),
   });
   if (!created.ok) throw new Error(`not created: ${created.reason}`);
   const rows = await t.deps.db

@@ -1,6 +1,7 @@
 // housekeeping/fit-checks, every 5 minutes (step 4, docs/fit-check.md):
 //
-// 1. expiry: fit checks nobody answered for 24 hours (fit_checks.expires_at) become `expired`;
+// 1. expiry: fit checks nobody answered by fit_checks.expires_at (the closing of the pickup
+//    point's next working day after the request, at least 24 hours) become `expired`;
 //    the open card of each request is redrawn (outbox notify/fit refresh, key
 //    `fit:<request>:refresh:expired`). The client's cart shows «Мастер не успел ответить» from
 //    expires_at on anyway, before this run marks the rows;

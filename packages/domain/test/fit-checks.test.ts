@@ -110,9 +110,6 @@ describe('statuses and transitions', () => {
     expect(FIT_CHECK_RETENTION_DAYS).toBe(90);
     expect(DEFAULT_FIT_CHECK_SLA_MINUTES).toBe(60);
     expect(FIT_CHECK_LINES_MAX).toBe(MAX_CART_LINES);
-    expect(fitCheckExpiresAt(local('2026-10-09T18:30')).toISOString()).toBe(
-      local('2026-10-10T18:30').toISOString(),
-    );
   });
 
   it('short request number, cleaned comment', () => {
@@ -120,6 +117,76 @@ describe('statuses and transitions', () => {
     expect(cleanFitComment('  двигатель   1.6,\n2019 ')).toBe('двигатель 1.6, 2019');
     expect(cleanFitComment('   ')).toBeNull();
     expect(cleanFitComment(null)).toBeNull();
+  });
+});
+
+describe('fitCheckExpiresAt: the closing of the next working day, never under 24 hours', () => {
+  /** 2026-10-09 is a Friday: the 10th is Saturday, the 11th Sunday, the 12th Monday. */
+  const expires = (wall: string, schedule: ReturnType<typeof parseWorkHours>) =>
+    fitCheckExpiresAt(local(wall), schedule).toISOString();
+  const at = (wall: string) => local(wall).toISOString();
+
+  it('Saturday 18:30 waits over the closed Sunday until Monday 19:00 (Mon–Sat 9–19)', () => {
+    expect(expires('2026-10-10T18:30', MON_SAT)).toBe(at('2026-10-12T19:00'));
+    // Still waiting on Sunday evening, when wall-clock 24 hours would have ended it.
+    expect(new Date(expires('2026-10-10T18:30', MON_SAT)).getTime()).toBeGreaterThan(
+      local('2026-10-11T18:30').getTime(),
+    );
+  });
+
+  it('Monday 10:00 -> Tuesday 19:00, the closing of the next working day', () => {
+    expect(expires('2026-10-12T10:00', MON_SAT)).toBe(at('2026-10-13T19:00'));
+  });
+
+  it('Monday 22:00 -> Tuesday is the next working day, but 24 hours end later: Tuesday 22:00', () => {
+    // Tuesday's closing (19:00) is before created_at + 24 h: the check never lives shorter.
+    expect(expires('2026-10-12T22:00', MON_SAT)).toBe(at('2026-10-13T22:00'));
+  });
+
+  it('never shorter than 24 hours: a short working day closes before them', () => {
+    const mornings = parseWorkHours('Пн–Сб 9:00–13:00');
+    expect(expires('2026-10-12T12:00', mornings)).toBe(at('2026-10-13T13:00'));
+    expect(expires('2026-10-12T14:00', mornings)).toBe(at('2026-10-13T14:00'));
+  });
+
+  it('wraps the week without holidays: Friday and Saturday evenings -> Monday (Mon–Fri)', () => {
+    expect(expires('2026-10-09T18:30', WEEKDAYS)).toBe(at('2026-10-12T19:00'));
+    expect(expires('2026-10-10T18:30', WEEKDAYS)).toBe(at('2026-10-12T19:00'));
+    // Sent on the closed Sunday: Monday's closing.
+    expect(expires('2026-10-11T12:00', WEEKDAYS)).toBe(at('2026-10-12T19:00'));
+    // Sent before the opening on Monday: the next working day is Tuesday.
+    expect(expires('2026-10-12T08:00', WEEKDAYS)).toBe(at('2026-10-13T19:00'));
+  });
+
+  it('a schedule with Sunday open: Saturday evening -> Sunday', () => {
+    const everyDay = parseWorkHours('Ежедневно 9:00–21:00');
+    expect(expires('2026-10-10T18:30', everyDay)).toBe(at('2026-10-11T21:00'));
+    // Sunday closes at 17:00, before the 24 hours end (Sunday 18:30).
+    const shortSunday = parseWorkHours('Пн-Сб 9:00-19:00, Вс 10:00-17:00');
+    expect(shortSunday?.[0]).not.toBeNull();
+    expect(expires('2026-10-10T18:30', shortSunday)).toBe(at('2026-10-11T18:30'));
+    expect(expires('2026-10-10T09:00', shortSunday)).toBe(at('2026-10-11T17:00'));
+  });
+
+  it('unknown or unparsable hours: 24 hours after the request', () => {
+    expect(expires('2026-10-10T18:30', null)).toBe(at('2026-10-11T18:30'));
+    expect(expires('2026-10-10T18:30', parseWorkHours('по договорённости'))).toBe(
+      at('2026-10-11T18:30'),
+    );
+    expect(fitCheckExpiresAt(local('2026-10-10T18:30'), undefined).toISOString()).toBe(
+      at('2026-10-11T18:30'),
+    );
+    expect(() => fitCheckExpiresAt(new Date(Number.NaN), MON_SAT)).toThrow(RangeError);
+  });
+
+  it('the stored expiry is always after the request (the database CHECK)', () => {
+    for (const wall of ['2026-10-09T23:59', '2026-10-10T00:00', '2026-10-12T19:00']) {
+      for (const schedule of [MON_SAT, WEEKDAYS, null]) {
+        expect(
+          fitCheckExpiresAt(local(wall), schedule).getTime() - local(wall).getTime(),
+        ).toBeGreaterThanOrEqual(FIT_CHECK_TTL_MS);
+      }
+    }
   });
 });
 

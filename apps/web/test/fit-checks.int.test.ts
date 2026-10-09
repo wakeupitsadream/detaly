@@ -27,7 +27,15 @@ import {
   staff,
   type Db,
 } from '@detaly/db';
-import { FIT_CHECK_SLA_KEY, fitLineState, formatRub, priceOffer, type Offer } from '@detaly/domain';
+import {
+  FIT_CHECK_SLA_KEY,
+  fitCheckExpiresAt,
+  fitLineState,
+  formatRub,
+  parseWorkHours,
+  priceOffer,
+  type Offer,
+} from '@detaly/domain';
 import { createFixtureCaller } from '@detaly/rossko';
 import { answerFitAnalog, answerFitCheck, fitFactsOf } from '@detaly/vin';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -213,8 +221,13 @@ describe('POST /api/fit-checks', () => {
       expect(row.status).toBe('pending');
       expect(row.vin).toBe(VIN);
       expect(row.comment).toBe(COMMENT);
-      const ttl = row.expiresAt.getTime() - row.createdAt.getTime();
-      expect(ttl).toBe(24 * 3_600_000);
+      // Until the closing of the next working day of PICKUP_HOURS, at least 24 hours.
+      expect(row.expiresAt.toISOString()).toBe(
+        fitCheckExpiresAt(row.createdAt, parseWorkHours(env.PICKUP_HOURS ?? null)).toISOString(),
+      );
+      expect(row.expiresAt.getTime() - row.createdAt.getTime()).toBeGreaterThanOrEqual(
+        24 * 3_600_000,
+      );
       expect(row.createdAt.getTime()).toBeGreaterThanOrEqual(before - 1000);
     }
     expect(rows.find((r) => r.cartItemId === c.lines[0])).toMatchObject({
@@ -502,8 +515,13 @@ describe('the cart and its checks', () => {
   it('expiry reads lazily from expires_at; a changed line loses its check', async () => {
     const c = await newCart([KNECHT, MANN]);
     await send(c, c.lines);
-    const later = new Date(Date.now() + 25 * 3_600_000);
-    const expired = await view(c, later);
+    const [sent] = await checksOf(c.cartId);
+    if (!sent) throw new Error('no check');
+    // A minute before expires_at it still waits; at it, it reads expired (the worker may not
+    // have marked the row yet).
+    const waiting = await view(c, new Date(sent.expiresAt.getTime() - 60_000));
+    expect(waiting.lines[c.lines[0] as string]?.state).toBe('pending');
+    const expired = await view(c, sent.expiresAt);
     expect(expired.lines[c.lines[0] as string]?.state).toBe('expired');
     expect(expired.anyPending).toBe(false);
 

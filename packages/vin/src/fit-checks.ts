@@ -5,8 +5,9 @@
  * @detaly/domain (fit-checks.ts).
  *
  * - createFitCheckRequest: the caller's own cart lines only (the cart row is locked, every id must
- *   be a line of it), a pending row per line (expires in 24 hours) and ONE outbox notify/fit job
- *   for the sellers card, in one transaction;
+ *   be a line of it), a pending row per line (expiring at the closing of the pickup point's next
+ *   working day, at least 24 hours later: fitCheckExpiresAt) and ONE outbox notify/fit job for
+ *   the sellers card, in one transaction;
  * - answerFitCheck / answerFitAnalog: only a pending row changes (a second answer finds nothing:
  *   «уже отвечено»);
  * - resolveFitAnalog: the master's «БРЕНД АРТИКУЛ», found and priced exactly as a line of a VIN
@@ -57,6 +58,7 @@ import {
   type IsoDate,
   type Offer,
   type PricingConfig,
+  type WeekSchedule,
 } from '@detaly/domain';
 import { enqueueOutbox } from '@detaly/orders';
 import { v7 as uuidv7 } from 'uuid';
@@ -137,6 +139,11 @@ export interface CreateFitCheckInput {
   vin: string;
   comment: string | null;
   now: Date;
+  /**
+   * Working hours of the pickup point (parseWorkHours(PICKUP_HOURS), as the SLA of the worker):
+   * the checks wait until the closing of the next working day; null — 24 hours.
+   */
+  schedule: WeekSchedule | null;
   /** For tests; a new uuid v7 by default. */
   requestId?: string;
 }
@@ -216,7 +223,7 @@ export async function createFitCheckRequest(
     if (fresh.length === 0) return { ok: false, reason: 'pending' };
 
     const requestId = input.requestId ?? uuidv7();
-    const expiresAt = fitCheckExpiresAt(now);
+    const expiresAt = fitCheckExpiresAt(now, input.schedule);
     await tx.insert(fitChecks).values(
       fresh.map((line) => ({
         id: uuidv7(),

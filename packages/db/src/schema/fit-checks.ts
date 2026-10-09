@@ -12,8 +12,9 @@ import { staff } from './people';
  * `request_id` (one sellers card per request). `brand`, `article`, `name` are the snapshot of the
  * line: a line changed after the check (another offer) no longer matches it and loses the check.
  * The master's answer: `fits`, `analog` (the analog_* columns and the supplier offer it was
- * priced from), `not_fit`, `call_needed`; nobody answered in 24 hours — `expired` (expires_at);
- * the line left the cart first — `cancelled`.
+ * priced from), `not_fit`, `call_needed`; nobody answered by expires_at (the closing of the
+ * pickup point's next working day, at least 24 hours) — `expired`; the line left the cart
+ * first — `cancelled`.
  *
  * `cart_item_id` is nulled, not cascaded, when the line is deleted: checkout removes the
  * checked-out lines from the cart in the order transaction, and order_items.fit_check_id must

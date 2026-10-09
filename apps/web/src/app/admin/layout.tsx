@@ -58,6 +58,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <Link href="/admin/reviews" className="text-sm text-accent underline">
             Отзывы
           </Link>
+          <Link href="/admin/kits" className="text-sm text-accent underline">
+            Наборы ТО
+          </Link>
         </nav>
       </header>
       <main className="mx-auto w-full max-w-6xl min-w-0 flex-1 px-4 py-6 print:max-w-none print:p-0">

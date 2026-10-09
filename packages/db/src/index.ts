@@ -24,6 +24,7 @@ export {
   isNotNull,
   isNull,
   lt,
+  ne,
   or,
   sql,
   type SQL,

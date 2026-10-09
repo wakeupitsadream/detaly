@@ -35,7 +35,7 @@ let calls: ApiCall[];
 let bot: Bot;
 let updateId = 1;
 
-function setup(health: () => Promise<PingData> = async () => HEALTH) {
+function setup(health: () => Promise<PingData> = async () => HEALTH, appBaseUrl?: string) {
   calls = [];
   bot = createSellerBot({
     token: 'test:x',
@@ -43,6 +43,7 @@ function setup(health: () => Promise<PingData> = async () => HEALTH) {
     isStaff: async (id) => id === STAFF_ID,
     health,
     sellerChatId: SELLER_CHAT_ID,
+    ...(appBaseUrl ? { appBaseUrl } : {}),
   });
   bot.api.config.use(async (_prev, method, payload) => {
     calls.push({ method, payload: payload as Record<string, unknown> });
@@ -198,5 +199,36 @@ describe('seller bot staff check', () => {
     await localBot.handleUpdate(commandUpdate('/ping', { chat: 'other' }));
     expect(asked).toEqual([]);
     expect(localCalls).toEqual([]);
+  });
+});
+
+// Step 5 (docs/kits.md): the master makes the maintenance kits in the admin.
+describe('seller bot /kits', () => {
+  beforeEach(() => setup(async () => HEALTH, 'https://shop.example/'));
+
+  it('answers staff with the link to /admin/kits', async () => {
+    await bot.handleUpdate(commandUpdate('/kits'));
+    expect(sendMessages()).toHaveLength(1);
+    expect(calls[0]?.payload).toMatchObject({
+      chat_id: STAFF_ID,
+      text: 'Наборы для ТО — в админке: https://shop.example/admin/kits',
+    });
+  });
+
+  it('answers in the sellers chat too', async () => {
+    await bot.handleUpdate(commandUpdate('/kits@detaly_seller_test_bot', { chat: 'seller' }));
+    expect(calls[0]?.payload).toMatchObject({ chat_id: SELLER_CHAT_ID });
+  });
+
+  it('says nothing to a stranger', async () => {
+    await bot.handleUpdate(commandUpdate('/kits', { from: STRANGER_ID }));
+    await bot.handleUpdate(commandUpdate('/kits', { from: STRANGER_ID, chat: 'seller' }));
+    expect(calls).toHaveLength(0);
+  });
+
+  it('is not there without APP_BASE_URL', async () => {
+    setup();
+    await bot.handleUpdate(commandUpdate('/kits'));
+    expect(calls).toHaveLength(0);
   });
 });

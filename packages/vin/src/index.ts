@@ -9,14 +9,19 @@ export * from './errors';
 export {
   brandMatches,
   isVinPreviewSendable,
+  parseVinPosition,
   previewVinAnswer,
+  resolveVinPosition,
+  searchVinArticles,
   VIN_ARTICLE_MIN,
   VIN_COMMENT_MAX,
   VIN_LINE_NOTE_MAX,
   VIN_PROPOSAL_SEARCHES_MAX,
   vinLinePromisedDate,
+  type VinPosition,
   type VinPreviewInput,
   type VinSearch,
+  type VinSearchOutcome,
 } from './preview';
 export {
   createVinRequest,
@@ -99,3 +104,15 @@ export {
   type FitOrderItemColumns,
   type FitRequestStaffView,
 } from './fit-checks';
+// step 5 (docs/kits.md): maintenance kits — the lines in the VIN-answer format, priced by the
+// preview rule
+export {
+  checkKitLines,
+  KIT_TEXT_MAX,
+  kitLineText,
+  parseKitText,
+  type KitCheckInput,
+  type KitText,
+  type KitTextError,
+  type KitTextLine,
+} from './kits';

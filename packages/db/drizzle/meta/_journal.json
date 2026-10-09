@@ -57,6 +57,13 @@
       "when": 1791515645531,
       "tag": "0007_fit_checks",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791533900364,
+      "tag": "0008_kits",
+      "breakpoints": true
     }
   ]
 }

@@ -58,3 +58,21 @@ export function pingHandler(health: () => Promise<PingData>): Middleware<Context
     await ctx.reply(message.text);
   };
 }
+
+/** The address of the kits admin (step 5, docs/kits.md): APP_BASE_URL/admin/kits. */
+export function kitsAdminUrl(appBaseUrl: string): string {
+  return `${appBaseUrl.replace(/\/+$/, '')}/admin/kits`;
+}
+
+/**
+ * /kits → the link to /admin/kits, where the master makes and publishes the maintenance kits
+ * (Basic auth there, the same password as the rest of the admin). Staff only: strangers never get
+ * here (staffOnly).
+ */
+export function kitsHandler(appBaseUrl: string): Middleware<Context> {
+  return async (ctx) => {
+    await ctx.reply(`Наборы для ТО — в админке: ${kitsAdminUrl(appBaseUrl)}`, {
+      link_preview_options: { is_disabled: true },
+    });
+  };
+}

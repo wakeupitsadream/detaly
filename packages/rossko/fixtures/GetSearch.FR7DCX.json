@@ -1,0 +1,32 @@
+{
+  "_meta": {
+    "synthetic": true,
+    "note": "сверить с реальным ответом; демо-наборы ТО (docs/kits.md): состав для демонстрации, применимость не проверялась",
+    "method": "GetSearch",
+    "args": { "text": "FR7DCX" },
+    "covers": "свеча зажигания для демо-набора (аналог): только под заказ, артикул с «+» (BOSCH FR7DCX+)"
+  },
+  "SearchResult": {
+    "success": true,
+    "message": "",
+    "PartsList": {
+      "Part": {
+        "guid": "synthetic-fr7dcx-bosch",
+        "brand": "BOSCH",
+        "partnumber": "FR7DCX+",
+        "name": "Свеча зажигания",
+        "stocks": {
+          "stock": {
+            "id": "MSK7",
+            "price": "199.00",
+            "count": 40,
+            "multiplicity": 1,
+            "type": 2,
+            "delivery": 4,
+            "description": "Москва, центральный склад"
+          }
+        }
+      }
+    }
+  }
+}

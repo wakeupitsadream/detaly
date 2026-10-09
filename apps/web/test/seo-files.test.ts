@@ -19,7 +19,7 @@ beforeEach(() => {
 describe('/sitemap.xml and robots.txt (perf-7)', () => {
   it('lists the public pages in production and names the sitemap in robots.txt', async () => {
     const { default: sitemap } = await import('@/app/sitemap');
-    const urls = sitemap().map((entry) => entry.url);
+    const urls = (await sitemap()).map((entry) => entry.url);
     expect(urls).toContain('https://detaly.example/');
     expect(urls).toContain('https://detaly.example/vin');
     expect(urls).toContain('https://detaly.example/returns');
@@ -35,7 +35,7 @@ describe('/sitemap.xml and robots.txt (perf-7)', () => {
     const closed: Record<string, string>[] = [{ NOINDEX_ALL: 'true' }, { DEMO_MODE: 'true' }];
     for (const overrides of closed) {
       state.env = env(overrides);
-      expect(sitemap()).toEqual([]);
+      expect(await sitemap()).toEqual([]);
       expect(robots().sitemap).toBeUndefined();
     }
   });

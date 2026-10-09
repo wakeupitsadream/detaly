@@ -34,8 +34,13 @@ export async function handleDemoCartRequest(
   const secret = deps.env.SESSION_SECRET;
   const state: { written: DemoCartLine[] | null } = { written: null };
   const jar: DemoCartJar = {
+    // Read-your-writes: a handler that changes the cart several times in one request (step 5,
+    // «Весь набор в корзину») sees its own earlier writes.
     read: () =>
-      Promise.resolve(decodeDemoCart(requestCookies(request).get(DEMO_CART_COOKIE)?.value, secret)),
+      Promise.resolve(
+        state.written ??
+          decodeDemoCart(requestCookies(request).get(DEMO_CART_COOKIE)?.value, secret),
+      ),
     write: (lines) => {
       state.written = lines;
     },

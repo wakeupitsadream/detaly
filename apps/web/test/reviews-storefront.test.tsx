@@ -287,9 +287,9 @@ describe('/review', () => {
     );
   });
 
-  it('is not in the sitemap', () => {
+  it('is not in the sitemap', async () => {
     state.env = env(LINKS);
-    const urls = sitemap().map((entry) => entry.url);
+    const urls = (await sitemap()).map((entry) => entry.url);
     expect(urls.length).toBeGreaterThan(0);
     expect(urls.some((url) => url.includes('/review'))).toBe(false);
   });

@@ -1,0 +1,32 @@
+{
+  "_meta": {
+    "synthetic": true,
+    "note": "сверить с реальным ответом; демо-наборы ТО (docs/kits.md): состав для демонстрации, применимость не проверялась",
+    "method": "GetSearch",
+    "args": { "text": "LX2046" },
+    "covers": "воздушный фильтр для демо-набора: только склад в Оренбурге (ORB1)"
+  },
+  "SearchResult": {
+    "success": true,
+    "message": "",
+    "PartsList": {
+      "Part": {
+        "guid": "synthetic-lx2046-knecht",
+        "brand": "Knecht",
+        "partnumber": "LX 2046",
+        "name": "Фильтр воздушный",
+        "stocks": {
+          "stock": {
+            "id": "ORB1",
+            "price": "540.00",
+            "count": 4,
+            "multiplicity": 1,
+            "type": 1,
+            "delivery": 0,
+            "description": "Оренбург"
+          }
+        }
+      }
+    }
+  }
+}

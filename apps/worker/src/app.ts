@@ -92,6 +92,7 @@ export async function runWorker({
       logger,
       client: botClient,
       deps,
+      appBaseUrl: env.APP_BASE_URL,
     });
   } else {
     logger.warn('TG_SELLER_BOT_TOKEN is empty: the seller bot is not started');

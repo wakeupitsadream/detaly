@@ -1,0 +1,45 @@
+{
+  "_meta": {
+    "synthetic": true,
+    "note": "сверить с реальным ответом; демо-наборы ТО (docs/kits.md): состав для демонстрации, применимость не проверялась",
+    "method": "GetSearch",
+    "args": { "text": "BKR6E" },
+    "covers": "свеча зажигания для демо-набора: склад в Оренбурге (ORB1) и под заказ, комплект из 4 штук"
+  },
+  "SearchResult": {
+    "success": true,
+    "message": "",
+    "PartsList": {
+      "Part": [
+        {
+          "guid": "synthetic-bkr6e-ngk",
+          "brand": "NGK",
+          "partnumber": "BKR6E",
+          "name": "Свеча зажигания",
+          "stocks": {
+            "stock": [
+              {
+                "id": "ORB1",
+                "price": "245.00",
+                "count": 20,
+                "multiplicity": 1,
+                "type": 1,
+                "delivery": 0,
+                "description": "Оренбург"
+              },
+              {
+                "id": "MSK7",
+                "price": "228.00",
+                "count": 60,
+                "multiplicity": 1,
+                "type": 2,
+                "delivery": 3,
+                "description": "Москва, центральный склад"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

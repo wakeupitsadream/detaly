@@ -2,7 +2,8 @@
 // 1B, docs/phase-1b-implementation.md section 13): order card buttons, «Счёт оплачен» with a
 // ForceReply and /queues for the owner. Phase 1C (docs/phase-1c-implementation.md section 9):
 // claim, booking and packaging photo buttons, VIN request cards, ForceReply texts (claim
-// answers, VIN lines) and photos (packaging, returned part).
+// answers, VIN lines) and photos (packaging, returned part). Step 5 (docs/kits.md): /kits answers
+// with the link to /admin/kits.
 import type { Logger } from '@detaly/config';
 import type { PingData } from '@detaly/notify';
 import { Bot, type ApiClientOptions } from 'grammy';
@@ -11,7 +12,7 @@ import type { WorkerDeps } from '../../deps';
 import { callbackHandler } from './callbacks';
 import { createCardService } from './cards';
 import { describeBotError, toSafeError } from './errors';
-import { allowedChats, pingHandler, staffOnly } from './handlers';
+import { allowedChats, kitsHandler, pingHandler, staffOnly } from './handlers';
 import { photoHandler } from './photos';
 import { queuesCommand } from './queues';
 import { replyHandler } from './replies';
@@ -29,6 +30,8 @@ export interface SellerBotOptions {
   client?: ApiClientOptions;
   /** Phase 1B: engine, cards and inspector for order buttons and /queues. */
   deps?: WorkerDeps;
+  /** APP_BASE_URL: /kits answers with the link to /admin/kits (step 5, docs/kits.md). */
+  appBaseUrl?: string;
 }
 
 export function createSellerBot({
@@ -40,11 +43,13 @@ export function createSellerBot({
   logger,
   client,
   deps,
+  appBaseUrl,
 }: SellerBotOptions): Bot {
   const bot = new Bot(token, { botInfo, client });
   bot.use(allowedChats(sellerChatId));
   bot.use(staffOnly(isStaff));
   bot.command('ping', pingHandler(health));
+  if (appBaseUrl) bot.command('kits', kitsHandler(appBaseUrl));
   if (deps) {
     // Presses edit cards through the bot's own Api (the queue jobs use deps.telegram).
     const cards = createCardService(deps, bot.api);

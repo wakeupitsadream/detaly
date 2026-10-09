@@ -14,4 +14,6 @@ export * from './workflow';
 export * from './pricing';
 // step 4: fit checks by the master (docs/fit-check.md)
 export * from './fit-checks';
+// step 5: maintenance kits by car model (docs/kits.md)
+export * from './kits';
 export * from './relations';

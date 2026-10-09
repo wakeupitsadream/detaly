@@ -25,8 +25,13 @@ import checkoutDetails from '../fixtures/GetCheckoutDetails.json' with { type: '
 import orders from '../fixtures/GetOrders.json' with { type: 'json' };
 import ordersRecent from '../fixtures/GetOrders.recent.json' with { type: 'json' };
 import ordersUnsupported from '../fixtures/GetOrders.unsupported.json' with { type: 'json' };
+import searchBkr6e from '../fixtures/GetSearch.BKR6E.json' with { type: 'json' };
+import searchC26003 from '../fixtures/GetSearch.C26003.json' with { type: 'json' };
+import searchCu1919 from '../fixtures/GetSearch.CU1919.json' with { type: 'json' };
 import searchEdge5w40 from '../fixtures/GetSearch.EDGE5W40.json' with { type: 'json' };
+import searchFr7dcx from '../fixtures/GetSearch.FR7DCX.json' with { type: 'json' };
 import searchGdb1330 from '../fixtures/GetSearch.GDB1330.json' with { type: 'json' };
+import searchLx2046 from '../fixtures/GetSearch.LX2046.json' with { type: 'json' };
 import searchNotFound from '../fixtures/GetSearch.NOTFOUND.json' with { type: 'json' };
 import searchOc90 from '../fixtures/GetSearch.OC90.json' with { type: 'json' };
 import searchW9142 from '../fixtures/GetSearch.W9142.json' with { type: 'json' };
@@ -48,6 +53,12 @@ export const BUNDLED_FIXTURES: Readonly<Record<string, unknown>> = {
   'GetSearch.NOTFOUND': searchNotFound,
   'GetSearch.OC90': searchOc90,
   'GetSearch.W9142': searchW9142,
+  // step 5 (docs/kits.md): parts of the two sample kits of the demo (filters, spark plugs)
+  'GetSearch.BKR6E': searchBkr6e,
+  'GetSearch.C26003': searchC26003,
+  'GetSearch.CU1919': searchCu1919,
+  'GetSearch.FR7DCX': searchFr7dcx,
+  'GetSearch.LX2046': searchLx2046,
 };
 
 /** Stock ids that the synthetic fixtures treat as Orenburg (use in fixtures mode). */

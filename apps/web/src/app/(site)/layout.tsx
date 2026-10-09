@@ -7,6 +7,7 @@ import { SiteHeader } from '@/components/SiteHeader';
 import { shareCard, titleTemplate } from '@/lib/seo';
 import { getBrand, telHref } from '@/server/brand';
 import { requestCartCount } from '@/server/cart/count';
+import { kitMakes, publishedKits } from '@/server/kits/catalog';
 import { isDemoMode } from '@/server/mode';
 
 // Every page reads env (brand, requisites) and the database at request time, so
@@ -38,8 +39,9 @@ export function generateMetadata(): Metadata {
 
 export default async function SiteLayout({ children }: { children: ReactNode }) {
   const brand = getBrand();
-  // One query by the cart cookie; a database failure shows 0 instead of failing the page.
-  const cartCount = await requestCartCount();
+  // One query by the cart cookie; a database failure shows 0 instead of failing the page. The
+  // kit list is the process's cached one (step 5): a failure only hides the footer link.
+  const [cartCount, kits] = await Promise.all([requestCartCount(), publishedKits()]);
   return (
     <div className="flex min-h-screen min-w-0 flex-col">
       <a
@@ -66,7 +68,11 @@ export default async function SiteLayout({ children }: { children: ReactNode }) 
       <main id="main" className="site-main flex-1">
         {children}
       </main>
-      <Footer brand={brand} year={new Date().getFullYear()} />
+      <Footer
+        brand={brand}
+        year={new Date().getFullYear()}
+        kits={kitMakes(kits ?? []).length > 0}
+      />
       <MobileCartBar cartCount={cartCount} />
     </div>
   );

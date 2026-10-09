@@ -34,3 +34,5 @@ export * from './install-params';
 export * from './reviews';
 // step 4 (docs/fit-check.md)
 export * from './fit-checks';
+// step 5 (docs/kits.md)
+export * from './kits';

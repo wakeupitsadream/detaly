@@ -80,7 +80,12 @@ export interface VinPreviewInput {
 type ErrorLine = Extract<VinPreviewLine, { status: 'error' }>;
 type OkLine = Extract<VinPreviewLine, { status: 'ok' }>;
 
-interface ParsedLine {
+/**
+ * One position «БРЕНД АРТИКУЛ [КОЛ-ВО]» read by parseVinPosition. Step 5 (docs/kits.md): the
+ * lines of a maintenance kit are read and resolved with the same functions, so a kit line and a
+ * proposal line are priced by one rule.
+ */
+export interface VinPosition {
   line: number;
   raw: string;
   brand: string;
@@ -153,7 +158,7 @@ function compareChoice(a: PricedOffer, b: PricedOffer): number {
 }
 
 /** Parses one line of the answer; comment and empty lines are handled by the caller. */
-function parseLine(line: number, raw: string): ParsedLine | ErrorLine {
+export function parseVinPosition(line: number, raw: string): VinPosition | ErrorLine {
   const parsed = parseManualAnswer(raw);
   const error = parsed.errors[0];
   if (error !== undefined) {
@@ -210,11 +215,35 @@ async function mapLimited<T, R>(
   return results;
 }
 
-type SearchOutcome = { ok: true; offers: readonly Offer[] } | { ok: false };
+/** GetSearch of one article: the offers, or a failure of that search only. */
+export type VinSearchOutcome = { ok: true; offers: readonly Offer[] } | { ok: false };
 
-function resolveLine(
-  parsed: ParsedLine,
-  outcome: SearchOutcome,
+/**
+ * GetSearch of every article through the caller's `search` (its cache and limiter), at most
+ * SEARCH_CONCURRENCY at a time. A failing search (quota breaker, rate limit, timeout, SOAP fault)
+ * fails only the lines of its article.
+ */
+export async function searchVinArticles(
+  articles: readonly string[],
+  search: VinSearch,
+): Promise<Map<string, VinSearchOutcome>> {
+  const outcomes = await mapLimited(articles, SEARCH_CONCURRENCY, async (article) => {
+    try {
+      return { ok: true, offers: await search(article) } satisfies VinSearchOutcome;
+    } catch {
+      return { ok: false } satisfies VinSearchOutcome;
+    }
+  });
+  return new Map<string, VinSearchOutcome>(articles.map((a, i) => [a, outcomes[i]!]));
+}
+
+/**
+ * The rule of the preview for one position against the offers of its article (see the module
+ * comment): the line the client will be offered, priced by priceOffer, or why it cannot be.
+ */
+export function resolveVinPosition(
+  parsed: VinPosition,
+  outcome: VinSearchOutcome,
   ctx: RepriceContext,
 ): OkLine | ErrorLine {
   const { line, raw, articleNorm, qty } = parsed;
@@ -318,7 +347,7 @@ export async function previewVinAnswer(input: VinPreviewInput): Promise<VinPrevi
     now: input.now,
     timeZone: input.timeZone ?? CLIENT_TIME_ZONE,
   };
-  const slots: (ParsedLine | ErrorLine)[] = [];
+  const slots: (VinPosition | ErrorLine)[] = [];
   const comments: string[] = [];
   let commentLine: { line: number; raw: string } | null = null;
   let positions = 0;
@@ -341,7 +370,7 @@ export async function previewVinAnswer(input: VinPreviewInput): Promise<VinPrevi
       );
       return;
     }
-    const parsed = parseLine(line, raw);
+    const parsed = parseVinPosition(line, raw);
     if ('status' in parsed) {
       slots.push(parsed);
       return;
@@ -363,16 +392,8 @@ export async function previewVinAnswer(input: VinPreviewInput): Promise<VinPrevi
 
   const comment = comments.length > 0 ? comments.join('\n') : null;
 
-  const articles = [...searches];
-  const outcomes = await mapLimited(articles, SEARCH_CONCURRENCY, async (article) => {
-    try {
-      return { ok: true, offers: await input.search(article) } satisfies SearchOutcome;
-    } catch {
-      // Quota breaker, rate limit, timeout, SOAP fault: only the lines of this article fail.
-      return { ok: false } satisfies SearchOutcome;
-    }
-  });
-  const byArticle = new Map<string, SearchOutcome>(articles.map((a, i) => [a, outcomes[i]!]));
+  // Quota breaker, rate limit, timeout, SOAP fault: only the lines of that article fail.
+  const byArticle = await searchVinArticles([...searches], input.search);
 
   const lines: VinPreviewLine[] = [];
   const seenOffers = new Map<string, number>();
@@ -381,7 +402,11 @@ export async function previewVinAnswer(input: VinPreviewInput): Promise<VinPrevi
       lines.push(slot);
       continue;
     }
-    const resolved = resolveLine(slot, byArticle.get(slot.articleNorm) ?? { ok: false }, ctx);
+    const resolved = resolveVinPosition(
+      slot,
+      byArticle.get(slot.articleNorm) ?? { ok: false },
+      ctx,
+    );
     if (resolved.status === 'ok') {
       const earlier = seenOffers.get(resolved.offerKey);
       if (earlier !== undefined) {

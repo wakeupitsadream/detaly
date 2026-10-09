@@ -509,3 +509,15 @@ export const FIT_CHECK_ANSWERS = [
   'call_needed',
 ] as const satisfies readonly FitCheckStatus[];
 export type FitCheckAnswer = (typeof FIT_CHECK_ANSWERS)[number];
+
+// ---------------------------------------------------------------------------
+// Step 5 (docs/kits.md): maintenance kits by car model («Наборы ТО»)
+// ---------------------------------------------------------------------------
+
+/**
+ * kits.status (text + check). A `draft` is seen only in the admin; a `published` kit is on
+ * /to/<make>/<model> (only staff publish, only when every main line is found at the supplier and
+ * none is marked goods). Appending a value requires a migration (the check constraint).
+ */
+export const KIT_STATUSES = ['draft', 'published'] as const;
+export type KitStatus = (typeof KIT_STATUSES)[number];

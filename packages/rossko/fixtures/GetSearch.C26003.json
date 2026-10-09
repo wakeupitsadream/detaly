@@ -1,0 +1,45 @@
+{
+  "_meta": {
+    "synthetic": true,
+    "note": "сверить с реальным ответом; демо-наборы ТО (docs/kits.md): состав для демонстрации, применимость не проверялась",
+    "method": "GetSearch",
+    "args": { "text": "C26003" },
+    "covers": "воздушный фильтр для демо-набора: склад в Оренбурге (ORB1) и под заказ"
+  },
+  "SearchResult": {
+    "success": true,
+    "message": "",
+    "PartsList": {
+      "Part": [
+        {
+          "guid": "synthetic-c26003-mann",
+          "brand": "MANN-FILTER",
+          "partnumber": "C 26 003",
+          "name": "Фильтр воздушный",
+          "stocks": {
+            "stock": [
+              {
+                "id": "ORB1",
+                "price": "690.00",
+                "count": 3,
+                "multiplicity": 1,
+                "type": 1,
+                "delivery": 0,
+                "description": "Оренбург"
+              },
+              {
+                "id": "MSK7",
+                "price": "655.00",
+                "count": 15,
+                "multiplicity": 1,
+                "type": 2,
+                "delivery": 3,
+                "description": "Москва, центральный склад"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

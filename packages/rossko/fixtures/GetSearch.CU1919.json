@@ -1,0 +1,32 @@
+{
+  "_meta": {
+    "synthetic": true,
+    "note": "сверить с реальным ответом; демо-наборы ТО (docs/kits.md): состав для демонстрации, применимость не проверялась",
+    "method": "GetSearch",
+    "args": { "text": "CU1919" },
+    "covers": "салонный фильтр для демо-набора: только под заказ"
+  },
+  "SearchResult": {
+    "success": true,
+    "message": "",
+    "PartsList": {
+      "Part": {
+        "guid": "synthetic-cu1919-mann",
+        "brand": "MANN-FILTER",
+        "partnumber": "CU 1919",
+        "name": "Фильтр салонный",
+        "stocks": {
+          "stock": {
+            "id": "MSK7",
+            "price": "870.00",
+            "count": 9,
+            "multiplicity": 1,
+            "type": 2,
+            "delivery": 3,
+            "description": "Москва, центральный склад"
+          }
+        }
+      }
+    }
+  }
+}

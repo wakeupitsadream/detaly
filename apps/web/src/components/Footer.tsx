@@ -14,6 +14,14 @@ const SHOP_LINKS = [
   { href: '/about', label: 'О нас и реквизиты' },
 ];
 
+/** Step 5 (docs/kits.md): shown only while at least one kit is published. */
+const KITS_LINK = { href: '/to', label: 'Наборы для ТО' };
+
+/** The shop links, «Наборы для ТО» after the VIN request when there are kits. */
+export function footerShopLinks(kits: boolean): { href: string; label: string }[] {
+  return kits ? [SHOP_LINKS[0]!, KITS_LINK, ...SHOP_LINKS.slice(1)] : SHOP_LINKS;
+}
+
 /**
  * Short captions that fit one line on a 360 px phone (the documents keep their full titles):
  * a column of even 44 px rows instead of two-line items with jumping gaps.
@@ -79,7 +87,16 @@ function MessengerButton({
  * built from what is set: no empty two thirds when the point and the phone are not known yet,
  * and the «реквизиты к запуску» line then sits in the bottom strip next to «©».
  */
-export function Footer({ brand, year }: { brand: Brand; year: number }) {
+export function Footer({
+  brand,
+  year,
+  kits = false,
+}: {
+  brand: Brand;
+  year: number;
+  /** At least one maintenance kit is published (step 5): «Наборы для ТО» in the links. */
+  kits?: boolean;
+}) {
   const { seller, pickup } = brand;
   const contacts = [seller.phone, seller.email].filter((part) => part !== null);
   const registration = [
@@ -113,7 +130,7 @@ export function Footer({ brand, year }: { brand: Brand; year: number }) {
               columns === 1 ? 'grid gap-2 md:grid-cols-2 md:gap-12' : 'space-y-2',
             )}
           >
-            <LinkList label="Покупателям" links={SHOP_LINKS} />
+            <LinkList label="Покупателям" links={footerShopLinks(kits)} />
             <LinkList label="Документы" links={DOC_LINKS} />
           </div>
         </div>

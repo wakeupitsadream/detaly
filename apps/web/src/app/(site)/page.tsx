@@ -11,6 +11,7 @@ import { FullBleed, Section } from '@/components/ui/Section';
 import { brandedTitle, PAGE_SEO } from '@/lib/seo';
 import { vinRequestHref } from '@/lib/vin-link';
 import { getBrand } from '@/server/brand';
+import { kitMakeSlugs, publishedKits } from '@/server/kits/catalog';
 import { storefrontRating } from '@/server/reviews/rating';
 
 /**
@@ -27,18 +28,20 @@ export function generateMetadata(): Metadata {
 
 /**
  * Home (docs/design-v2.md, section 4 «Главная»): the search and the page's h1 («Автозапчасти в
- * Оренбурге — по артикулу и VIN», HomeHeadline) live in the brand header, then makes,
+ * Оренбурге — по артикулу и VIN», HomeHeadline) live in the brand header, then makes (those with
+ * published maintenance kits lead to /to/<make>, step 5),
  * categories, the dark panel of advantages (with the shop's rating on its map cards when there
  * is one to show, step 3), the pickup point and the VIN prompt. Pictures and short captions
  * instead of paragraphs.
  */
 export default async function HomePage() {
   const brand = getBrand();
-  const rating = await storefrontRating();
+  const [rating, kits] = await Promise.all([storefrontRating(), publishedKits()]);
   return (
     <FullBleed>
       <Section aria-labelledby="brands-title" className="pt-8! lg:pt-12!">
-        <BrandGrid />
+        {/* Step 5: a make with published kits leads to them (null list: no kits shown). */}
+        <BrandGrid kitMakes={kitMakeSlugs(kits)} />
       </Section>
       <Section aria-labelledby="categories-title" className="pt-0!">
         <CategoryGrid />

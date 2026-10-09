@@ -110,10 +110,22 @@ function paymentMode(payment: { mixed: boolean; sentences: string[] }): CartPaym
   return !payment.mixed && payment.sentences.includes(FINAL_SCHEME_NOTE) ? 'on_pickup' : 'prepay';
 }
 
+/** «Весь набор в корзину» came back (step 5): lines added and lines the supplier lacked. */
+function kitCounts(params: SearchParams): { added: number; skipped: number } | null {
+  const added = Number(first(params.kit));
+  const skipped = Number(first(params.kit_skipped) || '0');
+  if (!Number.isSafeInteger(added) || added < 1 || added > 99) return null;
+  return {
+    added,
+    skipped: Number.isSafeInteger(skipped) && skipped > 0 ? Math.min(skipped, 99) : 0,
+  };
+}
+
 export default async function CartPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
   const errorCode = first(params.error);
   const added = first(params.added) === '1';
+  const kit = kitCounts(params);
   const token = readCartToken(await cookies());
   let view: CartView | null;
   try {
@@ -170,6 +182,12 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
         {added && !isCartErrorCode(errorCode) && lines.length > 0 ? (
           <Notice tone="ok" role="status">
             Добавили в корзину
+          </Notice>
+        ) : null}
+        {kit && lines.length > 0 ? (
+          <Notice tone="ok" role="status" title="Набор в корзине" data-testid="cart-kit-added">
+            Добавили {cartCountLabel(kit.added)}
+            {kit.skipped > 0 ? `, ещё ${kit.skipped} нет у поставщика — их в корзине нет` : null}.
           </Notice>
         ) : null}
         {view ? <DiffBanner changes={view.changes} /> : null}

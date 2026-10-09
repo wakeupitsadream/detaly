@@ -73,6 +73,32 @@ export function aboutDescription(pickup: {
   return parts.join(' ');
 }
 
+/**
+ * The maintenance kit pages (step 5, docs/kits.md): /to, /to/<make>, /to/<make>/<model>. No
+ * prices in a description: they change with the supplier every day.
+ */
+export const KITS_SEO: PageSeo = {
+  title: `Наборы для ТО в ${PICKUP_CITY}е`,
+  description:
+    'Готовые наборы запчастей для ТО популярных машин: фильтры, свечи и другие детали одной кнопкой в корзину. Дата получения заранее.',
+};
+
+/** /to/<make>: «ТО Lada в Оренбурге — наборы запчастей». */
+export function kitMakeSeo(make: string, models: readonly string[]): PageSeo {
+  return {
+    title: `ТО ${make} в ${PICKUP_CITY}е — наборы запчастей`,
+    description: `Наборы запчастей для ТО ${make}: ${models.join(', ')}. Фильтры, свечи и другие детали одной кнопкой в корзину, дата получения заранее.`,
+  };
+}
+
+/** /to/<make>/<model>: «ТО Lada Vesta в Оренбурге — набор запчастей». */
+export function kitModelSeo(make: string, model: string, engines: readonly string[]): PageSeo {
+  return {
+    title: `ТО ${make} ${model} в ${PICKUP_CITY}е — набор запчастей`,
+    description: `Набор запчастей для ТО ${make} ${model} (${engines.join('; ')}): фильтры, свечи и другие детали одной кнопкой в корзину. Дата получения заранее, оплата при получении для деталей со склада в ${PICKUP_CITY}е.`,
+  };
+}
+
 /** /search (never indexed): «OC90 — цены и сроки в Оренбурге». */
 export function searchTitle(query: string): string {
   return query ? `${query} — цены и сроки в ${PICKUP_CITY}е` : 'Поиск по артикулу';

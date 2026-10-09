@@ -4,6 +4,7 @@ import { buttonClass } from '@/components/ui/Button';
 import { cn } from '@/components/ui/cn';
 import { SectionHeading } from '@/components/ui/Section';
 import { CAR_BRANDS, FEATURED_BRANDS_COUNT, brandLogoSrc, type CarBrand } from '@/lib/brands';
+import { kitMakePath } from '@/lib/kit-paths';
 import { vinRequestHref } from '@/lib/vin-link';
 
 /** Makes shown on phones before «Все марки» (three rows of four). */
@@ -25,32 +26,63 @@ const GRID =
   'grid min-w-0 grid-cols-4 gap-2 max-[374px]:gap-1.5 md:grid-cols-6 md:gap-3 lg:grid-cols-8';
 
 /**
+ * Where a make tile leads: the maintenance kits of the make when it has published ones (step 5,
+ * docs/kits.md), otherwise the VIN request with the make filled in.
+ */
+export function brandTileHref(brand: Pick<CarBrand, 'slug' | 'name'>, kits: boolean): string {
+  return kits ? kitMakePath(brand.slug) : vinRequestHref({ car: brand.name });
+}
+
+/**
  * One make (docs/design-v2.md, BrandTile): a white card with a `line` border, the logo in a
  * 60×36 / 96×48 box (scaled by `brand.scale`, so wide ovals do not outweigh compact emblems and
- * keep clear of the rounded frame), the name under it. Leads to the VIN request with the make filled in.
+ * keep clear of the rounded frame), the name under it. Leads to the VIN request with the make
+ * filled in, or (step 5) to the make's maintenance kits with a small «ТО» chip in the corner.
  */
 export function BrandTile({
   brand,
   lazy = false,
+  kits = false,
+  chipRoom = kits,
   className,
 }: {
   brand: CarBrand;
   lazy?: boolean;
+  /** The make has published maintenance kits. */
+  kits?: boolean;
+  /**
+   * Room on top for the «ТО» chip: every tile of a grid that has one, so the logos and names of
+   * a row stay level.
+   */
+  chipRoom?: boolean;
   className?: string;
 }) {
   const phoneName = phoneBrandName(brand);
   return (
     <li className={cn('min-w-0', className)}>
       <Link
-        href={vinRequestHref({ car: brand.name })}
+        href={brandTileHref(brand, kits)}
         prefetch={false}
         data-testid={`home-brand-${brand.slug}`}
+        data-kits={kits ? 'yes' : undefined}
+        aria-label={kits ? `${brand.name}: наборы для ТО` : undefined}
         className={cn(
-          'flex h-full min-h-24 min-w-0 flex-col items-center justify-center gap-2 rounded-tile border border-line bg-bg px-0.5 pt-3 pb-2.5 text-center text-ink max-[374px]:px-0 md:px-1',
+          'relative flex h-full min-h-24 min-w-0 flex-col items-center justify-center gap-2 rounded-tile border border-line bg-bg px-0.5 pb-2.5 text-center text-ink max-[374px]:px-0 md:px-1',
           'transition-[border-color,transform] duration-150 hover:-translate-y-0.5 hover:border-line-strong',
-          'md:min-h-28 md:gap-2.5 md:pt-4 md:pb-3',
+          'md:min-h-28 md:gap-2.5 md:pb-3',
+          // Room for the «ТО» chip over the logo (one top padding or the other, never both).
+          chipRoom ? 'pt-5 md:pt-6' : 'pt-3 md:pt-4',
         )}
       >
+        {kits ? (
+          // «ТО»: this tile leads to ready kits, not to the request (the caption says so).
+          <span
+            aria-hidden
+            className="absolute top-0.5 right-0.5 rounded-full bg-brand-soft px-1.5 text-caption leading-5 font-bold text-brand md:top-1.5 md:right-1.5"
+          >
+            ТО
+          </span>
+        ) : null}
         {/* A plain img: the logos are small trimmed WebP files (docs/assets.md). The 60 px box
             leaves ~10 px of air to the rounded frame on a 80 px phone tile, while the tile itself
             keeps a thin side padding so «Mitsubishi» still fits in one line under it. */}
@@ -82,25 +114,42 @@ export function BrandTile({
   );
 }
 
+/** The caption under «Выберите марку»: what the tiles lead to. */
+export const BRANDS_HINT = 'Подберём по VIN — бесплатно';
+/** With kits (step 5): the «ТО» tiles lead to them, the others to the VIN request. */
+export const BRANDS_HINT_KITS =
+  'С пометкой «ТО» — готовые наборы для ТО, с остальными подберём по VIN';
+
 /**
  * «Выберите марку»: the most common makes as logo tiles (12 on phones, FEATURED_BRANDS_COUNT
  * from md), «Все марки» opens the rest without JS. The makes between the two counts sit in
  * both lists: shown in the grid from md, inside «Все марки» only on phones. A small muted line
- * under it all says whose the marks are (14 px, legal-7).
+ * under it all says whose the marks are (14 px, legal-7). `kitMakes` (step 5): the makes with
+ * published maintenance kits — their tiles lead to /to/<make>.
  */
-export function BrandGrid({ className }: { className?: string }) {
+export function BrandGrid({
+  className,
+  kitMakes = new Set<string>(),
+}: {
+  className?: string;
+  kitMakes?: ReadonlySet<string>;
+}) {
   const featured = CAR_BRANDS.slice(0, FEATURED_BRANDS_COUNT);
   const rest = CAR_BRANDS.slice(PHONE_BRANDS_COUNT);
   return (
     <div className={cn('min-w-0', className)}>
       <SectionHeading id="brands-title">Выберите марку</SectionHeading>
-      {/* The tiles lead to the request to the master, not to a catalogue: said up front. */}
-      <p className="mt-2 text-small text-muted">Подберём по VIN — бесплатно</p>
+      {/* Where the tiles lead, said up front: the request to the master, or ready kits. */}
+      <p className="mt-2 text-small text-muted" data-testid="home-brands-hint">
+        {kitMakes.size > 0 ? BRANDS_HINT_KITS : BRANDS_HINT}
+      </p>
       <ul className={cn(GRID, 'mt-5 md:mt-6')} data-testid="home-brands">
         {featured.map((brand, index) => (
           <BrandTile
             key={brand.slug}
             brand={brand}
+            kits={kitMakes.has(brand.slug)}
+            chipRoom={kitMakes.size > 0}
             // Hidden on phones: lazy, so a phone neither preloads nor fetches these logos.
             lazy={index >= PHONE_BRANDS_COUNT}
             className={index >= PHONE_BRANDS_COUNT ? 'max-md:hidden' : undefined}
@@ -128,6 +177,8 @@ export function BrandGrid({ className }: { className?: string }) {
               <BrandTile
                 key={brand.slug}
                 brand={brand}
+                kits={kitMakes.has(brand.slug)}
+                chipRoom={kitMakes.size > 0}
                 lazy
                 className={
                   index + PHONE_BRANDS_COUNT < FEATURED_BRANDS_COUNT ? 'md:hidden' : undefined

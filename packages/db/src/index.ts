@@ -12,6 +12,8 @@ export {
   type Tx,
 } from './client';
 export type { Executor } from './executor';
+// One consistent snapshot (REPEATABLE READ, READ ONLY) for read models of several queries
+export { READ_SNAPSHOT, readSnapshot } from './snapshot';
 // Query operators re-exported so apps (web) use this package's single drizzle-orm instance
 // instead of depending on drizzle-orm themselves (a second copy without the postgres peer).
 export {

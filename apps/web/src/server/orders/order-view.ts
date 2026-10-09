@@ -9,7 +9,7 @@
  * changes applyTransition uses), so the page never offers what the server would refuse.
  */
 import type { Env } from '@detaly/config';
-import { asc, eq, orderEvents, type Executor } from '@detaly/db';
+import { asc, eq, orderEvents, readSnapshot, type Executor } from '@detaly/db';
 import {
   formatDayMonth,
   formatPromise,
@@ -331,38 +331,62 @@ export interface LoadOrderViewOptions {
   /** Online payment is configured (decision Б6). */
   paymentsEnabled?: boolean;
   now?: Date;
+  /**
+   * Test seam: runs inside the read snapshot right after the order is found by its token and
+   * before its rows (items, payments, receipts, journal, settings) are read. The tests commit a
+   * payment here from another connection to check that the view never sees it half.
+   */
+  afterOrderFound?: (tx: Executor) => Promise<void>;
 }
 
-/** The order of this link token, or null for a malformed or unknown token. */
+/** The journal rows the timeline is built from. */
+function loadEvents(db: Executor, orderId: string) {
+  return db
+    .select({
+      id: orderEvents.id,
+      type: orderEvents.type,
+      fromStatus: orderEvents.fromStatus,
+      toStatus: orderEvents.toStatus,
+      actorType: orderEvents.actorType,
+      payload: orderEvents.payload,
+      createdAt: orderEvents.createdAt,
+    })
+    .from(orderEvents)
+    .where(eq(orderEvents.orderId, orderId))
+    .orderBy(asc(orderEvents.createdAt), asc(orderEvents.id));
+}
+
+/**
+ * The order of this link token, or null for a malformed or unknown token.
+ *
+ * Every row of the view comes from one snapshot (readSnapshot: REPEATABLE READ, READ ONLY). The
+ * payment webhook moves the payment and the order together in one transaction; read in separate
+ * statements, a commit between the order row and its payments showed «Оплата получена» next to
+ * «Ждёт оплаты», and the page stopped refreshing on that contradiction. Given a transaction
+ * already (the order page reads the 1C blocks in the same snapshot), the reads join it.
+ */
 export async function loadOrderView(
   db: Executor,
   token: string,
   options: LoadOrderViewOptions,
 ): Promise<OrderView | null> {
   if (!isOrderToken(token)) return null;
-  const found = await db.query.orders.findFirst({
-    where: (t, ops) => ops.eq(t.accessToken, token),
-    columns: { id: true },
+  const read = await readSnapshot(db, async (tx) => {
+    const found = await tx.query.orders.findFirst({
+      where: (t, ops) => ops.eq(t.accessToken, token),
+      columns: { id: true },
+    });
+    if (!found) return null;
+    await options.afterOrderFound?.(tx);
+    const [snapshot, events, settings] = await Promise.all([
+      loadOrderSnapshot(tx, found.id, { lock: false }),
+      loadEvents(tx, found.id),
+      loadOrderSettings(tx, options.env),
+    ]);
+    return snapshot === null ? null : { snapshot, events, settings };
   });
-  if (!found) return null;
-  const [snapshot, events, settings] = await Promise.all([
-    loadOrderSnapshot(db, found.id, { lock: false }),
-    db
-      .select({
-        id: orderEvents.id,
-        type: orderEvents.type,
-        fromStatus: orderEvents.fromStatus,
-        toStatus: orderEvents.toStatus,
-        actorType: orderEvents.actorType,
-        payload: orderEvents.payload,
-        createdAt: orderEvents.createdAt,
-      })
-      .from(orderEvents)
-      .where(eq(orderEvents.orderId, found.id))
-      .orderBy(asc(orderEvents.createdAt), asc(orderEvents.id)),
-    loadOrderSettings(db, options.env),
-  ]);
-  if (snapshot === null) return null;
+  if (read === null) return null;
+  const { snapshot, events, settings } = read;
   const now = options.now ?? new Date();
   const { order } = snapshot;
   const status = order.status;

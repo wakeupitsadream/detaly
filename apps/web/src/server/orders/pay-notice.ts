@@ -45,15 +45,24 @@ export type PayCheck =
   | { kind: 'paid' }
   | { kind: 'failed' };
 
-/** State of the payment block after the return from YooKassa; null without `?paid=1`. */
+/**
+ * State of the payment block after the return from YooKassa; null without `?paid=1`.
+ *
+ * «Оплата получена» needs the order to agree, not only the payment row. The webhook moves the
+ * payment and the order in one transaction and the view reads them from one snapshot, so a
+ * succeeded payment on an order still `awaiting_payment` means the order has not moved with it
+ * (a guard held it back for the owner, or a writer to come). The page then keeps «Проверяем
+ * оплату…» and its refresh, up to the same two minutes, and never shows «Оплата получена» next
+ * to «Ждёт оплаты».
+ */
 export function payCheckState(
-  view: Pick<OrderView, 'token' | 'payment'>,
+  view: Pick<OrderView, 'token' | 'payment' | 'status'>,
   notice: PayNotice,
   nowMs: number = Date.now(),
 ): PayCheck | null {
   if (!notice.paid || view.payment === null) return null;
   const { status } = view.payment;
-  if (status === 'succeeded') return { kind: 'paid' };
+  if (status === 'succeeded' && view.status !== 'awaiting_payment') return { kind: 'paid' };
   if (status === 'canceled') return { kind: 'failed' };
   const since = notice.since ?? nowMs;
   if (nowMs - since >= PAY_CHECK_WINDOW_MS) return { kind: 'slow' };

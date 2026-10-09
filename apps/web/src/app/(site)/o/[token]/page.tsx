@@ -17,12 +17,7 @@ import { getLogger } from '@/server/logger';
 import { isOrderToken } from '@/server/orders/access';
 import { findCartReminder } from '@/server/orders/cart-reminder';
 import { parseOrderFlash } from '@/server/orders/flash';
-import {
-  EMPTY_SERVICES,
-  loadOrderServices,
-  type OrderServicesView,
-} from '@/server/orders/order-services';
-import { loadOrderView, type OrderView } from '@/server/orders/order-view';
+import { loadOrderPage } from '@/server/orders/order-page';
 import { parsePayNotice } from '@/server/orders/pay-notice';
 import { orderReviewLinks } from '@/server/reviews/links';
 
@@ -30,38 +25,32 @@ type Params = Promise<{ token: string }>;
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 /**
- * One query per request for both the metadata and the page. A database failure is logged
- * with names and SQLSTATE only and rethrown without the driver message: that message carries
- * the query parameters, and the access token is one of them (the error page shows nothing).
+ * One read per request for both the metadata and the page: the order view and its phase 1C
+ * blocks from one snapshot (server/orders/order-page.ts), so the page never shows a payment
+ * without the order status it moved. A database failure is logged with names and SQLSTATE only
+ * and rethrown without the driver message: that message carries the query parameters, and the
+ * access token is one of them (the error page shows nothing). A failure of the 1C blocks alone
+ * (a booking or claim query) hides them with a warning instead of failing the page.
  */
-const getOrderView = cache(async (token: string) => {
+const getOrderPage = cache(async (token: string) => {
   try {
     const env = serverEnv();
-    return await loadOrderView(getDb(), token, { env, paymentsEnabled: paymentsEnabled(env) });
+    return await loadOrderPage(getDb(), token, {
+      view: { env, paymentsEnabled: paymentsEnabled(env) },
+      services: () => ({
+        env,
+        now: new Date(),
+        photosEnabled: photosEnabled(),
+        maxFileMb: env.FILES_MAX_UPLOAD_MB,
+      }),
+      onServicesError: (error) =>
+        getLogger().warn(errorInfo(error), 'order page: phase 1C blocks unavailable'),
+    });
   } catch (error) {
     getLogger().error(errorInfo(error), 'order page: database unavailable');
     throw new PageDataError('order page: database unavailable');
   }
 });
-
-/**
- * The phase 1C blocks. A failure (the photo store, a booking query) hides them with a warning
- * instead of failing the page: the order itself is already loaded.
- */
-async function getOrderServices(view: OrderView, now: Date): Promise<OrderServicesView> {
-  try {
-    const env = serverEnv();
-    return await loadOrderServices(getDb(), view, {
-      env,
-      now,
-      photosEnabled: photosEnabled(),
-      maxFileMb: env.FILES_MAX_UPLOAD_MB,
-    });
-  } catch (error) {
-    getLogger().warn(errorInfo(error), 'order page: phase 1C blocks unavailable');
-    return EMPTY_SERVICES;
-  }
-}
 
 const PRIVATE: Pick<Metadata, 'robots' | 'referrer'> = {
   robots: { index: false, follow: false },
@@ -74,8 +63,8 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   // The share card without its picture: the link is the client's own (lib/seo.ts).
   const card = shareCard(getBrand().name, { image: false });
   if (!isOrderToken(token)) return { ...PRIVATE, ...card, title: 'Заказ не найден' };
-  const view = await getOrderView(token);
-  return { ...PRIVATE, ...card, title: view ? `Заказ ${view.number}` : 'Заказ не найден' };
+  const page = await getOrderPage(token);
+  return { ...PRIVATE, ...card, title: page ? `Заказ ${page.view.number}` : 'Заказ не найден' };
 }
 
 export default async function OrderPage({
@@ -87,8 +76,9 @@ export default async function OrderPage({
 }) {
   const { token } = await params;
   if (!isOrderToken(token)) notFound();
-  const view = await getOrderView(token);
-  if (!view) notFound();
+  const page = await getOrderPage(token);
+  if (!page) notFound();
+  const { view, services } = page;
 
   const nowMs = Date.now();
   const query = (await searchParams) ?? {};
@@ -110,8 +100,6 @@ export default async function OrderPage({
       install = undefined;
     }
   }
-
-  const services = await getOrderServices(view, new Date(nowMs));
 
   return (
     <OrderDetails

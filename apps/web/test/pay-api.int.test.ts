@@ -511,6 +511,51 @@ describe('POST /api/orders/<token>/pay', () => {
   });
 });
 
+describe('/o/<token> reads one snapshot', () => {
+  it('a payment applied while the page reads is seen whole or not at all', async () => {
+    const order = await seedOrder();
+    await pay(order.token);
+    const [row] = await paymentRows(order.id);
+    mock.setPaymentStatus(String(row?.providerPaymentId), 'succeeded');
+    const remote = await provider.payments.getPayment(String(row?.providerPaymentId));
+
+    let transaction: Record<string, unknown> | undefined;
+    const view = await loadOrderView(db, order.token, {
+      env,
+      paymentsEnabled: true,
+      // The webhook lands after the order is found and before its payments are read: the
+      // worker's transaction (payment succeeded + order confirmed) commits on another connection.
+      afterOrderFound: async (tx) => {
+        const applied = await applyPaymentObject(engine(), remote, { source: 'webhook' });
+        expect(applied.result).toBe('processed');
+        [transaction] = await tx.execute<Record<string, unknown>>(
+          sql`select current_setting('transaction_isolation') as isolation,
+                     current_setting('transaction_read_only') as read_only`,
+        );
+      },
+    });
+    // The order as it was when the read began, every part of it: never «paid» beside «awaiting».
+    expect(view?.status).toBe('awaiting_payment');
+    expect(view?.payment).toEqual({ status: 'pending', kind: 'prepayment' });
+    expect(view?.moneyHeld).toBe(false);
+    expect(view?.actions.pay).toBe(true);
+    expect(view?.timeline.map((e) => e.text)).not.toContain('Оплата получена');
+    // Because every read of the view ran in one REPEATABLE READ, READ ONLY transaction.
+    expect(transaction).toEqual({ isolation: 'repeatable read', read_only: 'on' });
+
+    // The next read has the payment and the order together.
+    const after = await viewOf(order.token);
+    expect(after.status).toBe('confirmed');
+    expect(after.payment).toEqual({ status: 'succeeded', kind: 'prepayment' });
+    expect(after.moneyHeld).toBe(true);
+    expect(after.timeline.map((e) => e.text)).toContain('Оплата получена');
+    expect(after.statusLabel).toBe('Подтверждён');
+    const html = render(after, parsePayNotice({ paid: '1' }));
+    expect(plain(html)).toContain('Оплата получена');
+    expect(html).not.toContain('http-equiv="refresh"');
+  });
+});
+
 describe('/o/<token> payment block', () => {
   it('awaiting payment with payments enabled: an active «Оплатить» form, no phone in the HTML', async () => {
     const order = await seedOrder();
@@ -591,6 +636,49 @@ describe('/o/<token> payment block', () => {
     const html = render(view, parsePayNotice({ paid: '1' }));
     expect(html).not.toContain('http-equiv="refresh"');
     expect(view.timeline.map((e) => e.text)).toContain('Платёж не прошёл, заказ отменён');
+  });
+
+  it('?paid=1: a succeeded payment on an order still awaiting it keeps checking, never «Оплата получена» beside «Ждёт оплаты»', async () => {
+    const order = await seedOrder();
+    await pay(order.token);
+    const [row] = await paymentRows(order.id);
+    // The payment row succeeded but the order did not move (a transition not applied yet, or
+    // held back by a guard): written past the engine on purpose.
+    await db
+      .update(payments)
+      .set({ status: 'succeeded', paidAt: new Date() })
+      .where(eq(payments.id, String(row?.id)));
+    const view = await viewOf(order.token);
+    expect(view.status).toBe('awaiting_payment');
+    expect(view.payment).toEqual({ status: 'succeeded', kind: 'prepayment' });
+
+    const now = Date.now();
+    const notice = parsePayNotice({ paid: '1' }, now);
+    expect(payCheckState(view, notice, now)).toEqual({
+      kind: 'checking',
+      refreshUrl: `/o/${order.token}?paid=1&since=${now}`,
+      refreshSec: 5,
+    });
+    const html = render(view, notice, now);
+    expect(plain(html)).toContain('Проверяем оплату…');
+    expect(plain(html)).not.toContain('Оплата получена');
+    expect(html).toContain('http-equiv="refresh"');
+
+    // The same cap as a pending payment: after two minutes «Оплата ещё не подтвердилась», no
+    // refresh, and no second payment offered.
+    const later = now + PAY_CHECK_WINDOW_MS + 1;
+    const stale = parsePayNotice({ paid: '1', since: String(now) }, later);
+    expect(payCheckState(view, stale, later)).toEqual({ kind: 'slow' });
+    const slowHtml = render(view, stale, later);
+    expect(slowHtml).not.toContain('http-equiv="refresh"');
+    expect(plain(slowHtml)).toContain('Оплата ещё не подтвердилась');
+    expect(plain(slowHtml)).not.toContain('Оплата получена');
+    expect(slowHtml).not.toContain('data-testid="pay-button"');
+
+    // Once the order agrees, the block says so and stops.
+    expect(payCheckState({ ...view, status: 'confirmed' }, notice, now)).toEqual({
+      kind: 'paid',
+    });
   });
 
   it('parsePayNotice ignores junk and stale starts', () => {

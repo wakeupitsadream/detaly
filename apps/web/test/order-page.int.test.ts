@@ -381,6 +381,34 @@ describe('loadOrderView', () => {
 });
 
 describe('order page rendering', () => {
+  it('step 4: «Проверено мастером» on checked items, the guarantee line only with fit_guarantee', async () => {
+    const order = await insertOrder();
+    const checkedAt = new Date();
+    await db
+      .update(orderItems)
+      .set({ fitCheckedAt: checkedAt, fitGuarantee: true })
+      .where(sql`${orderItems.orderId} = ${order.id} and ${orderItems.brand} = 'Knecht'`);
+    await db
+      .update(orderItems)
+      .set({ fitCheckedAt: checkedAt, fitGuarantee: false })
+      .where(sql`${orderItems.orderId} = ${order.id} and ${orderItems.brand} = 'BOSCH'`);
+    const view = await viewOf(order.token);
+    if (!view) throw new Error('view missing');
+    expect(view.items.map((i) => [i.brand, i.fitChecked, i.fitGuarantee])).toEqual([
+      ['Knecht', true, true],
+      ['BOSCH', true, false],
+    ]);
+    const html = render(view);
+    expect(plain(html).match(/Проверено мастером/g)).toHaveLength(2);
+    expect(html.match(/href="\/returns#fit-guarantee"/g)).toHaveLength(1);
+    expect(plain(html)).toContain('Не подойдёт по применимости — вернём деньги');
+
+    const plainOrder = await insertOrder();
+    const plainView = await viewOf(plainOrder.token);
+    if (!plainView) throw new Error('view missing');
+    expect(plain(render(plainView))).not.toContain('Проверено мастером');
+  });
+
   it('prepay: status, date, pickup point, inactive payment, items, timeline, cancel', async () => {
     const order = await insertOrder();
     const view = await viewOf(order.token);

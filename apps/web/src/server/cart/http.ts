@@ -74,7 +74,7 @@ export function cartSetCookie(
   return parts.join('; ');
 }
 
-/** Largest cart request body: a form has three short fields (q, offerId, qty). */
+/** Largest cart request body: a form has a few short fields (q, offerId, qty, then). */
 export const MAX_CART_BODY_BYTES = 8 * 1024;
 
 /**
@@ -155,7 +155,11 @@ async function run(
   }
 }
 
-/** POST /api/cart/items: `q`, `offerId`, optional `qty`. */
+/**
+ * POST /api/cart/items: `q`, `offerId`, optional `qty`. Step 4: `then=check` («Проверить под мою
+ * машину» on an offer card) adds the offer and opens the fit check form of its line:
+ * `/cart?check=<line id>`.
+ */
 export function handleAddItem(request: Request, deps: CartHandlerDeps): Promise<Response> {
   const mode = requestMode(request);
   return run(request, deps, async (body, token) => {
@@ -165,7 +169,9 @@ export function handleAddItem(request: Request, deps: CartHandlerDeps): Promise<
       offerId: body.offerId,
       qty: body.qty,
     });
-    return success(mode, result, '/cart?added=1', cartSetCookie(result.token, deps.env));
+    const location =
+      body.then === 'check' ? `/cart?check=${result.lineId}#fit-${result.lineId}` : '/cart?added=1';
+    return success(mode, result, location, cartSetCookie(result.token, deps.env));
   });
 }
 

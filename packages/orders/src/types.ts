@@ -528,8 +528,12 @@ export type ServiceResult = StaffActionResult & {
 /** A claim for the admin, /o/<token> and the bot card (loadClaimsView). */
 export interface ClaimView extends ClaimSummary {
   orderId: string;
-  /** Brand and article of the claimed item; null for the whole order. */
-  item: { id: string; brand: string; article: string } | null;
+  /**
+   * Brand and article of the claimed item; null for the whole order. `fitGuarantee` (step 4,
+   * docs/fit-check.md): the item was ordered after the master's check with the fit guarantee on
+   * (order_items.fit_guarantee) — a «не подошла» claim shows «Гарантия подбора: …».
+   */
+  item: { id: string; brand: string; article: string; fitGuarantee: boolean } | null;
   openedVia: ClaimOpenedVia | null;
   decidedVia: ClaimDecidedVia | null;
   /** Photos of the client (FileStore keys): the admin shows them, the bot only their number. */

@@ -40,6 +40,7 @@ import {
   MAX_CART_SEARCHES,
   newCartToken,
   persistRepricing,
+  removeCartLines,
 } from '../cart-store';
 import { normalizeSearchInput, SearchInputError } from '../search-service';
 import type { SearchSettings } from '../settings';
@@ -83,6 +84,8 @@ export interface AddItemResult extends CartSnapshot {
   /** The cart token to (re)set in the cookie: a new one when a cart was created. */
   token: string;
   created: boolean;
+  /** The cart line of the offer (new or merged): «Проверить под мою машину» opens its form. */
+  lineId: string;
 }
 
 export interface LineInput {
@@ -212,7 +215,8 @@ async function snapshot(tx: Executor, cartId: string): Promise<CartSnapshot> {
   return { count: rows.length, totalKop: cartTotals(rows).subtotalKop };
 }
 
-function lineValues(line: Omit<CartLine, 'id'>, now: Date) {
+/** cart_items columns of a priced line (add, merge, the fit check analog). */
+export function lineValues(line: Omit<CartLine, 'id'>, now: Date) {
   return {
     offerKey: line.offerKey,
     searchArticleNorm: line.searchArticleNorm,
@@ -323,7 +327,9 @@ export function createCartService(deps: CartServiceDeps): CartService {
           .from(cartItems)
           .where(eq(cartItems.cartId, cartId));
         const existing = existingLines.find((l) => l.offerKey === line.offerKey);
+        let lineId: string;
         if (existing) {
+          lineId = existing.id;
           // Same offer again: one line with the summed quantity, priced from the fresh offer.
           // The line keeps its query article (the number of distinct searches stays the same).
           let merged: Omit<CartLine, 'id'>;
@@ -342,11 +348,16 @@ export function createCartService(deps: CartServiceDeps): CartService {
           if (!searches.has(articleNorm) && searches.size >= MAX_CART_SEARCHES) {
             throw new CartRequestError('too_many_searches');
           }
-          await tx.insert(cartItems).values({ cartId, ...lineValues(line, at) });
+          const [inserted] = await tx
+            .insert(cartItems)
+            .values({ cartId, ...lineValues(line, at) })
+            .returning({ id: cartItems.id });
+          if (!inserted) throw new Error('cart line insert returned nothing');
+          lineId = inserted.id;
         }
         await tx.update(carts).set({ updatedAt: at }).where(eq(carts.id, cartId));
         const totals = await boundedSnapshot(tx, cartId);
-        return { ...totals, token: cart.anonToken ?? '', created };
+        return { ...totals, token: cart.anonToken ?? '', created, lineId };
       });
     },
 
@@ -383,11 +394,10 @@ export function createCartService(deps: CartServiceDeps): CartService {
       return db.transaction(async (tx) => {
         const cart = await lockActiveCart(tx, input.token);
         if (cart === null) throw new CartRequestError('line_not_found');
-        const deleted = await tx
-          .delete(cartItems)
-          .where(and(eq(cartItems.id, lineId), eq(cartItems.cartId, cart.id)))
-          .returning({ id: cartItems.id });
-        if (deleted.length === 0) throw new CartRequestError('line_not_found');
+        // A fit check of this line still waiting for the master is cancelled (step 4).
+        if ((await removeCartLines(tx, cart.id, [lineId])) === 0) {
+          throw new CartRequestError('line_not_found');
+        }
         await tx.update(carts).set({ updatedAt: at }).where(eq(carts.id, cart.id));
         return snapshot(tx, cart.id);
       });

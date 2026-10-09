@@ -271,6 +271,8 @@ export default async function CheckoutPage({
                 totalKop={data.totals.subtotalKop}
                 promisedDate={data.promisedDate}
                 linePromises={data.linePromises}
+                fitChecked={data.fitChecked}
+                fitGuarantee={env.FIT_GUARANTEE_ENABLED}
               />
             }
           />

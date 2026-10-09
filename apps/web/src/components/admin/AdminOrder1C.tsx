@@ -11,6 +11,7 @@ import {
   CLAIM_DECISION_LABELS,
   CLAIM_KIND_LABELS,
   CLAIM_KINDS,
+  fitGuaranteeClaimLabel,
   type InstallBookingStatus,
   type PhotoKind,
 } from '@detaly/domain';
@@ -317,6 +318,11 @@ export function AdminOrder1C({
                       : `закрыта ${dateTime(claim.closedAt)}`}
                   </span>
                 </p>
+                {fitGuaranteeClaimLabel(claim.kind, claim.item) ? (
+                  <p className="font-semibold text-ok" data-testid="admin-claim-fit-guarantee">
+                    {fitGuaranteeClaimLabel(claim.kind, claim.item)}
+                  </p>
+                ) : null}
                 <p className="text-muted">
                   Открыта {dateTime(claim.openedAt)}
                   {claim.openedVia ? ` (${claim.openedVia})` : ''}

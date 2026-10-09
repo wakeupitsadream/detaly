@@ -22,6 +22,11 @@
  * order created from it gets orders.vin_request_id, the request becomes `converted`
  * (markVinConverted) and the journal gets `vin_order` — in the same order transaction.
  *
+ * Step 4 (docs/fit-check.md): a line the master checked (`fits` about this very part, or the
+ * analog he offered and the client took) carries the check into its order item — fit_check_id,
+ * fit_checked_at, fit_checked_by and fit_guarantee = FIT_GUARANTEE_ENABLED now; a check still
+ * waiting is cancelled with the line leaving the cart (removeCartLines).
+ *
  * Personal data (phone, name, IP, user agent) goes only to the database: log lines carry the
  * order number, scheme and counts.
  */
@@ -67,7 +72,7 @@ import {
   type EngineDeps,
 } from '@detaly/orders';
 import { RosskoRateLimitError, type RosskoClient } from '@detaly/rossko';
-import { markVinConverted } from '@detaly/vin';
+import { fitOrderItemColumns, latestFitChecksOfLines, markVinConverted } from '@detaly/vin';
 import {
   fetchFreshOffers,
   findActiveCart,
@@ -436,9 +441,15 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
       }
       await tx.insert(consents).values(consentRows);
 
-      // 4. order_items with the snapshot the price was computed from.
+      // 4. order_items with the snapshot the price was computed from, and the master's check of
+      // the line when it counts (step 4).
+      const fitByLine = await latestFitChecksOfLines(tx, cartId, ids);
       await tx.insert(orderItems).values(
         lines.map((l) => ({
+          ...fitOrderItemColumns(fitByLine.get(l.id), l.offer, {
+            now: at,
+            guaranteeEnabled: deps.env.FIT_GUARANTEE_ENABLED,
+          }),
           orderId: order.id,
           offerKey: l.offerKey,
           searchArticleNorm: l.searchArticleNorm,

@@ -357,6 +357,11 @@ export interface SettingsValues {
   'reviews.min_count': number;
   /** A snapshot older than this many days is not shown on the storefront. */
   'reviews.max_age_days': number;
+  /**
+   * Step 4 (docs/fit-check.md): the master answers a fit check within this many minutes of the
+   * pickup point's working hours; past it the sellers chat gets one reminder per request.
+   */
+  'fit_check.sla_minutes': number;
 }
 export type SettingsKey = keyof SettingsValues;
 

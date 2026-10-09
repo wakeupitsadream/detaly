@@ -45,8 +45,9 @@ describe('migrations on an empty database', () => {
       where table_schema = 'public' and table_type = 'BASE TABLE' order by table_name`;
     expect(tables.map((t) => t.table_name)).toEqual(schemaTables);
     // 28 tables of phases 0 and 1A plus outbox, client_approvals and seller_cards (1B), plus
-    // price_benchmarks and settings_audit (step 2, docs/pricing.md)
-    expect(schemaTables).toHaveLength(33);
+    // price_benchmarks and settings_audit (step 2, docs/pricing.md), plus fit_checks (step 4,
+    // docs/fit-check.md)
+    expect(schemaTables).toHaveLength(34);
     expect(schemaTables).toEqual(
       expect.arrayContaining([
         'outbox',
@@ -54,6 +55,7 @@ describe('migrations on an empty database', () => {
         'seller_cards',
         'price_benchmarks',
         'settings_audit',
+        'fit_checks',
       ]),
     );
     expect(schemaTables).not.toContain('vehicles');
@@ -108,6 +110,16 @@ describe('migrations on an empty database', () => {
       ['price_benchmarks', 'captured_by'],
       ['settings_audit', 'old_value'],
       ['settings_audit', 'changed_by'],
+      // step 4 (0007): fit checks and what checkout copies into order_items
+      ['fit_checks', 'request_id'],
+      ['fit_checks', 'cart_item_id'],
+      ['fit_checks', 'analog_offer'],
+      ['fit_checks', 'expires_at'],
+      ['order_items', 'fit_check_id'],
+      ['order_items', 'fit_checked_at'],
+      ['order_items', 'fit_checked_by'],
+      ['order_items', 'fit_guarantee'],
+      ['seller_cards', 'fit_request_id'],
     ] as const) {
       expect(columns).toContainEqual({ table_name: table, column_name: column });
     }

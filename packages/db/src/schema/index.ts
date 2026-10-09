@@ -12,4 +12,6 @@ export * from './system';
 export * from './workflow';
 // step 2: price benchmark and settings audit
 export * from './pricing';
+// step 4: fit checks by the master (docs/fit-check.md)
+export * from './fit-checks';
 export * from './relations';

@@ -37,6 +37,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <Link href="/admin/vin" className="text-sm text-accent underline">
             Заявки VIN
           </Link>
+          <Link href="/admin/fit-checks" className="text-sm text-accent underline">
+            Проверки подбора
+          </Link>
           <Link href="/admin?status=attention" className="text-sm text-accent underline">
             Требуют внимания
           </Link>

@@ -9,6 +9,10 @@
 // - postVin / refreshVin: VIN request cards (phase 1C, kind 'vin', docs/phase-1c-implementation.md
 //   section 9 item 5): the same nonce discipline — a new card closes the request's older open
 //   cards, every redraw rotates the nonce.
+// - postFit / refreshFit: fit check cards (step 4, kind 'fit', docs/fit-check.md): a new card
+//   closes the request's older open cards; the nonce stays for the life of the card, because a
+//   press is about one line and only a pending line takes an answer (a second press on an
+//   answered line gets «Уже отвечено», not «Карточка устарела»).
 //
 // Phase 1C order cards also carry the open claims, the active booking and the packaging photo
 // count (card-view.ts), with the availableStaffActions1C buttons.
@@ -30,7 +34,16 @@ import {
   sql,
   type Db,
 } from '@detaly/db';
-import { CLIENT_TIME_ZONE, formatRub } from '@detaly/domain';
+import {
+  CLIENT_TIME_ZONE,
+  DateError,
+  etaDate,
+  formatPromise,
+  formatRub,
+  MoneyError,
+  priceOffer,
+  promisedDate,
+} from '@detaly/domain';
 import { FALLBACK_REASONS, newNonce } from '@detaly/notify';
 import {
   availableStaffActions,
@@ -42,7 +55,7 @@ import {
   loadOrderSnapshot,
   type StaffActionView,
 } from '@detaly/orders';
-import { loadVinRequestForStaff } from '@detaly/vin';
+import { loadFitRequestForStaff, loadFitSlaMinutes, loadVinRequestForStaff } from '@detaly/vin';
 import { InputFile } from 'grammy';
 import QRCode from 'qrcode';
 import type {
@@ -63,6 +76,7 @@ import {
   type InlineKeyboard,
 } from './card-view';
 import { describeBotError } from './errors';
+import { fitKeyboard, renderFitCardText, type FitAnalogPrice, type FitCardData } from './fit-view';
 import { renderVinCardText, vinKeyboard, type VinCardData } from './vin-view';
 
 /** An order card (kinds order, qr): since phase 1C seller_cards.order_id is null for VIN cards. */
@@ -71,8 +85,14 @@ export type SellerCardRow = typeof sellerCards.$inferSelect & { orderId: string 
 /** A VIN request card (kind vin): seller_cards.vin_request_id is set, order_id is null. */
 export type VinCardRow = typeof sellerCards.$inferSelect & { vinRequestId: string };
 
-/** The card behind a button: an order card or a VIN request card. */
-export type AnyCardRow = { type: 'order'; card: SellerCardRow } | { type: 'vin'; card: VinCardRow };
+/** A fit check card (kind fit, step 4): seller_cards.fit_request_id is set. */
+export type FitCardRow = typeof sellerCards.$inferSelect & { fitRequestId: string };
+
+/** The card behind a button: an order card, a VIN request card or a fit check card. */
+export type AnyCardRow =
+  | { type: 'order'; card: SellerCardRow }
+  | { type: 'vin'; card: VinCardRow }
+  | { type: 'fit'; card: FitCardRow };
 
 /** The row as an order card, or null for a VIN request card. */
 function orderCard(row: typeof sellerCards.$inferSelect | undefined): SellerCardRow | null {
@@ -84,6 +104,26 @@ function orderCard(row: typeof sellerCards.$inferSelect | undefined): SellerCard
 function vinCard(row: typeof sellerCards.$inferSelect | undefined): VinCardRow | null {
   if (row === undefined || row.kind !== 'vin' || row.vinRequestId === null) return null;
   return { ...row, vinRequestId: row.vinRequestId };
+}
+
+/** The row as a fit check card, or null. */
+function fitCard(row: typeof sellerCards.$inferSelect | undefined): FitCardRow | null {
+  if (row === undefined || row.kind !== 'fit' || row.fitRequestId === null) return null;
+  return { ...row, fitRequestId: row.fitRequestId };
+}
+
+/** APP_BASE_URL/admin/fit-checks (Basic auth): the requests, their answers and the statistics. */
+export function fitAdminUrl(env: Pick<Env, 'APP_BASE_URL'>): string {
+  return `${baseUrl(env)}/admin/fit-checks`;
+}
+
+/** «Ответьте в течение часа» from settings `fit_check.sla_minutes`. */
+export function fitSlaStaffText(slaMinutes: number): string {
+  if (slaMinutes <= 60) return 'Ответьте в течение часа (рабочее время)';
+  const hours = Math.ceil(slaMinutes / 60);
+  // «в течение 21 часа», «в течение 2 часов» (genitive after «в течение»).
+  const noun = hours % 10 === 1 && hours % 100 !== 11 ? 'часа' : 'часов';
+  return `Ответьте в течение ${hours} ${noun} (рабочее время)`;
 }
 
 /** APP_BASE_URL/admin/vin/<id> (Basic auth: the photos and the full phone are there). */
@@ -166,6 +206,13 @@ export interface CardService extends SellerCardPort {
   }): Promise<SellerCardPostResult>;
   /** Redraws an open VIN card with a new nonce; null when it is gone. */
   redrawVin(cardId: string): Promise<{ vinRequestId: string } | null>;
+  /**
+   * Step 4: a new fit check card (the SLA reminder adds `note`); closes the request's older open
+   * cards. postFit is this.
+   */
+  postFitCard(input: { requestId: string; note?: string | null }): Promise<SellerCardPostResult>;
+  /** Redraws an open fit check card (same nonce); null when it is gone. */
+  redrawFit(cardId: string): Promise<{ requestId: string } | null>;
   /** The open order card behind a Telegram message (a photo sent in reply to it). */
   openOrderCardAt(chatId: string, messageId: number): Promise<SellerCardRow | null>;
   /**
@@ -239,7 +286,9 @@ export function createCardService(
           return {
             id: claim.id,
             kind: claim.kind,
-            item: item ? { brand: item.brand, article: item.article } : null,
+            item: item
+              ? { brand: item.brand, article: item.article, fitGuarantee: item.fitGuarantee }
+              : null,
             deadlineAt: claim.deadlineAt,
             returnAccepted: claim.returnAcceptedAt !== null,
             photoCount: claim.photoCount,
@@ -383,6 +432,114 @@ export function createCardService(
     return { status: 'posted' };
   }
 
+  async function closeOtherFitCards(requestId: string, keepId: string): Promise<void> {
+    const closed = await db
+      .update(sellerCards)
+      .set({ closedAt: deps.now() })
+      .where(
+        and(
+          eq(sellerCards.fitRequestId, requestId),
+          eq(sellerCards.kind, 'fit'),
+          isNull(sellerCards.closedAt),
+          sql`${sellerCards.id} <> ${keepId}`,
+        ),
+      )
+      .returning({
+        chatId: sellerCards.chatId,
+        messageId: sellerCards.messageId,
+        orderId: sellerCards.orderId,
+      });
+    for (const card of closed) await stripKeyboard(card);
+  }
+
+  /**
+   * The request with the price and date of every analog, as the client's cart prices it
+   * (priceOffer with the settings of now, the pickup date with the eta buffer).
+   */
+  async function loadFitCard(requestId: string, note: string | null): Promise<FitCardData | null> {
+    const request = await loadFitRequestForStaff(db, requestId);
+    if (request === null) return null;
+    const settings = await loadOrderSettings(db, env);
+    const now = deps.now();
+    const analogPrices = new Map<string, FitAnalogPrice>();
+    for (const line of request.lines) {
+      if (line.analog === null) continue;
+      try {
+        const { priceClientKop } = priceOffer(settings.pricing, line.analog.offer);
+        let promiseText: string | null = null;
+        try {
+          promiseText = formatPromise(
+            promisedDate([etaDate(line.analog.offer.stock, now)], settings.eta),
+          );
+        } catch (error) {
+          if (!(error instanceof DateError)) throw error;
+        }
+        analogPrices.set(line.id, { priceText: formatRub(priceClientKop), promiseText });
+      } catch (error) {
+        if (!(error instanceof MoneyError)) throw error;
+      }
+    }
+    return {
+      request,
+      analogPrices,
+      note,
+      slaText: fitSlaStaffText(await loadFitSlaMinutes(db)),
+      adminUrl: fitAdminUrl(env),
+    };
+  }
+
+  async function postFitCard(input: {
+    requestId: string;
+    note?: string | null;
+  }): Promise<SellerCardPostResult> {
+    const { requestId } = input;
+    if (api === null) {
+      logger.warn(
+        { fitRequestId: requestId },
+        'seller fit card skipped, TG_SELLER_BOT_TOKEN is empty',
+      );
+      return { status: 'skipped', fallbackReason: FALLBACK_REASONS.driverUnavailable };
+    }
+    if (env.TG_SELLER_CHAT_ID === undefined) {
+      logger.warn(
+        { fitRequestId: requestId },
+        'seller fit card skipped, TG_SELLER_CHAT_ID is not set',
+      );
+      return { status: 'skipped', fallbackReason: FALLBACK_REASONS.driverUnavailable };
+    }
+    const chatId = String(env.TG_SELLER_CHAT_ID);
+    const data = await loadFitCard(requestId, input.note ?? null);
+    if (data === null) {
+      logger.warn({ fitRequestId: requestId }, 'seller fit card: request not found');
+      return { status: 'skipped', fallbackReason: 'fit_not_found' };
+    }
+    const nonce = newNonce();
+    const [row] = await db
+      .insert(sellerCards)
+      .values({ fitRequestId: requestId, chatId, nonce, kind: 'fit' })
+      .returning({ id: sellerCards.id });
+    const cardId = (row as { id: string }).id;
+    let messageId: number;
+    try {
+      const sent = await api.sendMessage(chatId, renderFitCardText(data), {
+        reply_markup: { inline_keyboard: fitKeyboard(data, nonce) },
+        link_preview_options: { is_disabled: true },
+      });
+      messageId = sent.message_id;
+    } catch (error) {
+      // No message: the row must not stay open (a refresh would try to edit nothing).
+      await db.update(sellerCards).set({ closedAt: deps.now() }).where(eq(sellerCards.id, cardId));
+      throw error;
+    }
+    await db.update(sellerCards).set({ messageId }).where(eq(sellerCards.id, cardId));
+    await closeOtherFitCards(requestId, cardId);
+    logger.info(
+      { fitRequestId: requestId, lines: data.request.lines.length, reminder: input.note != null },
+      'seller fit card posted',
+    );
+    return { status: 'posted' };
+  }
+
   async function edit(
     card: Pick<SellerCardRow, 'chatId' | 'messageId'>,
     text: string,
@@ -520,6 +677,51 @@ export function createCardService(
       return postVinCard({ vinRequestId, note: note ?? null });
     },
 
+    async postFit({ requestId, note }) {
+      return postFitCard({ requestId, note: note ?? null });
+    },
+
+    postFitCard,
+
+    async refreshFit(requestId) {
+      // Without a bot there is no message to redraw.
+      if (api === null) return;
+      const [card] = await db
+        .select({ id: sellerCards.id })
+        .from(sellerCards)
+        .where(
+          and(
+            eq(sellerCards.fitRequestId, requestId),
+            eq(sellerCards.kind, 'fit'),
+            isNull(sellerCards.closedAt),
+          ),
+        )
+        .orderBy(desc(sellerCards.createdAt), desc(sellerCards.id))
+        .limit(1);
+      if (!card) return;
+      await service.redrawFit(card.id);
+    },
+
+    async redrawFit(cardId) {
+      const [row] = await db.select().from(sellerCards).where(eq(sellerCards.id, cardId));
+      const card = fitCard(row);
+      if (!card || card.closedAt !== null || card.messageId === null) return null;
+      const data = await loadFitCard(card.fitRequestId, null);
+      if (data === null) return null;
+      try {
+        await edit(card, renderFitCardText(data), fitKeyboard(data, card.nonce));
+      } catch (error) {
+        if (!isMessageGone(error)) throw error;
+        await db
+          .update(sellerCards)
+          .set({ closedAt: deps.now() })
+          .where(eq(sellerCards.id, card.id));
+        logger.warn({ fitRequestId: card.fitRequestId }, 'seller fit card message is gone, closed');
+        return null;
+      }
+      return { requestId: card.fitRequestId };
+    },
+
     postVinCard,
 
     async refreshVin(vinRequestId) {
@@ -572,10 +774,14 @@ export function createCardService(
       const [row] = await db
         .select()
         .from(sellerCards)
-        .where(and(eq(sellerCards.nonce, nonce), inArray(sellerCards.kind, ['order', 'vin'])))
+        .where(
+          and(eq(sellerCards.nonce, nonce), inArray(sellerCards.kind, ['order', 'vin', 'fit'])),
+        )
         .limit(1);
       const vin = vinCard(row);
       if (vin) return { type: 'vin', card: vin };
+      const fit = fitCard(row);
+      if (fit) return { type: 'fit', card: fit };
       const order = row?.kind === 'order' ? orderCard(row) : null;
       return order ? { type: 'order', card: order } : null;
     },
@@ -666,11 +872,27 @@ export function createCardService(
           and(
             eq(sellerCards.chatId, chatId),
             eq(sellerCards.messageId, messageId),
-            inArray(sellerCards.kind, ['order', 'vin']),
+            inArray(sellerCards.kind, ['order', 'vin', 'fit']),
           ),
         )
         .orderBy(desc(sellerCards.createdAt))
         .limit(1);
+      const fit = fitCard(row);
+      if (fit) {
+        try {
+          if (fit.closedAt === null) await service.redrawFit(fit.id);
+          else await stripKeyboard(fit);
+        } catch (error) {
+          logger.warn(
+            {
+              fitRequestId: fit.fitRequestId,
+              err: describeBotError(error, env.TG_SELLER_BOT_TOKEN),
+            },
+            'seller fit card: redraw of a stale card failed',
+          );
+        }
+        return;
+      }
       const vin = vinCard(row);
       if (vin) {
         try {

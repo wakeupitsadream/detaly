@@ -304,6 +304,8 @@ export function createWorkerDeps(options: CreateWorkerDepsOptions): WorkerResour
     sendHandoverQr: (input) => built().sendHandoverQr(input),
     postVin: (input) => built().postVin(input),
     refreshVin: (vinRequestId) => built().refreshVin(vinRequestId),
+    postFit: (input) => built().postFit(input),
+    refreshFit: (requestId) => built().refreshFit(requestId),
   };
 
   const deps: WorkerDeps = {

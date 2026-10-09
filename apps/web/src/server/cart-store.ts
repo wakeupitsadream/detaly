@@ -18,6 +18,7 @@ import type { Env } from '@detaly/config';
 import { and, cartItems, carts, eq, inArray, sql, type Executor } from '@detaly/db';
 import type { CartLine, Offer, RepricedLine } from '@detaly/domain';
 import { searchFailure, type CallPriority, type RosskoClient } from '@detaly/rossko';
+import { cancelFitChecks } from '@detaly/vin';
 
 /** Cookie with the cart token (decision Д21). No `__Host-` prefix: e2e runs on plain http. */
 export const CART_COOKIE = 'cart';
@@ -223,13 +224,18 @@ export async function persistRepricing(
   return removed;
 }
 
-/** Deletes lines of this cart (ids of other carts are ignored). Returns how many were removed. */
+/**
+ * Deletes lines of this cart (ids of other carts are ignored). Returns how many were removed.
+ * Step 4 (docs/fit-check.md): a fit check of a removed line still waiting for the master is
+ * cancelled first (its card is redrawn); answered checks stay for the order and the statistics.
+ */
 export async function removeCartLines(
   tx: Executor,
   cartId: string,
   lineIds: readonly string[],
 ): Promise<number> {
   if (lineIds.length === 0) return 0;
+  await cancelFitChecks(tx, { cartId, cartItemIds: lineIds });
   const deleted = await tx
     .delete(cartItems)
     .where(and(eq(cartItems.cartId, cartId), inArray(cartItems.id, [...lineIds])))

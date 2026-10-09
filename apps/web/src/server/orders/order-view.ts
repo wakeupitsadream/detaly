@@ -68,6 +68,10 @@ export interface OrderItemView {
   inactive: boolean;
   /** «Отменить позицию» is allowed for this item (4 digits). */
   canCancel: boolean;
+  /** Step 4: the master checked the part under the client's VIN («Проверено мастером»). */
+  fitChecked: boolean;
+  /** Ordered with the fit guarantee (FIT_GUARANTEE_ENABLED at checkout). */
+  fitGuarantee: boolean;
 }
 
 /** The proposal the client decides on (awaiting_client_approval). */
@@ -383,6 +387,8 @@ export async function loadOrderView(
     waiting: isLiveState(item.state) && CANCELLABLE_ITEM_STATES.has(item.state),
     inactive: INACTIVE_STATES.has(item.state),
     canCancel: itemCancelAllowed && allowed('item_cancelled', item.id),
+    fitChecked: item.fitCheckedAt !== null,
+    fitGuarantee: item.fitGuarantee,
   }));
 
   const last = snapshot.payments.at(-1) ?? null;

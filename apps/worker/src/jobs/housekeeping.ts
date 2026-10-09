@@ -1,12 +1,13 @@
 // Processor of the `housekeeping` queue (docs/phase-1b-implementation.md section 12.2):
 // heartbeat (phase 0), timers (every minute), reminders (15 min), sms-budget (hourly),
-// deferred-1a (10 min), retention (daily, phase 1C), price-check (Mondays, step 2) and
-// reviews-check (Mondays, step 3). One attempt each: the next scheduled run picks up what one
-// missed.
+// deferred-1a (10 min), retention (daily, phase 1C), price-check (Mondays, step 2),
+// reviews-check (Mondays, step 3) and fit-checks (5 min, step 4). One attempt each: the next
+// scheduled run picks up what one missed.
 import { HOUSEKEEPING_JOBS, writeHeartbeat } from '@detaly/config';
 import { UnrecoverableError, type Job } from 'bullmq';
 import type { WorkerDeps } from '../deps';
 import { runDeferred1a, type Deferred1aResult } from './housekeeping/deferred-1a';
+import { runFitChecks, type FitChecksResult } from './housekeeping/fit-checks';
 import { runPriceCheck, type PriceCheckResult } from './housekeeping/price-check';
 import { runReminders, type RemindersResult } from './housekeeping/reminders';
 import { runRetention, type RetentionResult } from './housekeeping/retention';
@@ -15,6 +16,7 @@ import { runSmsBudget, type SmsBudgetResult } from './housekeeping/sms-budget';
 import { runTimers, type TimersResult } from './housekeeping/timers';
 
 export { planDeferred, runDeferred1a } from './housekeeping/deferred-1a';
+export { fitReminderNote, runFitChecks } from './housekeeping/fit-checks';
 export { PRICE_CHECK_TARGET, priceCheckText, runPriceCheck } from './housekeeping/price-check';
 export { runReminders } from './housekeeping/reminders';
 export { runRetention } from './housekeeping/retention';
@@ -37,7 +39,8 @@ export type HousekeepingResult =
   | Deferred1aResult
   | RetentionResult
   | PriceCheckResult
-  | ReviewsCheckResult;
+  | ReviewsCheckResult
+  | FitChecksResult;
 
 const FULL_DEPS_JOBS: readonly string[] = [
   HOUSEKEEPING_JOBS.timers,
@@ -47,6 +50,7 @@ const FULL_DEPS_JOBS: readonly string[] = [
   HOUSEKEEPING_JOBS.retention,
   HOUSEKEEPING_JOBS.priceCheck,
   HOUSEKEEPING_JOBS.reviewsCheck,
+  HOUSEKEEPING_JOBS.fitChecks,
 ];
 
 function fullDeps(job: Pick<Job, 'name'>, deps: HousekeepingDeps | WorkerDeps): WorkerDeps {
@@ -93,6 +97,9 @@ export async function processHousekeeping(
       break;
     case HOUSEKEEPING_JOBS.reviewsCheck:
       result = await runReviewsCheck(full);
+      break;
+    case HOUSEKEEPING_JOBS.fitChecks:
+      result = await runFitChecks(full);
       break;
     default:
       result = await runDeferred1a(full);

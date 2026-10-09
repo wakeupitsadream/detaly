@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { CartLineView } from '@/server/cart/summary';
 import { QtyStepper } from './checkout/QtyStepper';
 import { IconCalendar, IconTrash } from './icons';
@@ -9,9 +10,10 @@ import { Price } from './ui/Price';
  * One cart line as a card (docs/design-v2.md, «Корзина»): the part tile, brand and article,
  * the name, the stock badge and the date; under them the round quantity stepper and the line
  * total. «Удалить» is a round icon button in the corner, named for a screen reader. All forms
- * are plain POSTs to /api/cart/items/<id> with `_method` (no JS needed).
+ * are plain POSTs to /api/cart/items/<id> with `_method` (no JS needed). Step 4: `fit` is the
+ * fit check of the line (components/fit/FitLineBlock), on its own row at the bottom.
  */
-export function CartLineRow({ line }: { line: CartLineView }) {
+export function CartLineRow({ line, fit }: { line: CartLineView; fit?: ReactNode }) {
   const action = `/api/cart/items/${line.id}`;
   const title = `${line.brand} ${line.article}`;
   return (
@@ -78,6 +80,12 @@ export function CartLineRow({ line }: { line: CartLineView }) {
           </p>
         </div>
       </div>
+
+      {fit ? (
+        <div className="col-span-2 min-w-0 border-t border-line pt-4 md:col-start-2 md:col-end-3">
+          {fit}
+        </div>
+      ) : null}
     </li>
   );
 }

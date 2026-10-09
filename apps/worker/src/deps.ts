@@ -52,6 +52,13 @@ export interface SellerCardPort {
   postVin(input: { vinRequestId: string; note?: string | null }): Promise<SellerCardPostResult>;
   /** Phase 1C: redraws the latest open card of the VIN request (preview, status). */
   refreshVin(vinRequestId: string): Promise<void>;
+  /**
+   * Step 4 (docs/fit-check.md): a new fit check card of a request (seller_cards kind 'fit');
+   * closes its older open cards. `note` is an extra line without PD (the SLA reminder).
+   */
+  postFit(input: { requestId: string; note?: string | null }): Promise<SellerCardPostResult>;
+  /** Step 4: redraws the open fit check card of the request (answers, expiry, cancellation). */
+  refreshFit(requestId: string): Promise<void>;
 }
 
 /** Alerts to the sellers chat or the owner's private chat (Б19); deduplicated by key. */

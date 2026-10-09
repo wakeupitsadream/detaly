@@ -15,7 +15,9 @@
  *    - phase 1C (decision С27): link (POST /api/orders/<token>/link) 20 per hour, install
  *      (POST /api/orders/<token>/install and …/install/cancel) 20 per hour, claim
  *      (POST /api/orders/<token>/claims) 10 per hour, vin (POST /api/vin) 5 per hour and 20
- *      per day, proposal (POST /api/proposals/<token>/take) 30 per hour.
+ *      per day, proposal (POST /api/proposals/<token>/take) 30 per hour;
+ *    - step 4 (docs/fit-check.md): fit_check (POST /api/fit-checks) 20 per day; the limit of 10
+ *      a day per cart is counted by its handler (it needs the cart of the cookie).
  *    The YooKassa webhook is not limited (its handler checks the IP allowlist) but gets
  *    Cache-Control: no-store.
  *    A write with a foreign Origin is not counted: its handler answers 403, and counting it
@@ -49,7 +51,9 @@
  *    for a client that posts it anyway: the demo VIN form has no action and no submit), POST
  *    /api/orders/demo/{link,install,claims} -> 303 /o/demo?demo=<what>, POST
  *    /api/demo/checkout-done -> 303 /o/demo with the demo cart emptied; every proposal but
- *    /p/demo (and its API) and every /vin/sent/<token> answer 404.
+ *    /p/demo (and its API) and every /vin/sent/<token> answer 404. Step 4: POST
+ *    /api/fit-checks?line=<id> -> 303 /cart?fit_demo=<id> (the VIN never reaches the server;
+ *    the sheet with JavaScript does not post at all).
  * 5. Content-Security-Policy (audit tech-3, lib/csp.ts): a new script nonce for every request,
  *    the policy on every response the proxy gives, and the same policy on the request that
  *    goes on to the app (NextResponse.next / rewrite), which is where Next reads the nonce for
@@ -72,6 +76,7 @@ import { demoCartSetCookie } from './server/demo/cart-cookie';
 import { DEMO_CHECKOUT_DONE_PATH } from './server/demo/checkout-done';
 import { createMemoryRateLimiter } from './server/demo/rate-limit';
 import { serverEnv, type Env } from './server/env';
+import { FIT_CHECKS_PATH, demoFitLocation } from './server/fit-checks/paths';
 import { singleton } from './server/globals';
 import { getLogger } from './server/logger';
 import { rawDemoFlag } from './server/mode';
@@ -149,6 +154,8 @@ const BACK_LINKS: Record<RateLimitKind, { href: string; label: string }> = {
   claim: { href: '/', label: 'На главную' },
   vin: { href: '/vin', label: 'Вернуться к заявке' },
   proposal: { href: '/', label: 'На главную' },
+  fit_check: { href: '/cart', label: 'Вернуться в корзину' },
+  fit_check_cart: { href: '/cart', label: 'Вернуться в корзину' },
 };
 
 /** Limits of forms on /o/<token>: the 429 page links back to the order. */
@@ -317,11 +324,17 @@ const DEMO_ORDER_FORMS: Readonly<Record<string, string>> = {
 
 /**
  * DEMO_MODE (decision С21): where a demo form goes instead of its handler, or null. The proxy
- * answers 303 without reading the body, so no personal data or photo is ever accepted.
+ * answers 303 without reading the body, so no personal data or photo is ever accepted. `search`
+ * is the query of the posted URL (step 4: the fit check form names its line there).
  */
-export function demoFormRedirect(method: string, path: string): string | null {
+export function demoFormRedirect(
+  method: string,
+  path: string,
+  search: URLSearchParams = new URLSearchParams(),
+): string | null {
   if (method.toUpperCase() !== 'POST') return null;
   if (path === '/api/vin') return '/vin/sent?demo=1';
+  if (path === FIT_CHECKS_PATH) return demoFitLocation(search);
   if (path === DEMO_CHECKOUT_DONE_PATH) return DEMO_ORDER_PATH;
   const prefix = '/api/orders/demo/';
   if (path.startsWith(prefix)) {
@@ -449,7 +462,7 @@ async function route(request: NextRequest, csp: string): Promise<NextResponse> {
     // Nor does anything a demo hides, whatever else is wrong with its env.
     if (rawDemoFlag()) {
       const path = canonicalPath(request.nextUrl.pathname);
-      const redirect = demoFormRedirect(request.method, path);
+      const redirect = demoFormRedirect(request.method, path, request.nextUrl.searchParams);
       if (redirect !== null) return demoSeeOther(request.nextUrl, redirect);
       const blocked = demoBlockedPath(path);
       if (blocked !== null) {
@@ -462,7 +475,7 @@ async function route(request: NextRequest, csp: string): Promise<NextResponse> {
   // Decoded and normalized, so `/o//token/` or `/%6f/token` gets the same headers.
   const path = canonicalPath(pathname);
   if (env.DEMO_MODE) {
-    const redirect = demoFormRedirect(request.method, path);
+    const redirect = demoFormRedirect(request.method, path, request.nextUrl.searchParams);
     if (redirect !== null) {
       const response = demoSeeOther(env.APP_BASE_URL, redirect);
       if (path === DEMO_CHECKOUT_DONE_PATH) {

@@ -11,11 +11,13 @@ import {
   createDb,
   documentVersions,
   eq,
+  fitChecks,
   inArray,
   orderItems,
   orders,
   outbox,
   sha256Hex,
+  staff,
   users,
   vinRequests,
   type Db,
@@ -40,7 +42,7 @@ import {
   type RosskoCaller,
   type RosskoClient,
 } from '@detaly/rossko';
-import { createVinRequest } from '@detaly/vin';
+import { answerFitCheck, createFitCheckRequest, createVinRequest } from '@detaly/vin';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -60,6 +62,7 @@ import {
   type CheckoutPageReady,
 } from '@/server/checkout/page-data';
 import { uuidV7 } from '@/server/checkout/uuid';
+import { loadAdminFitChecks } from '@/server/admin/fit-checks';
 import { createSupplierDeps, type Supplier } from '@/server/supplier';
 import { intEnv, webDatabaseUrl } from './helpers';
 
@@ -1312,5 +1315,120 @@ describe('POST /api/checkout: a cart from a VIN proposal (phase 1C, decision С1
     expect(res.status).toBe(409);
     const [request] = await db.select().from(vinRequests).where(eq(vinRequests.id, vinRequestId));
     expect(request?.status).toBe('new');
+  });
+});
+
+describe("step 4: the master's check goes into the order (docs/fit-check.md)", () => {
+  /** Synthetic VIN that passes isValidVin (never a real car). */
+  const VIN = 'XTA21099012345678';
+
+  /** A cart with Knecht (the master says «Подходит») and BOSCH (still waiting). */
+  async function checkedCart() {
+    const cart = await makeCart(KNECHT_LOCAL, BOSCH_ORDER);
+    const lines = await db.select().from(cartItems).where(eq(cartItems.cartId, cart.id));
+    const knecht = lines.find((l) => l.brand === 'Knecht');
+    const bosch = lines.find((l) => l.brand === 'BOSCH');
+    if (!knecht || !bosch) throw new Error('lines missing');
+    const created = await createFitCheckRequest(db, {
+      cartId: cart.id,
+      lineIds: [knecht.id, bosch.id],
+      vin: VIN,
+      comment: null,
+      now: new Date(),
+    });
+    if (!created.ok) throw new Error(`fit check refused: ${created.reason}`);
+    const [master] = await db
+      .insert(staff)
+      .values({ name: 'Мастер Тест', role: 'seller', tgUserId: Math.floor(Math.random() * 1e9) })
+      .returning();
+    const checks = await db.select().from(fitChecks).where(eq(fitChecks.cartId, cart.id));
+    const knechtCheck = checks.find((c) => c.cartItemId === knecht.id);
+    const answered = await answerFitCheck(db, {
+      id: knechtCheck?.id as string,
+      answer: 'fits',
+      staffId: master?.id ?? null,
+      now: new Date(),
+    });
+    if (!answered.ok) throw new Error('answer refused');
+    return { cart, knecht, bosch, check: answered.check, masterId: master?.id as string };
+  }
+
+  function guaranteeService(enabled: boolean): CheckoutService {
+    return createCheckoutService({
+      db,
+      supplier: { rossko },
+      loadSettings,
+      gate,
+      logger,
+      env: { ...serviceEnv, FIT_GUARANTEE_ENABLED: enabled },
+    });
+  }
+
+  it('the checkout page marks the checked line only', async () => {
+    const { cart, knecht, bosch } = await checkedCart();
+    const p = ready(await page(cart.token));
+    expect(p.fitChecked).toEqual({ [knecht.id]: true, [bosch.id]: false });
+  });
+
+  it('with the guarantee on: fit_check_id, fit_checked_at/by and fit_guarantee of the line', async () => {
+    const { cart, check, masterId } = await checkedCart();
+    const p = ready(await page(cart.token));
+    const res = await submit({ token: cart.token, page: p }, guaranteeService(true));
+    expect(res.status).toBe(201);
+    const order = await orderByUrl(res.json.orderUrl);
+    const knecht = order.items.find((i) => i.brand === 'Knecht');
+    const bosch = order.items.find((i) => i.brand === 'BOSCH');
+    expect(knecht).toMatchObject({
+      fitCheckId: check.id,
+      fitCheckedAt: check.answeredAt,
+      fitCheckedBy: masterId,
+      fitGuarantee: true,
+    });
+    // Still waiting at checkout: not checked; its check is cancelled with the line.
+    expect(bosch).toMatchObject({
+      fitCheckId: null,
+      fitCheckedAt: null,
+      fitCheckedBy: null,
+      fitGuarantee: false,
+    });
+    const after = await db.select().from(fitChecks).where(eq(fitChecks.cartId, cart.id));
+    expect(after.map((c) => c.status).sort()).toEqual(['cancelled', 'fits']);
+    // The answered check stays for the order and the statistics (its line left the cart).
+    expect(after.find((c) => c.status === 'fits')?.cartItemId).toBeNull();
+  });
+
+  it('with the guarantee off: the fact of the check, no guarantee', async () => {
+    const { cart, check } = await checkedCart();
+    const p = ready(await page(cart.token));
+    const res = await submit({ token: cart.token, page: p }, guaranteeService(false));
+    expect(res.status).toBe(201);
+    const order = await orderByUrl(res.json.orderUrl);
+    expect(order.items.find((i) => i.brand === 'Knecht')).toMatchObject({
+      fitCheckId: check.id,
+      fitGuarantee: false,
+    });
+  });
+
+  it('a line changed after the check is not checked; a paid order counts in the statistics', async () => {
+    const before = await loadAdminFitChecks(db, { now: new Date(), schedule: null });
+    const paidBefore = before.stats.find((s) => s.days === 30)?.stats.checkedPaid ?? 0;
+    const { cart, knecht } = await checkedCart();
+    // The check was about another part (as if the line were replaced in another tab).
+    await db.update(fitChecks).set({ article: 'OC 91' }).where(eq(fitChecks.cartItemId, knecht.id));
+    const p = ready(await page(cart.token));
+    expect(p.fitChecked[knecht.id]).toBe(false);
+    const res = await submit({ token: cart.token, page: p }, guaranteeService(true));
+    const order = await orderByUrl(res.json.orderUrl);
+    expect(order.items.every((i) => i.fitCheckId === null && !i.fitGuarantee)).toBe(true);
+
+    const second = await checkedCart();
+    const res2 = await submit(
+      { token: second.cart.token, page: ready(await page(second.cart.token)) },
+      guaranteeService(true),
+    );
+    const paidOrder = await orderByUrl(res2.json.orderUrl);
+    await db.update(orders).set({ paidAt: new Date() }).where(eq(orders.id, paidOrder.id));
+    const after = await loadAdminFitChecks(db, { now: new Date(), schedule: null });
+    expect(after.stats.find((s) => s.days === 30)?.stats.checkedPaid).toBe(paidBefore + 1);
   });
 });

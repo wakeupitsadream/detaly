@@ -53,6 +53,11 @@ function item(state: OrderItemState, overrides: Partial<OrderItemRow> = {}): Ord
     arrivedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
+    // step 4: not checked by the master
+    fitCheckId: null,
+    fitCheckedAt: null,
+    fitCheckedBy: null,
+    fitGuarantee: false,
     ...overrides,
   };
 }

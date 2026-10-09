@@ -137,6 +137,9 @@ describe.skipIf(!hasTestDatabase)('createWorkerDeps', () => {
       // phase 1C ports
       postVin: async () => ({ status: 'posted' }),
       refreshVin: async () => undefined,
+      // step 4 ports
+      postFit: async () => ({ status: 'posted' }),
+      refreshFit: async () => undefined,
     };
     const { deps } = build({ TG_SELLER_BOT_TOKEN: '123456:fake-token-for-tests' }, cards);
     expect(deps.telegram).toBeInstanceOf(Api);

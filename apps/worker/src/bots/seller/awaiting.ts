@@ -5,9 +5,9 @@
 // newer prompt replaces the older one. The wait lives in Redis, so a worker restart in between
 // does not lose it.
 //
-// The value holds ids (order, claim, VIN request, prompt message) and, between the two prompts of
-// the owner's «Вернуть деньги» without «Принял возврат», the override reason he typed (it ends
-// up in claims.override_reason anyway). Never the client's texts, phones or tokens.
+// The value holds ids (order, claim, VIN request, fit check, prompt message) and, between the two
+// prompts of the owner's «Вернуть деньги» without «Принял возврат», the override reason he typed
+// (it ends up in claims.override_reason anyway). Never the client's texts, phones or tokens.
 import type { Redis } from '@detaly/config';
 
 export const AWAIT_TTL_SEC = 10 * 60;
@@ -46,7 +46,9 @@ export type Awaiting =
   /** «Ответить строками» / «Исправить»: the lines of the master's answer. */
   | { kind: 'vin_answer'; vinRequestId: string; promptMessageId: number }
   /** «Закрыть заявку»: the reason. */
-  | { kind: 'vin_close'; vinRequestId: string; promptMessageId: number };
+  | { kind: 'vin_close'; vinRequestId: string; promptMessageId: number }
+  /** Step 4 «Аналог» on a fit check line: «БРЕНД АРТИКУЛ». */
+  | { kind: 'fit_analog'; fitCheckId: string; fitRequestId: string; promptMessageId: number };
 
 export type AwaitingKind = Awaiting['kind'];
 
@@ -120,6 +122,15 @@ export function parseAwaiting(raw: string | null): Awaiting | null {
         ? {
             kind: kind as 'vin_answer' | 'vin_close',
             vinRequestId: value.vinRequestId,
+            promptMessageId,
+          }
+        : null;
+    case 'fit_analog':
+      return uuid(value.fitCheckId) && uuid(value.fitRequestId)
+        ? {
+            kind: 'fit_analog',
+            fitCheckId: value.fitCheckId,
+            fitRequestId: value.fitRequestId,
             promptMessageId,
           }
         : null;

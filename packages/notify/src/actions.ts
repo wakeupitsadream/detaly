@@ -17,7 +17,7 @@
  * `<id>` is the order, item, claim, booking or VIN request uuid depending on the code
  * (actionTarget); `dlq` carries a dead-letter job id instead.
  */
-import type { OrderEvent } from '@detaly/domain';
+import type { FitCheckAnswer, OrderEvent } from '@detaly/domain';
 
 export const EVENT_ACTIONS = {
   // --- client (Telegram/MAX client bot in phase 1C; /o/<token> applies the same events) -----
@@ -123,7 +123,12 @@ export type WorkflowActionSpec =
   /** Seller bot, order target: «Фото упаковки» (decision С17). */
   | { kind: 'photo'; action: 'packaging'; label: string }
   /** Seller bot, VIN request target (decision С13). */
-  | { kind: 'vin'; action: 'take' | 'answer' | 'fix' | 'send' | 'close'; label: string };
+  | { kind: 'vin'; action: 'take' | 'answer' | 'fix' | 'send' | 'close'; label: string }
+  /**
+   * Seller bot, fit check line target (step 4, docs/fit-check.md): the master's answer to one
+   * line of a fit check card (`analog` asks for «БРЕНД АРТИКУЛ» with a ForceReply first).
+   */
+  | { kind: 'fit'; action: FitCheckAnswer; label: string };
 
 export const WORKFLOW_ACTIONS = {
   // --- client bot ---------------------------------------------------------------------------
@@ -150,6 +155,11 @@ export const WORKFLOW_ACTIONS = {
   vfix: { kind: 'vin', action: 'fix', label: 'Исправить' },
   vsend: { kind: 'vin', action: 'send', label: 'Отправить клиенту' },
   vclose: { kind: 'vin', action: 'close', label: 'Закрыть заявку' },
+  // --- seller bot: fit checks (step 4, docs/fit-check.md) ----------------------------------
+  ffit: { kind: 'fit', action: 'fits', label: 'Подходит' },
+  fanlg: { kind: 'fit', action: 'analog', label: 'Аналог' },
+  fnot: { kind: 'fit', action: 'not_fit', label: 'Не подходит' },
+  fcall: { kind: 'fit', action: 'call_needed', label: 'Нужен звонок' },
 } as const satisfies Record<string, WorkflowActionSpec>;
 
 export type WorkflowAction = keyof typeof WORKFLOW_ACTIONS;
@@ -180,10 +190,11 @@ export const CALLBACK_ACTIONS: Readonly<Record<CallbackAction, CallbackActionKin
 /**
  * What the `<id>` part of callback_data refers to. Phase 1C: `claim` (claims.id), `booking`
  * (install_bookings.id), `vin` (vin_requests.id). The client bot's `orders` and `unsub` carry the
- * order of the message they are attached to; the bot acts on the pressing user.
+ * order of the message they are attached to; the bot acts on the pressing user. Step 4: `fit`
+ * (fit_checks.id, one line of a fit check card).
  */
 export type ActionTarget =
-  'order' | 'item' | 'order_or_item' | 'dead_letter' | 'claim' | 'booking' | 'vin';
+  'order' | 'item' | 'order_or_item' | 'dead_letter' | 'claim' | 'booking' | 'vin' | 'fit';
 
 const ITEM_ACTIONS: ReadonlySet<string> = new Set<CallbackAction>([
   'icancel',
@@ -274,6 +285,17 @@ export function workflowAction(value: string): WorkflowActionSpec | null {
   return isWorkflowAction(value) ? WORKFLOW_ACTIONS[value] : null;
 }
 
+/** The callback code of a fit check answer (step 4): `fits` -> `ffit`. */
+export function fitAnswerCode(answer: FitCheckAnswer): WorkflowAction {
+  for (const [code, spec] of Object.entries(WORKFLOW_ACTIONS) as [
+    WorkflowAction,
+    WorkflowActionSpec,
+  ][]) {
+    if (spec.kind === 'fit' && spec.action === answer) return code;
+  }
+  throw new Error(`no callback code for the fit answer ${answer}`);
+}
+
 export function isOwnerOnlyAction(value: string): boolean {
   return (OWNER_ONLY_ACTIONS as readonly string[]).includes(value);
 }
@@ -285,7 +307,12 @@ export function actionTarget(value: string): ActionTarget | null {
   if (value === 'back') return 'order_or_item';
   const workflow = workflowAction(value);
   if (workflow !== null) {
-    if (workflow.kind === 'claim' || workflow.kind === 'booking' || workflow.kind === 'vin') {
+    if (
+      workflow.kind === 'claim' ||
+      workflow.kind === 'booking' ||
+      workflow.kind === 'vin' ||
+      workflow.kind === 'fit'
+    ) {
       return workflow.kind;
     }
     return 'order';

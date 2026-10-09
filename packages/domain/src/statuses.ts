@@ -341,10 +341,11 @@ export const APPROVAL_SCOPES = ['order', 'item'] as const;
 export type ApprovalScope = (typeof APPROVAL_SCOPES)[number];
 
 /**
- * seller_cards.kind (text + check): an order card with action buttons, the handover QR, or a
- * VIN request card (phase 1C; the card then belongs to a vin_request instead of an order).
+ * seller_cards.kind (text + check): an order card with action buttons, the handover QR, a VIN
+ * request card (phase 1C; the card then belongs to a vin_request instead of an order) or a fit
+ * check card (step 4, docs/fit-check.md; the card belongs to a fit check request).
  */
-export const SELLER_CARD_KINDS = ['order', 'qr', 'vin'] as const;
+export const SELLER_CARD_KINDS = ['order', 'qr', 'vin', 'fit'] as const;
 export type SellerCardKind = (typeof SELLER_CARD_KINDS)[number];
 
 /**
@@ -477,3 +478,34 @@ export type BenchmarkCompetitor = (typeof BENCHMARK_COMPETITORS)[number];
  */
 export const REVIEW_PLATFORMS = ['yandex', '2gis'] as const;
 export type ReviewPlatform = (typeof REVIEW_PLATFORMS)[number];
+
+// ---------------------------------------------------------------------------
+// Step 4 (docs/fit-check.md): «Проверим, подойдёт ли» — the master checks cart lines by VIN
+// ---------------------------------------------------------------------------
+
+/**
+ * fit_checks.status (text + check). `pending` waits for the master; his answers are `fits`,
+ * `analog` (another part fits: fit_checks.analog_* is set), `not_fit` and `call_needed` (he must
+ * talk to the client first); `expired` — no answer within 24 hours; `cancelled` — the line left
+ * the cart (removed or checked out) before the answer. Appending a value requires a migration
+ * (the check constraint).
+ */
+export const FIT_CHECK_STATUSES = [
+  'pending',
+  'fits',
+  'analog',
+  'not_fit',
+  'call_needed',
+  'expired',
+  'cancelled',
+] as const;
+export type FitCheckStatus = (typeof FIT_CHECK_STATUSES)[number];
+
+/** The master's answers (seller bot buttons, the admin fallback). */
+export const FIT_CHECK_ANSWERS = [
+  'fits',
+  'analog',
+  'not_fit',
+  'call_needed',
+] as const satisfies readonly FitCheckStatus[];
+export type FitCheckAnswer = (typeof FIT_CHECK_ANSWERS)[number];

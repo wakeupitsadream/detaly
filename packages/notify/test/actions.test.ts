@@ -9,6 +9,7 @@ import {
   CLIENT_ACTIONS,
   EVENT_ACTIONS,
   eventForAction,
+  fitAnswerCode,
   isCallbackAction,
   isEventAction,
   isMenuAction,
@@ -228,6 +229,11 @@ describe('callback actions', () => {
       vfix: 'vin',
       vsend: 'vin',
       vclose: 'vin',
+      // step 4 (docs/fit-check.md): the answers to one line of a fit check card
+      ffit: 'fit',
+      fanlg: 'fit',
+      fnot: 'fit',
+      fcall: 'fit',
     };
     expect(Object.keys(WORKFLOW_ACTIONS).sort()).toEqual(Object.keys(expected).sort());
     for (const [code, target] of Object.entries(expected)) {
@@ -247,5 +253,28 @@ describe('callback actions', () => {
       label: 'Вернуть деньги',
     });
     expect(workflowAction('recheck')).toBeNull();
+  });
+
+  it('step 4: a code per answer of the master, the line (fit check) is the target', () => {
+    expect(workflowAction('ffit')).toEqual({ kind: 'fit', action: 'fits', label: 'Подходит' });
+    expect(workflowAction('fanlg')).toEqual({ kind: 'fit', action: 'analog', label: 'Аналог' });
+    expect(workflowAction('fnot')).toEqual({
+      kind: 'fit',
+      action: 'not_fit',
+      label: 'Не подходит',
+    });
+    expect(workflowAction('fcall')).toEqual({
+      kind: 'fit',
+      action: 'call_needed',
+      label: 'Нужен звонок',
+    });
+    expect(fitAnswerCode('fits')).toBe('ffit');
+    expect(fitAnswerCode('analog')).toBe('fanlg');
+    expect(fitAnswerCode('not_fit')).toBe('fnot');
+    expect(fitAnswerCode('call_needed')).toBe('fcall');
+    for (const code of ['ffit', 'fanlg', 'fnot', 'fcall']) {
+      const data = buildCallbackData(code, UUID, newNonce());
+      expect(Buffer.byteLength(data), code).toBeLessThanOrEqual(CALLBACK_DATA_MAX_BYTES);
+    }
   });
 });

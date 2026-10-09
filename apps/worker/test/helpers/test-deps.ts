@@ -42,7 +42,9 @@ type CardCall =
   | { method: 'refresh'; orderId: string }
   | { method: 'sendHandoverQr'; input: Parameters<SellerCardPort['sendHandoverQr']>[0] }
   | { method: 'postVin'; input: Parameters<SellerCardPort['postVin']>[0] }
-  | { method: 'refreshVin'; vinRequestId: string };
+  | { method: 'refreshVin'; vinRequestId: string }
+  | { method: 'postFit'; input: Parameters<SellerCardPort['postFit']>[0] }
+  | { method: 'refreshFit'; requestId: string };
 
 export interface RecordingSellerCards extends SellerCardPort {
   calls: CardCall[];
@@ -79,6 +81,13 @@ export function recordingSellerCards(): RecordingSellerCards {
     },
     async refreshVin(vinRequestId) {
       calls.push({ method: 'refreshVin', vinRequestId });
+    },
+    async postFit(input) {
+      calls.push({ method: 'postFit', input });
+      return { status: 'posted' };
+    },
+    async refreshFit(requestId) {
+      calls.push({ method: 'refreshFit', requestId });
     },
   };
 }
@@ -200,7 +209,8 @@ export interface TestDepsOverrides extends Partial<
   /** Extra env values on top of minimalEnvSource (DATABASE_URL / REDIS_URL are set here). */
   envOverrides?: Record<string, string | undefined>;
   /** A whole port, or a phase 1B one: postVin / refreshVin then record into the fakes. */
-  sellerCards?: Omit<SellerCardPort, 'postVin' | 'refreshVin'> & Partial<SellerCardPort>;
+  sellerCards?: Omit<SellerCardPort, 'postVin' | 'refreshVin' | 'postFit' | 'refreshFit'> &
+    Partial<SellerCardPort>;
   alerts?: AlertPort;
   inspector?: QueueInspector;
 }
@@ -299,7 +309,13 @@ export async function createTestDeps(overrides: TestDepsOverrides = {}): Promise
       },
     },
     sellerCards: cardsOverride
-      ? { postVin: sellerCards.postVin, refreshVin: sellerCards.refreshVin, ...cardsOverride }
+      ? {
+          postVin: sellerCards.postVin,
+          refreshVin: sellerCards.refreshVin,
+          postFit: sellerCards.postFit,
+          refreshFit: sellerCards.refreshFit,
+          ...cardsOverride,
+        }
       : sellerCards,
     alerts: alertsOverride ?? alerts,
     inspector: inspectorOverride ?? inspector,

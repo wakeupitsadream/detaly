@@ -319,6 +319,19 @@ describe('proxy: phase 1C forms and token pages', () => {
     ]);
   });
 
+  it('step 4: «Отправить мастеру» counts as fit_check; the 429 page leads back to the cart', async () => {
+    await proxy(request('POST', '/api/fit-checks?line=01890000-0000-7000-8000-000000000001'));
+    await proxy(request('POST', '/api/fit-checks', { origin: 'https://evil.example' }));
+    await proxy(request('POST', '/api/cart/items/01890000-0000-7000-8000-000000000001/fit'));
+    expect(hits.map((hit) => hit.kind)).toEqual(['fit_check', 'cart']);
+    rejectWith(7200);
+    const page = await proxy(request('POST', '/api/fit-checks', { accept: 'text/html' }));
+    expect(page.status).toBe(429);
+    const html = await page.text();
+    expect(html).toContain('Слишком много запросов');
+    expect(html).toContain('<a href="/cart">Вернуться в корзину</a>');
+  });
+
   it('sends blocked forms back to their order page or proposal', async () => {
     rejectWith(600);
     const html = { accept: 'text/html,*/*;q=0.8' };

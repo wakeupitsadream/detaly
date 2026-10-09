@@ -12,6 +12,8 @@
  *   POST /api/orders/<token>/install and /api/orders/<token>/install/cancel; claim —
  *   POST /api/orders/<token>/claims; vin — POST /api/vin; proposal —
  *   POST /api/proposals/<token>/take.
+ * - step 4 (docs/fit-check.md): fit_check — POST /api/fit-checks (the per-cart limit is counted
+ *   by its handler).
  *
  * Not limited here: the YooKassa webhook (/api/webhooks/yookassa, closed by the IP allowlist
  * in its handler) and /admin with /api/admin (Basic auth in the proxy, which limits wrong
@@ -107,6 +109,7 @@ function writeKind(segments: string[]): RateLimitKind | null {
   }
   if (area === 'cart') return 'cart';
   if (area === 'vin' && segments.length === 2) return 'vin';
+  if (area === 'fit-checks' && segments.length === 2) return 'fit_check';
   if (area === 'proposals' && segments.length === 4 && token && action === 'take') {
     return 'proposal';
   }

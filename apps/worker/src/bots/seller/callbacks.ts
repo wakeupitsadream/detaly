@@ -11,7 +11,8 @@
 //
 // Phase 1C (docs/phase-1c-implementation.md section 9): the nonce may also belong to a VIN
 // request card (vin.ts), and the order card carries claim, booking and packaging photo buttons
-// whose id is the claim or the booking of the card's order (order-workflow.ts).
+// whose id is the claim or the booking of the card's order (order-workflow.ts). Step 4
+// (docs/fit-check.md): or to a fit check card (fit.ts), whose buttons carry one line's id.
 //
 // Logs carry the order number, the action and the staff id; never a phone or an order token.
 import { and, claims, desc, eq, installBookings, orderEvents, orders, type Db } from '@detaly/db';
@@ -46,6 +47,7 @@ import { askInvoiceReference } from './invoice';
 import { handleOrderWorkflowPress, isOrderWorkflowCode } from './order-workflow';
 import { retryDeadLetterPress } from './queues';
 import { loadStaffMember, type StaffMember } from './staff';
+import { handleFitPress } from './fit';
 import { handleVinPress } from './vin';
 
 export const STALE_CARD = 'Карточка устарела, откройте свежую';
@@ -106,7 +108,9 @@ async function targetBelongs(
   parsed: ParsedCallbackData,
 ): Promise<boolean> {
   const target = actionTarget(parsed.action);
-  if (target === null || target === 'dead_letter' || target === 'vin') return false;
+  if (target === null || target === 'dead_letter' || target === 'vin' || target === 'fit') {
+    return false;
+  }
   if (!isUuid(parsed.orderId)) return false;
   if (target === 'order') return parsed.orderId === card.orderId;
   if (target === 'claim') {
@@ -252,6 +256,11 @@ export function callbackHandler(input: {
         return answer(ctx, STALE_CARD);
       }
       return handleVinPress(ctx, { deps, cards, card: found.card, parsed, staff });
+    }
+    if (found.type === 'fit') {
+      // A fit check card (step 4): its buttons carry the id of one line of the request.
+      if (actionTarget(parsed.action) !== 'fit') return answer(ctx, STALE_CARD);
+      return handleFitPress(ctx, { deps, cards, card: found.card, parsed, staff });
     }
     const card = found.card;
     if (!(await targetBelongs(deps.db, cards, card, parsed))) return answer(ctx, STALE_CARD);

@@ -67,6 +67,11 @@ export interface DemoOrderDeps {
   rossko: Pick<RosskoClient, 'search'>;
   loadSettings: () => Promise<Pick<SearchSettings, 'pricing' | 'excludedRules' | 'eta'>>;
   now?: Date;
+  /**
+   * Step 4: FIT_GUARANTEE_ENABLED. The first sample item shows «Проверено мастером» (the
+   * guarantee line only with the switch on, as a real order).
+   */
+  fitGuarantee?: boolean;
 }
 
 /**
@@ -117,6 +122,8 @@ export async function buildDemoOrderView(deps: DemoOrderDeps): Promise<OrderView
       waiting: true,
       inactive: false,
       canCancel: false,
+      fitChecked: index === 0,
+      fitGuarantee: index === 0 && (deps.fitGuarantee ?? false),
     };
   });
   // The same date the cart and checkout promise: the latest supplier date plus the ETA buffer.
@@ -238,7 +245,14 @@ export function buildDemoOrderServices(input: DemoServicesInput): OrderServicesV
             id: CLAIM_ID,
             orderId: view.id,
             orderItemId: item?.id ?? null,
-            item: item ? { id: item.id, brand: item.brand, article: item.article } : null,
+            item: item
+              ? {
+                  id: item.id,
+                  brand: item.brand,
+                  article: item.article,
+                  fitGuarantee: item.fitGuarantee,
+                }
+              : null,
             kind: 'not_fit',
             openedAt,
             deadlineAt: claimDeadline(openedAt),

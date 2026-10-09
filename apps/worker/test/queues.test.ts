@@ -47,6 +47,8 @@ describe('schedulers', () => {
       ['housekeeping', 'price-check', { pattern: '0 10 * * 1', tz: 'Asia/Yekaterinburg' }],
       // step 3: «Отзывы: обновите рейтинг…», Mondays at 10:05 local
       ['housekeeping', 'reviews-check', { pattern: '5 10 * * 1', tz: 'Asia/Yekaterinburg' }],
+      // step 4: fit checks — expiry and the SLA reminder, every 5 minutes
+      ['housekeeping', 'fit-checks', { every: 300_000 }],
       ['reconciliation', 'sweep', { every: 600_000 }],
       ['reconciliation', 'nightly', { pattern: '15 3 * * *', tz: 'Asia/Yekaterinburg' }],
     ]);
@@ -57,8 +59,8 @@ describe('schedulers', () => {
     const housekeeping = vi.fn(async () => ({}));
     await registerSchedulers({ housekeeping: { upsertJobScheduler: housekeeping } as never });
     // heartbeat, timers, reminders, sms-budget, deferred-1a, the phase 1C retention, the
-    // step 2 price check and the step 3 reviews check
-    expect(housekeeping).toHaveBeenCalledTimes(8);
+    // step 2 price check, the step 3 reviews check and the step 4 fit checks
+    expect(housekeeping).toHaveBeenCalledTimes(9);
 
     const reconciliation = vi.fn(async () => ({}));
     await registerSchedulers({

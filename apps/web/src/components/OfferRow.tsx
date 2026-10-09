@@ -2,6 +2,7 @@ import type { OfferView } from '@detaly/domain';
 import { telHref } from '@/server/brand';
 import type { InstallPlanView } from '@/server/install/types';
 import { AddToCartForm } from './AddToCartForm';
+import { FitSearchLink } from './fit/FitSearchLink';
 import { IconCalendar, IconPhone, IconWallet } from './icons';
 import { InstallLine } from './install/InstallLine';
 import { StockBadge } from './StockBadge';
@@ -50,7 +51,8 @@ export function excludedClientText(reason: string | null): string {
  * when a lift window is planned, the price and «В корзину». Phones stack it with the button
  * across the card; from lg it is one row of four columns. Supplier price and markup never reach
  * this component (OfferView carries the client price only). Excluded (marked) goods get no
- * «В корзину» button.
+ * «В корзину» button. Step 4: «Проверить под мою машину» under it adds the offer and opens the
+ * fit check form of its cart line (components/fit/FitSearchLink).
  */
 export function OfferRow({
   offer,
@@ -75,7 +77,8 @@ export function OfferRow({
   /** The point's phone: the call button of an excluded good; none without a phone. */
   contactPhone?: string | null;
 }) {
-  const canAdd = orderingOpen && !offer.excluded && offer.available >= offer.multiplicity;
+  const sellable = !offer.excluded && offer.available >= offer.multiplicity;
+  const canAdd = orderingOpen && sellable;
   const title = `${offer.brand} ${offer.article}`;
   return (
     <li
@@ -177,14 +180,25 @@ export function OfferRow({
             </span>
           </div>
         )}
-        {canAdd ? (
-          <AddToCartForm
-            q={searchArticleNorm}
-            offerId={offer.id}
-            qty={offer.multiplicity}
-            title={title}
-            className="w-full md:w-auto md:min-w-52 lg:w-full"
-          />
+        {sellable ? (
+          <div className="flex w-full min-w-0 flex-col gap-1 md:w-auto md:min-w-52 lg:w-full">
+            {canAdd ? (
+              <AddToCartForm
+                q={searchArticleNorm}
+                offerId={offer.id}
+                qty={offer.multiplicity}
+                title={title}
+              />
+            ) : null}
+            <FitSearchLink
+              q={searchArticleNorm}
+              offerId={offer.id}
+              qty={offer.multiplicity}
+              title={title}
+              open={orderingOpen}
+              phone={contactPhone}
+            />
+          </div>
         ) : null}
       </div>
     </li>

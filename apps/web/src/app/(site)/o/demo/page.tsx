@@ -52,6 +52,7 @@ export default async function DemoOrderPage({ searchParams }: { searchParams?: S
     rossko: supplier.rossko,
     loadSettings: () => supplier.settings.get(),
     now,
+    fitGuarantee: serverEnv().FIT_GUARANTEE_ENABLED,
   });
   const brand = getBrand();
   const screen = parseDemoScreen((await searchParams) ?? {});

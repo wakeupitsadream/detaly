@@ -32,3 +32,5 @@ export * from './vin-requests';
 export * from './install-params';
 // step 3 (docs/reviews.md)
 export * from './reviews';
+// step 4 (docs/fit-check.md)
+export * from './fit-checks';

@@ -169,6 +169,31 @@ describe('hitRateLimit: checkout, cancel, cart, pay, order_action, admin_auth', 
     expect(nextHour).toMatchObject({ allowed: false, window: 'day' });
   });
 
+  it('step 4: fit checks — 20 a day per client bucket, 10 a day per cart (docs/fit-check.md)', async () => {
+    expect(RATE_LIMITS.fit_check).toEqual([
+      { window: 'day', keySegment: 'day', limit: 20, windowMs: 24 * HOUR_MS },
+    ]);
+    expect(RATE_LIMITS.fit_check_cart).toEqual([
+      { window: 'day', keySegment: 'day', limit: 10, windowMs: 24 * HOUR_MS },
+    ]);
+    const start = Date.UTC(2026, 9, 4, 6, 0, 0);
+    const options = {
+      kind: 'fit_check' as const,
+      secret: SECRET,
+      ip: '198.51.100.42',
+      keyPrefix: prefix,
+    };
+    // Spread over the day: the 21st within 24 hours is refused.
+    for (let i = 0; i < 20; i += 1) {
+      const decision = await hitRateLimit(redis, { ...options, now: start + i * HOUR_MS });
+      expect(decision.allowed, `fit_check ${i + 1}`).toBe(true);
+    }
+    const blocked = await hitRateLimit(redis, { ...options, now: start + 20 * HOUR_MS });
+    expect(blocked).toMatchObject({ allowed: false, window: 'day', retryAfterSec: 4 * 3600 });
+    const nextDay = await hitRateLimit(redis, { ...options, now: start + 24 * HOUR_MS + 1 });
+    expect(nextDay.allowed).toBe(true);
+  });
+
   it('keeps the kinds apart: an exhausted checkout leaves cart, cancel and search open', async () => {
     const now = Date.UTC(2026, 9, 4, 9, 0, 0);
     const options = { secret: SECRET, ip: '198.51.100.40', keyPrefix: prefix, now };

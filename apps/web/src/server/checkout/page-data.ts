@@ -11,6 +11,8 @@ import {
   checkOrderMinimums,
   choosePaymentScheme,
   explainPaymentScheme,
+  fitLineState,
+  isFitCheckedState,
   promisedDate,
   repriceCartLines,
   selectCartPart,
@@ -25,6 +27,7 @@ import {
   type RepricedLine,
 } from '@detaly/domain';
 import type { RosskoClient } from '@detaly/rossko';
+import { fitFactsOf, latestFitChecksOfLines } from '@detaly/vin';
 import { promiseFor } from '../cart/summary';
 import { fetchFreshOffers, findActiveCart, persistRepricing } from '../cart-store';
 import type { CheckoutGate } from '../checkout-gate';
@@ -60,6 +63,11 @@ export interface CheckoutPageReady {
    * supplier etaDate is never shown to the client.
    */
   linePromises: Record<string, string | null>;
+  /**
+   * Step 4: lines the master checked under the client's VIN (`fits` or the accepted analog) —
+   * exactly the lines whose check the order will copy (fitOrderItemColumns), by line id.
+   */
+  fitChecked: Record<string, boolean>;
   /** Scheme with no-shows counted as 0; the server decides finally by the phone. */
   decision: PaymentSchemeDecision;
   /** Days the ready order waits at the point under that scheme (pickup.window_*_days). */
@@ -134,6 +142,20 @@ export async function loadCheckoutPage(
 
   const totals = cartTotals(lines);
   const etaDates = lines.map((l) => l.etaDate).filter((d): d is IsoDate => d !== null);
+  const fits = await latestFitChecksOfLines(
+    deps.db,
+    active.cart.id,
+    lines.map((l) => l.id),
+  );
+  const fitChecked = Object.fromEntries(
+    lines.map((l) => {
+      const check = fits.get(l.id);
+      return [
+        l.id,
+        check ? isFitCheckedState(fitLineState(fitFactsOf(check), l.offer, now)) : false,
+      ];
+    }),
+  );
   const decision = choosePaymentScheme({
     allItemsLocal: lines.every((l) => l.isLocal),
     totalKop: totals.subtotalKop,
@@ -154,6 +176,7 @@ export async function loadCheckoutPage(
     itemsHash: itemsHash(lines),
     promisedDate: etaDates.length > 0 ? promisedDate(etaDates, settings.eta) : null,
     linePromises: Object.fromEntries(lines.map((l) => [l.id, promiseFor([l.etaDate], settings)])),
+    fitChecked,
     decision,
     storageDays: storageDays(settings.order, decision.scheme),
     explanation: explainPaymentScheme(decision, {

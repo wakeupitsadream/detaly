@@ -14,9 +14,13 @@
 //
 // Claim and return photos live with the order (VERIFY: retention period with the lawyer — the
 // privacy policy row «Возвраты и претензии» has no term).
+//
+// Step 4 (docs/fit-check.md): the same run clears fit_checks.vin and comment of requests older
+// than FIT_CHECK_RETENTION_DAYS (90): the checks themselves stay for the statistics.
 import { and, asc, eq, gt, isNull, sql, vinRequests } from '@detaly/db';
 import { VIN_PHOTO_RETENTION_DAYS } from '@detaly/domain';
 import { FileKeyError } from '@detaly/files';
+import { retainFitChecks } from '@detaly/vin';
 import type { WorkerDeps } from '../../deps';
 import { DAY_MS, notAfter } from './common';
 
@@ -97,5 +101,9 @@ export async function runRetention(deps: WorkerDeps): Promise<RetentionResult> {
   if (result.requests > 0 || result.failed > 0 || result.waiting > 0) {
     deps.logger.info({ ...result }, 'retention: VIN photos');
   }
+
+  // Fit checks: the VIN and the comment go, the check (brand, article, answer) stays.
+  const fitChecks = await retainFitChecks(deps.db, now);
+  if (fitChecks > 0) deps.logger.info({ fitChecks }, 'retention: fit check VINs and comments');
   return result;
 }

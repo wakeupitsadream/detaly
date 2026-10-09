@@ -5,6 +5,8 @@ import { CartLineRow } from '@/components/CartLineRow';
 import { CartCheckoutBar, CartSummary, type CartPaymentMode } from '@/components/CartSummary';
 import { CheckoutSteps } from '@/components/checkout/CheckoutSteps';
 import { DiffBanner } from '@/components/DiffBanner';
+import { FitAutoRefresh } from '@/components/fit/FitAutoRefresh';
+import { FitDemoProvider, FitLineBlock } from '@/components/fit/FitLineBlock';
 import { IconCart, IconPlus, IconSearch, IconSts } from '@/components/icons';
 import { EmptyPanel } from '@/components/page/EmptyPanel';
 import { Notice } from '@/components/page/Notice';
@@ -21,7 +23,12 @@ import { shareCard } from '@/lib/seo';
 import { getBrand } from '@/server/brand';
 import type { CartView } from '@/server/cart/cart-service';
 import { currentCheckoutGate } from '@/server/checkout-gate';
+import { getDb } from '@/server/db';
+import { serverEnv } from '@/server/env';
 import { errorInfo, PageDataError } from '@/server/errors';
+import { loadCartFitView, type CartFitView } from '@/server/fit-checks/cart-fit';
+import { fitAnchor } from '@/server/fit-checks/paths';
+import { isDemoMode } from '@/server/mode';
 import { planInstallForDate, type InstallPlanView } from '@/server/install';
 import { getLogger } from '@/server/logger';
 import { FindByArticleLink } from './FindByArticleLink';
@@ -67,6 +74,37 @@ function EmptyCart() {
   );
 }
 
+/**
+ * The fit checks of the cart (step 4): the state of every line and the form's data. A failure
+ * only hides the fit blocks (logged without the cart token): the cart itself still works.
+ */
+async function fitViewOf(
+  view: CartView,
+  gateOpen: boolean,
+  params: SearchParams,
+): Promise<CartFitView | null> {
+  try {
+    return await loadCartFitView({
+      db: isDemoMode() ? null : getDb(),
+      cartId: view.cartId,
+      lines: view.lines,
+      settings: view.settings,
+      env: serverEnv(),
+      now: view.now,
+      gateOpen,
+      query: {
+        check: first(params.check),
+        fit: first(params.fit),
+        fit_error: first(params.fit_error),
+        fit_demo: first(params.fit_demo),
+      },
+    });
+  } catch (error) {
+    getLogger().warn(errorInfo(error), 'cart page: fit checks unavailable');
+    return null;
+  }
+}
+
 /** How the summary badge names the payment: summarizeCart adds the phone note only on pickup. */
 function paymentMode(payment: { mixed: boolean; sentences: string[] }): CartPaymentMode {
   return !payment.mixed && payment.sentences.includes(FINAL_SCHEME_NOTE) ? 'on_pickup' : 'prepay';
@@ -105,6 +143,15 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
     }
   }
   const checkoutReady = Boolean(summary && gate?.open && summary.minimums.ok);
+  const fit = view && gate && lines.length > 0 ? await fitViewOf(view, gate.open, params) : null;
+  const fitLines = (summary?.lines ?? []).map((line) => ({
+    id: line.id,
+    title: `${line.brand} ${line.article}`,
+    name: line.name,
+    pending: fit?.lines[line.id]?.state === 'pending',
+  }));
+  // «Обновить» without JavaScript: a new URL on every render, so the link always reloads.
+  const refreshAt = Date.now();
 
   return (
     <InnerPage>
@@ -131,17 +178,55 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
             {STALE_PRICES_TEXT}
           </Notice>
         ) : null}
+        {fit?.sent ? (
+          <Notice tone="ok" role="status" data-testid="fit-sent">
+            Отправили мастеру. Ответ появится здесь, у детали.
+          </Notice>
+        ) : null}
+        {fit?.error && fit.openLine === null ? (
+          <Notice tone="danger" role="alert" data-testid="fit-error">
+            {fit.error.message}
+          </Notice>
+        ) : null}
+        {fit?.shared.demo && fit.demoLine ? (
+          <Notice tone="wait" role="status" data-testid="fit-demo">
+            Демо: VIN никуда не отправлялся и не сохранён — так выглядит ответ мастера.
+          </Notice>
+        ) : null}
 
         {summary && gate ? (
           <div className="grid min-w-0 gap-6 pt-2 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start lg:gap-8">
             <div className="min-w-0 space-y-4">
               {/* The lines are h3: this heading puts them under the page's h1. */}
               <h2 className="sr-only">Товары в корзине</h2>
-              <ul className="min-w-0 space-y-3">
-                {summary.lines.map((line) => (
-                  <CartLineRow key={line.id} line={line} />
-                ))}
-              </ul>
+              <FitDemoProvider>
+                <ul className="min-w-0 space-y-3">
+                  {summary.lines.map((line) => {
+                    const lineFit = fit?.lines[line.id];
+                    return (
+                      <CartLineRow
+                        key={line.id}
+                        line={line}
+                        fit={
+                          fit && lineFit ? (
+                            <FitLineBlock
+                              lineId={line.id}
+                              view={lineFit}
+                              shared={fit.shared}
+                              lines={fitLines}
+                              openInitially={fit.openLine === line.id}
+                              error={fit.openLine === line.id ? (fit.error?.message ?? null) : null}
+                              demoDone={fit.demoLine === line.id}
+                              refreshHref={`/cart?r=${refreshAt}#${fitAnchor(line.id)}`}
+                            />
+                          ) : undefined
+                        }
+                      />
+                    );
+                  })}
+                </ul>
+              </FitDemoProvider>
+              {fit && !fit.shared.demo ? <FitAutoRefresh active={fit.anyPending} /> : null}
               <p className="min-w-0" data-testid="cart-more">
                 <ButtonLink href="/" variant="secondary" icon={<IconPlus size={20} />}>
                   Найти ещё деталь

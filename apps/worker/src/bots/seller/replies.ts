@@ -1,7 +1,8 @@
 // Text replies of staff to the seller bot's ForceReply prompts (decision С25): «Счёт оплачен»
-// (invoice.ts), the claim decision text and the owner's override reason, the master's VIN answer
-// and the reason to close a VIN request. Only a reply of the same user to the prompt counts
-// (awaiting.ts); any other text — including commands — goes on to the next handler (silence).
+// (invoice.ts), the claim decision text and the owner's override reason, the master's VIN answer,
+// the reason to close a VIN request and the analog of a fit check line (step 4, fit.ts). Only a
+// reply of the same user to the prompt counts (awaiting.ts); any other text — including commands
+// — goes on to the next handler (silence).
 //
 // Logs: ids, the action, the staff id and the outcome; never the texts (they may hold PD).
 import { CLAIM_DECISION_TEXT_MAX } from '@detaly/domain';
@@ -15,6 +16,7 @@ import { handleInvoiceReply } from './invoice';
 import { CLAIM_TEXT_PROMPT } from './order-workflow';
 import { askForReply, REPLY_WITHIN } from './prompts';
 import { loadStaffMember, type StaffMember } from './staff';
+import { handleFitAnalog } from './fit';
 import { handleVinAnswer, handleVinClose } from './vin';
 
 /** Characters of the owner's override reason (claims NOTE_MAX of @detaly/orders). */
@@ -123,7 +125,7 @@ export function replyHandler(input: { deps: WorkerDeps; cards: CardService }): M
       chatId,
       userId,
       ctx.message?.reply_to_message?.message_id,
-      ['invoice', 'claim_reason', 'claim_text', 'vin_answer', 'vin_close'],
+      ['invoice', 'claim_reason', 'claim_text', 'vin_answer', 'vin_close', 'fit_analog'],
     );
     // Not a reply to this user's prompt: ordinary chat text, the wait goes on until its TTL.
     if (awaiting === null) return next();
@@ -140,6 +142,8 @@ export function replyHandler(input: { deps: WorkerDeps; cards: CardService }): M
         return handleVinAnswer(ctx, { deps, cards, awaiting, staff, text });
       case 'vin_close':
         return handleVinClose(ctx, { deps, cards, awaiting, staff, text });
+      case 'fit_analog':
+        return handleFitAnalog(ctx, { deps, cards, awaiting, staff, text });
     }
   };
 }

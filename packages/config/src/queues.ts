@@ -69,6 +69,12 @@ export const HOUSEKEEPING_JOBS = {
    * chat while a review link is set and the rating snapshot is older than 7 days.
    */
   reviewsCheck: 'reviews-check',
+  /**
+   * Every 5 minutes (step 4, docs/fit-check.md): fit checks unanswered for 24 hours expire, and
+   * a request waiting longer than `fit_check.sla_minutes` of working time is re-posted to the
+   * sellers chat once.
+   */
+  fitChecks: 'fit-checks',
 } as const;
 
 /** Job names of the reconciliation queue (decision Б29, PLAN section 1). */
@@ -109,4 +115,6 @@ export const NOTIFY_JOBS = {
   alert: 'alert',
   /** Phase 1C (decision С20): a VIN request message to the client or the sellers card. */
   vin: 'vin',
+  /** Step 4 (docs/fit-check.md): the fit check card of a request in the sellers chat. */
+  fit: 'fit',
 } as const;

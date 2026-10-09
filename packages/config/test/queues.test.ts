@@ -42,6 +42,7 @@ describe('queue names', () => {
       'retention',
       'priceCheck',
       'reviewsCheck',
+      'fitChecks',
     ]);
     expect(RECONCILIATION_JOBS).toEqual({ sweep: 'sweep', nightly: 'nightly' });
   });
@@ -61,7 +62,14 @@ describe('step 3 jobs', () => {
 
 describe('phase 1C jobs', () => {
   it('notify/vin and the daily retention', () => {
-    expect(NOTIFY_JOBS).toEqual({ order: 'order', alert: 'alert', vin: 'vin' });
+    expect(NOTIFY_JOBS).toMatchObject({ order: 'order', alert: 'alert', vin: 'vin' });
     expect(HOUSEKEEPING_JOBS.retention).toBe('retention');
+  });
+});
+
+describe('step 4 jobs', () => {
+  it('notify/fit (the sellers card of a fit check) and the 5-minute fit-checks run', () => {
+    expect(NOTIFY_JOBS).toEqual({ order: 'order', alert: 'alert', vin: 'vin', fit: 'fit' });
+    expect(HOUSEKEEPING_JOBS.fitChecks).toBe('fit-checks');
   });
 });

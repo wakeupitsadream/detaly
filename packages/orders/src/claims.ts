@@ -927,7 +927,12 @@ export async function loadClaimsView(
     itemIds.length === 0
       ? Promise.resolve([])
       : db
-          .select({ id: orderItems.id, brand: orderItems.brand, article: orderItems.article })
+          .select({
+            id: orderItems.id,
+            brand: orderItems.brand,
+            article: orderItems.article,
+            fitGuarantee: orderItems.fitGuarantee,
+          })
           .from(orderItems)
           .where(inArray(orderItems.id, itemIds)),
     db

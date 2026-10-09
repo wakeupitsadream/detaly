@@ -1,6 +1,7 @@
 import { formatPromise, formatRub, safeMul, type IsoDate, type RepricedLine } from '@detaly/domain';
 import { IconCalendar, IconClock, IconPhone, IconPin } from '@/components/icons';
 import { PICKUP_ADDRESS_UNKNOWN } from '@/components/order/OrderSections';
+import { FitCheckedBadge } from '@/components/fit/FitBadge';
 import { StockBadge } from '@/components/StockBadge';
 import { cn } from '@/components/ui/cn';
 import { PartTile } from '@/components/ui/PartTile';
@@ -21,12 +22,18 @@ export function CheckoutSummary({
   totalKop,
   promisedDate,
   linePromises,
+  fitChecked = {},
+  fitGuarantee = false,
 }: {
   lines: readonly RepricedLine[];
   totalKop: number;
   promisedDate: IsoDate | null;
   /** «к …» per line id with the eta buffer (page data), never the raw supplier date. */
   linePromises: Readonly<Record<string, string | null>>;
+  /** Step 4: lines the master checked under the VIN (page data): «Проверено мастером». */
+  fitChecked?: Readonly<Record<string, boolean>>;
+  /** FIT_GUARANTEE_ENABLED: the guarantee line under the badge. */
+  fitGuarantee?: boolean;
 }) {
   const first = lines[0];
   const uniform =
@@ -73,6 +80,12 @@ export function CheckoutSummary({
                 {line.qty} × {formatRub(line.priceClientKop)}
               </p>
             </div>
+            {fitChecked[line.id] ? (
+              <FitCheckedBadge
+                guarantee={fitGuarantee}
+                className="col-span-2 sm:col-span-1 sm:col-start-2"
+              />
+            ) : null}
             {uniform ? null : (
               <div className="col-span-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 sm:col-span-1 sm:col-start-2">
                 {/* The scheme of the whole order is stated in «Оплата»: no payment tail here. */}

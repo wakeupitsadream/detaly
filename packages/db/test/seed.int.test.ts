@@ -41,6 +41,7 @@ describe('seed (globalSetup already ran it once)', () => {
         'courier.fee_kop',
         'eta.buffer_days',
         'eta.supplier_invoice_lag_days',
+        'fit_check.sla_minutes',
         'handed.complete_days',
         'handover.qr_ttl_min',
         'no_show.limit',
@@ -82,6 +83,8 @@ describe('seed (globalSetup already ran it once)', () => {
     expect(byKey['reviews.min_count']).toBe(5);
     expect(byKey['reviews.max_age_days']).toBe(45);
     expect(byKey['reviews.snapshot']).toBeUndefined();
+    // step 4: the master's SLA for fit checks, minutes of working time
+    expect(byKey['fit_check.sla_minutes']).toBe(60);
     expect(byKey['rossko.prepay_invoice']).toBe(false);
     // Stored as real jsonb, not a JSON string.
     const [typed] = await db.$client<{ t: string }[]>`

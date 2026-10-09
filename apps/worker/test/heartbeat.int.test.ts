@@ -67,6 +67,7 @@ describe.skipIf(!inject('workerDatabaseUrl'))('heartbeat via the Job Scheduler',
     expect(Object.keys(byKey).sort()).toEqual(
       [
         'deferred-1a',
+        'fit-checks',
         'heartbeat',
         'price-check',
         'reminders',
@@ -87,13 +88,15 @@ describe.skipIf(!inject('workerDatabaseUrl'))('heartbeat via the Job Scheduler',
     expect(byKey['price-check']).toMatchObject({ pattern: '0 10 * * 1', tz: SCHEDULER_TZ });
     // step 3: the weekly reviews check, Mondays at 10:05 local
     expect(byKey['reviews-check']).toMatchObject({ pattern: '5 10 * * 1', tz: SCHEDULER_TZ });
+    // step 4: fit checks, every 5 minutes
+    expect(byKey['fit-checks']).toMatchObject({ every: 300_000 });
 
     const reconciliation = await queues.reconciliation.getJobSchedulers();
     const rec = Object.fromEntries(reconciliation.map((s) => [s.key, s]));
     expect(Object.keys(rec).sort()).toEqual(['nightly', 'sweep']);
     expect(rec['sweep']).toMatchObject({ every: 600_000 });
     expect(rec['nightly']).toMatchObject({ pattern: '15 3 * * *', tz: SCHEDULER_TZ });
-    expect(await queues.housekeeping.getJobSchedulersCount()).toBe(8);
+    expect(await queues.housekeeping.getJobSchedulersCount()).toBe(9);
   });
 });
 

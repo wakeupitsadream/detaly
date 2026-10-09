@@ -199,7 +199,9 @@ export function createDemoCartService(deps: DemoCartServiceDeps): CartService {
 
       const existing = stored.find((line) => line.offerId === offerId);
       let next: DemoCartLine[];
+      let lineId: string;
       if (existing) {
+        lineId = existing.id;
         // Same offer again: one line with the summed quantity (it keeps its query article).
         try {
           cartLineFromOffer(offer, existing.q, existing.qty + qty, ctx);
@@ -215,11 +217,12 @@ export function createDemoCartService(deps: DemoCartServiceDeps): CartService {
         if (!searches.has(articleNorm) && searches.size >= MAX_CART_SEARCHES) {
           throw new CartRequestError('too_many_searches');
         }
-        next = [...stored, { id: newDemoLineId(), q: articleNorm, offerId, qty }];
+        lineId = newDemoLineId();
+        next = [...stored, { id: lineId, q: articleNorm, offerId, qty }];
       }
       const totals = await snapshotOf(next, settings, at, true);
       deps.jar.write(next);
-      return { ...totals, token: '', created: stored.length === 0 };
+      return { ...totals, token: '', created: stored.length === 0, lineId };
     },
 
     async updateItem(input) {

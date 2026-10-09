@@ -17,6 +17,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { createdAt, id, kop, kopCheck, namedCheck, tstz, updatedAt } from './columns';
 import { carts, vinRequests } from './carts';
+import { fitChecks } from './fit-checks';
 import {
   actorType,
   fulfillment,
@@ -26,7 +27,7 @@ import {
   orderStatus,
   paymentScheme,
 } from './enums';
-import { documentVersions, users } from './people';
+import { documentVersions, staff, users } from './people';
 
 /**
  * Human order number DT-000001. maxValue keeps lpad() from truncating 7-digit values into
@@ -149,9 +150,24 @@ export const orderItems = pgTable(
     arrivedAt: tstz(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
+    // --- step 4 (docs/fit-check.md): copied at checkout from the cart line's fit check ---
+    /** The check that said `fits` (or the analog the client accepted). */
+    fitCheckId: uuid().references((): AnyPgColumn => fitChecks.id, { onDelete: 'set null' }),
+    /** When the master answered. */
+    fitCheckedAt: tstz(),
+    /** Who answered; null for an answer from the admin. */
+    fitCheckedBy: uuid().references(() => staff.id),
+    /** FIT_GUARANTEE_ENABLED at checkout for a checked line: «вернём деньги» was promised. */
+    fitGuarantee: boolean().notNull().default(false),
   },
   (t) => [
     index('order_items_order_id_idx').on(t.orderId),
+    index('order_items_fit_check_id_idx').on(t.fitCheckId),
+    namedCheck(
+      'order_items',
+      'fit_guarantee',
+      sql`not ${t.fitGuarantee} or ${t.fitCheckedAt} is not null`,
+    ),
     namedCheck(
       'order_items',
       'search_article_norm',

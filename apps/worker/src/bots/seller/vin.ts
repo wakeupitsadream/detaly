@@ -53,7 +53,7 @@ class SupplierSearchError extends Error {
 }
 
 /** Active excluded_groups rules; the domain defaults when the table is empty (as recheck). */
-async function loadExcludedRules(db: Db): Promise<ExcludedRule[]> {
+export async function loadExcludedRules(db: Db): Promise<ExcludedRule[]> {
   const rows = await db
     .select({
       kind: excludedGroups.kind,

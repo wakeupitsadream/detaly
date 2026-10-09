@@ -12,6 +12,7 @@ import {
   addDays,
   CLAIM_DECISION_LABELS,
   CLAIM_KIND_LABELS,
+  fitGuaranteeClaimLabel,
   formatRub,
   localDate,
   type ClaimDecision,
@@ -140,8 +141,11 @@ export interface CardItem {
 export interface CardClaim {
   id: string;
   kind: ClaimKind;
-  /** The claimed item; null for the whole order. */
-  item: Pick<CardItem, 'brand' | 'article'> | null;
+  /**
+   * The claimed item; null for the whole order. `fitGuarantee` (step 4): ordered after the
+   * master's check with the fit guarantee on — a «не подошла» claim says so.
+   */
+  item: (Pick<CardItem, 'brand' | 'article'> & { fitGuarantee?: boolean }) | null;
   deadlineAt: Date;
   returnAccepted: boolean;
   /** Photos the client attached (shown in the admin only). */
@@ -211,6 +215,11 @@ export const PACKAGING_PHOTO_HINT =
 export function claimLine(claim: CardClaim): string {
   const parts = [`Претензия: ${CLAIM_KIND_LABELS[claim.kind].toLowerCase()}`];
   parts.push(claim.item ? `позиция ${itemTitle(claim.item)}` : 'весь заказ');
+  // Step 4: information only, the decision stays with the staff.
+  const guarantee = fitGuaranteeClaimLabel(claim.kind, {
+    fitGuarantee: claim.item?.fitGuarantee === true,
+  });
+  if (guarantee !== null) parts.push(guarantee);
   parts.push(`ответить до ${deadline(localDate(claim.deadlineAt))}`);
   // A delay needs no returned part (decision С8).
   if (claim.kind !== 'delay') parts.push(`возврат принят ${claim.returnAccepted ? '✓' : 'нет'}`);

@@ -88,6 +88,9 @@ export TG_SELLER_BOT_TOKEN=''
 export REVIEW_URL_YANDEX="${REVIEW_URL_YANDEX:-}"
 export REVIEW_URL_2GIS="${REVIEW_URL_2GIS:-}"
 
+# --- env: step 4 (docs/fit-check.md): the fit guarantee off, the default (e2e-1c switches it on)
+export FIT_GUARANTEE_ENABLED="${FIT_GUARANTEE_ENABLED:-false}"
+
 # --- what the specs read -------------------------------------------------------------------
 export E2E_BASE_URL="$WEB_URL"
 export E2E_PAYMENTS=on

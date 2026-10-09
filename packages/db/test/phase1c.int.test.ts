@@ -511,7 +511,8 @@ describe('phase 1C constraints', () => {
         kind: 'order',
         ...extra,
       });
-      expect(SELLER_CARD_KINDS).toEqual(['order', 'qr', 'vin']);
+      // Step 4 appended `fit` (fit check cards, test/fit-checks.int.test.ts).
+      expect(SELLER_CARD_KINDS).toEqual(['order', 'qr', 'vin', 'fit']);
       await expectPgError(
         db.insert(sellerCards).values(card({ orderId: order.id, vinRequestId: vin.id })),
         CHECK,

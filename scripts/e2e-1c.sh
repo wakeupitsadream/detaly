@@ -10,8 +10,9 @@
 # 3. the YooKassa mock (scripts/yookassa-mock-server.ts) on :3199, the worker (apps/worker
 #    src/main.ts, no Telegram tokens: no network, the client bot does not start) and web
 #    standalone on :3100, with the env of section 18: phase 1A + 1B e2e env plus
-#    FILES_STORAGE=local in a temporary directory, INSTALL_PARTNER_*, TG_CLIENT_BOT_USERNAME, and
-#    the fake review links of step 3 (REVIEW_URL_YANDEX, REVIEW_URL_2GIS);
+#    FILES_STORAGE=local in a temporary directory, INSTALL_PARTNER_*, TG_CLIENT_BOT_USERNAME,
+#    the fake review links of step 3 (REVIEW_URL_YANDEX, REVIEW_URL_2GIS) and the fit guarantee
+#    of step 4 switched on (FIT_GUARANTEE_ENABLED=true);
 # 4. Playwright, every spec of phases 1A, 1B and 1C, mobile 375 and desktop 1280;
 # 5. the web and worker logs must contain no phone numbers (+79…, 79… as in receipts), no VIN in
 #    full (a 17-character VIN-shaped run) and none of the phones, VINs and tokens (/o, /p, link)
@@ -101,6 +102,9 @@ export TG_CLIENT_BOT_TOKEN=''
 # --- env: step 3 (docs/reviews.md): review links, fake ones (never the real cards) ----------
 export REVIEW_URL_YANDEX="${REVIEW_URL_YANDEX:-https://yandex.ru/maps/org/test/1/reviews/}"
 export REVIEW_URL_2GIS="${REVIEW_URL_2GIS:-https://2gis.ru/orenburg/firm/1}"
+
+# --- env: step 4 (docs/fit-check.md): the fit guarantee on (e2e-1b runs it off) -------------
+export FIT_GUARANTEE_ENABLED="${FIT_GUARANTEE_ENABLED:-true}"
 
 # --- what the specs read -------------------------------------------------------------------
 export E2E_BASE_URL="$WEB_URL"

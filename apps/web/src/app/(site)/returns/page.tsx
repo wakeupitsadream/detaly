@@ -13,11 +13,13 @@ import { InnerPage, PageBand, PageBody } from '@/components/page/PageBand';
 import { PickupCard } from '@/components/PickupCard';
 import { pickupRoutes } from '@/components/PickupRouteLinks';
 import { DefectClaimNote } from '@/components/returns/DefectClaimNote';
+import { FitGuaranteeNote } from '@/components/returns/FitGuaranteeNote';
 import { SectionHeading } from '@/components/ui/Section';
 import { StepIconTile } from '@/components/ui/StepNumber';
 import { PAGE_SEO } from '@/lib/seo';
 import { getBrand } from '@/server/brand';
 import { loadPublishedDocument, type LegalDocument } from '@/server/documents';
+import { serverEnv } from '@/server/env';
 import { getLogger } from '@/server/logger';
 
 export const metadata: Metadata = {
@@ -106,6 +108,7 @@ function Disclosure({
 /**
  * /returns (docs/design-v2.md, «Инфостраницы»): three steps with icons, where to go with a defect
  * or a claim, where to bring the part, then the rules and the full memo (the published return_memo document) under disclosures.
+ * Step 4: «Гарантия подбора» (#fit-guarantee) only with FIT_GUARANTEE_ENABLED.
  */
 export default async function ReturnsPage() {
   const brand = getBrand();
@@ -137,6 +140,8 @@ export default async function ReturnsPage() {
         </section>
 
         <DefectClaimNote pointName={pickup.name} phone={brand.contactPhone} />
+
+        {serverEnv().FIT_GUARANTEE_ENABLED ? <FitGuaranteeNote /> : null}
 
         <PickupCard
           title="Куда принести"

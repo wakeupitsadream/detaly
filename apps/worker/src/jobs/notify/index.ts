@@ -1,17 +1,20 @@
 // Processor of the `notify` queue (docs/phase-1b-implementation.md section 12.1):
 // `order` — order notifications to the client, the sellers chat or the owner;
 // `alert` — a plain alert through the AlertPort (sellers chat / owner's private chat);
-// `vin` — a VIN request message to the client or the sellers card (phase 1C, decision С20).
+// `vin` — a VIN request message to the client or the sellers card (phase 1C, decision С20);
+// `fit` — the sellers card of a fit check request (step 4, docs/fit-check.md).
 import { NOTIFY_JOBS } from '@detaly/config';
 import { UnrecoverableError, type Job } from 'bullmq';
 import type { WorkerDeps } from '../../deps';
 import { unknownJob } from '../unknown-job';
+import { processNotifyFit, type NotifyFitOutcome } from './fit';
 import { processNotifyOrder, type NotifyOrderOutcome } from './order';
 import { processNotifyVin, type NotifyVinOutcome } from './vin';
 
 export { isFinalAttempt, notificationsOfEvent, type NotifyOrderJobData } from './order';
 export { guardedSmsDriver, smsSpending, type SmsSpending } from './sms';
 export { processNotifyVin, type NotifyVinJobData, type NotifyVinOutcome } from './vin';
+export { FIT_CARD_TEMPLATE, processNotifyFit, type NotifyFitOutcome } from './fit';
 
 /** Data of a notify/alert job: Russian text without PD and the AlertPort dedupe key. */
 export interface NotifyAlertJobData {
@@ -34,7 +37,8 @@ function parseAlert(raw: unknown): NotifyAlertJobData {
   return { audience: data.audience, text: data.text, dedupeKey: data.dedupeKey };
 }
 
-export type NotifyJobResult = NotifyOrderOutcome | NotifyVinOutcome | { status: 'alerted' };
+export type NotifyJobResult =
+  NotifyOrderOutcome | NotifyVinOutcome | NotifyFitOutcome | { status: 'alerted' };
 
 export async function processNotify(job: Job, deps: WorkerDeps): Promise<NotifyJobResult> {
   switch (job.name) {
@@ -47,6 +51,8 @@ export async function processNotify(job: Job, deps: WorkerDeps): Promise<NotifyJ
     }
     case NOTIFY_JOBS.vin:
       return processNotifyVin(job, deps);
+    case NOTIFY_JOBS.fit:
+      return processNotifyFit(job, deps);
     default:
       return unknownJob(deps, 'notify', job.name);
   }

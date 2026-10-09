@@ -200,6 +200,13 @@ const envShape = {
   REVIEW_URL_YANDEX: z.url({ protocol: /^https$/ }).optional(),
   REVIEW_URL_2GIS: z.url({ protocol: /^https$/ }).optional(),
 
+  // --- Fit check [шаг 4] (docs/fit-check.md): «Проверим, подойдёт ли» ---
+  // The fit guarantee promise («Не подойдёт по применимости — вернём деньги», the section on
+  // /returns, order_items.fit_guarantee at checkout). Off until the founder and the lawyer decide
+  // who pays for such a return and the offer says so; off, the site shows only «Проверено
+  // мастером».
+  FIT_GUARANTEE_ENABLED: bool(false),
+
   // --- Installation partner [ф1C] (decision С6): without the name booking is hidden ---
   /** The service that installs parts and bills the client itself (e.g. «Сервис56»). */
   INSTALL_PARTNER_NAME: optionalString,

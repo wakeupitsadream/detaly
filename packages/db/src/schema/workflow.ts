@@ -126,7 +126,9 @@ export const clientApprovals = pgTable(
  * Seller bot cards (decision Б17): one Telegram message per card, one nonce per card. A button
  * press must carry the nonce of an open card (`a:<action>:<id>:<nonce>`); the pressed card is
  * edited and older open cards of the order are closed. Phase 1C: a card belongs to exactly one
- * owner, an order (kinds order, qr) or a VIN request (kind vin).
+ * owner, an order (kinds order, qr) or a VIN request (kind vin). Step 4 (docs/fit-check.md): or a
+ * fit check request (kind fit, fit_request_id = fit_checks.request_id; there is no request table,
+ * so no foreign key).
  */
 export const sellerCards = pgTable(
   'seller_cards',
@@ -148,6 +150,8 @@ export const sellerCards = pgTable(
     orderEventId: uuid().references(() => orderEvents.id),
     createdAt: createdAt(),
     closedAt: tstz(),
+    /** Step 4: the fit check request of a `fit` card (fit_checks.request_id). */
+    fitRequestId: uuid(),
   },
   (t) => [
     unique('seller_cards_nonce_unique').on(t.nonce),
@@ -157,13 +161,25 @@ export const sellerCards = pgTable(
     index('seller_cards_vin_request_id_open_idx')
       .on(t.vinRequestId)
       .where(sql`${t.closedAt} is null`),
+    index('seller_cards_fit_request_id_open_idx')
+      .on(t.fitRequestId)
+      .where(sql`${t.closedAt} is null`),
     namedCheck('seller_cards', 'nonce', sql`${t.nonce} ~ '^[A-Za-z0-9_-]{8}$'`),
     namedCheck('seller_cards', 'kind', sql`${t.kind} in (${sqlList(SELLER_CARD_KINDS)})`),
-    namedCheck('seller_cards', 'owner', sql`(${t.orderId} is null) <> (${t.vinRequestId} is null)`),
+    namedCheck(
+      'seller_cards',
+      'owner',
+      sql`num_nonnulls(${t.orderId}, ${t.vinRequestId}, ${t.fitRequestId}) = 1`,
+    ),
     namedCheck(
       'seller_cards',
       'vin_owner',
       sql`(${t.kind} = 'vin') = (${t.vinRequestId} is not null)`,
+    ),
+    namedCheck(
+      'seller_cards',
+      'fit_owner',
+      sql`(${t.kind} = 'fit') = (${t.fitRequestId} is not null)`,
     ),
   ],
 );

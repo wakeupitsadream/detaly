@@ -352,6 +352,24 @@ describe('review links (step 3, docs/reviews.md)', () => {
   });
 });
 
+describe('fit guarantee (step 4, docs/fit-check.md)', () => {
+  it('FIT_GUARANTEE_ENABLED is off unless set to true', () => {
+    expect(parseEnv(minimalEnvSource()).FIT_GUARANTEE_ENABLED).toBe(false);
+    expect(parseEnv(minimalEnvSource({ FIT_GUARANTEE_ENABLED: '' })).FIT_GUARANTEE_ENABLED).toBe(
+      false,
+    );
+    expect(
+      parseEnv(minimalEnvSource({ FIT_GUARANTEE_ENABLED: 'true' })).FIT_GUARANTEE_ENABLED,
+    ).toBe(true);
+    expect(
+      parseEnv(minimalEnvSource({ FIT_GUARANTEE_ENABLED: 'false' })).FIT_GUARANTEE_ENABLED,
+    ).toBe(false);
+    expect(() => parseEnv(minimalEnvSource({ FIT_GUARANTEE_ENABLED: 'maybe' }))).toThrow(
+      /FIT_GUARANTEE_ENABLED/,
+    );
+  });
+});
+
 describe('.env.example', () => {
   const example = readEnvExample();
 

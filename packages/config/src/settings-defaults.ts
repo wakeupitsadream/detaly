@@ -62,5 +62,8 @@ export function settingsDefaultsFromEnv(env: Env): SettingsValues {
     'reviews.reminder_days': 3,
     'reviews.min_count': 5,
     'reviews.max_age_days': 45,
+    // Step 4 (docs/fit-check.md): the master answers a fit check within 60 minutes of working time
+    // (DEFAULT_FIT_CHECK_SLA_MINUTES of @detaly/domain, checked by settings-defaults.test.ts).
+    'fit_check.sla_minutes': 60,
   };
 }

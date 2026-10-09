@@ -13,6 +13,9 @@
  *   wrong-digits counter of 1A works on top of it);
  * - vin: 5 POST /api/vin per hour and 20 per 24 hours (a form with personal data and photos);
  * - proposal: 30 POST /api/proposals/<token>/take per hour (copies a proposal into the cart);
+ * - fit_check: 20 POST /api/fit-checks per 24 hours per client bucket (step 4,
+ *   docs/fit-check.md: each one is work for the master); fit_check_cart: 10 per 24 hours per cart,
+ *   counted by the handler with the cart id as the subject (hitSubjectRateLimit);
  * - admin_auth: 20 wrong /admin passwords per hour (Basic auth in src/proxy.ts). Only wrong
  *   passwords are hit; while the window is full even the right one is refused (peekRateLimit),
  *   otherwise a brute force would still learn the password from the one answer that differs.
@@ -23,6 +26,7 @@
  */
 import { createHmac } from 'node:crypto';
 import { slidingWindowHit, type Redis } from '@detaly/config';
+import { FIT_CHECK_REQUESTS_PER_CART_DAY, FIT_CHECK_REQUESTS_PER_IP_DAY } from '@detaly/domain';
 import { rateLimitSubject } from './client-ip';
 
 export type RateLimitKind =
@@ -38,7 +42,10 @@ export type RateLimitKind =
   | 'install'
   | 'claim'
   | 'vin'
-  | 'proposal';
+  | 'proposal'
+  // step 4 (docs/fit-check.md)
+  | 'fit_check'
+  | 'fit_check_cart';
 
 /** Name reported in decisions. */
 export type RateLimitWindowName = 'minute' | 'hour' | 'day';
@@ -78,6 +85,12 @@ export const RATE_LIMITS = {
     { window: 'day', keySegment: 'day', limit: 20, windowMs: DAY_MS },
   ],
   proposal: [{ window: 'hour', keySegment: 'hour', limit: 30, windowMs: HOUR_MS }],
+  fit_check: [
+    { window: 'day', keySegment: 'day', limit: FIT_CHECK_REQUESTS_PER_IP_DAY, windowMs: DAY_MS },
+  ],
+  fit_check_cart: [
+    { window: 'day', keySegment: 'day', limit: FIT_CHECK_REQUESTS_PER_CART_DAY, windowMs: DAY_MS },
+  ],
 } as const satisfies Record<RateLimitKind, readonly RateLimitRule[]>;
 
 /** Phase 0 shape of the search limits (kept for existing imports). */
@@ -119,6 +132,41 @@ export async function hitRateLimit(
   { kind, secret, ip, keyPrefix = '', now = Date.now() }: RateLimitOptions,
 ): Promise<RateLimitDecision> {
   const bucket = clientBucket(secret, rateLimitSubject(ip));
+  const rules: readonly RateLimitRule[] = RATE_LIMITS[kind];
+  for (const rule of rules) {
+    const hit = await slidingWindowHit(redis, {
+      key: `${keyPrefix}${rateLimitKey(kind, rule, bucket)}`,
+      limit: rule.limit,
+      windowMs: rule.windowMs,
+      now,
+    });
+    if (!hit.allowed) {
+      return {
+        allowed: false,
+        retryAfterSec: Math.max(1, Math.ceil(hit.retryAfterMs / 1000)),
+        window: rule.window,
+      };
+    }
+  }
+  return { allowed: true, retryAfterSec: 0, window: null };
+}
+
+/**
+ * Counts one request of `kind` for an arbitrary subject instead of the client ip (step 4: the
+ * cart id of the fit check form). The subject is HMAC'ed like an ip: it never reaches Redis as
+ * is.
+ */
+export async function hitSubjectRateLimit(
+  redis: Redis,
+  {
+    kind,
+    secret,
+    subject,
+    keyPrefix = '',
+    now = Date.now(),
+  }: Omit<RateLimitOptions, 'ip'> & { subject: string },
+): Promise<RateLimitDecision> {
+  const bucket = clientBucket(secret, `subject:${subject}`);
   const rules: readonly RateLimitRule[] = RATE_LIMITS[kind];
   for (const rule of rules) {
     const hit = await slidingWindowHit(redis, {

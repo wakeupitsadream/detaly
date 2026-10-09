@@ -10,6 +10,7 @@ import {
 } from '@/components/icons';
 import { PickupCard } from '@/components/PickupCard';
 import type { PickupRoute } from '@/components/PickupRouteLinks';
+import { FitCheckedBadge } from '@/components/fit/FitBadge';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { cn } from '@/components/ui/cn';
 import { PartTile } from '@/components/ui/PartTile';
@@ -228,6 +229,11 @@ function ItemRow({ item }: { item: OrderItemView }) {
         <p className="col-span-2 col-start-2 mt-1.5">
           <Badge tone="ok">Со склада в Оренбурге</Badge>
         </p>
+      ) : null}
+      {/* Step 4: the master checked the part under the VIN; the guarantee line only when the
+          item was ordered with it (order_items.fit_guarantee). */}
+      {item.fitChecked && !item.inactive ? (
+        <FitCheckedBadge guarantee={item.fitGuarantee} className="col-span-2 col-start-2 mt-1.5" />
       ) : null}
     </li>
   );

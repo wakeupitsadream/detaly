@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryRateLimiter } from '@/server/demo/rate-limit';
 import { RATE_LIMITS } from '@/server/rate-limit';
 
-const state = vi.hoisted(() => ({ env: null as unknown, redisCalls: 0 }));
+const state = vi.hoisted(() => ({ env: null as unknown, redisCalls: 0, logged: [] as unknown[] }));
 
 vi.mock('@/server/env', () => ({
   serverEnv: () => {
@@ -20,7 +20,12 @@ vi.mock('@/server/redis', () => ({
     throw new Error('redis must not be used in the demo');
   },
 }));
-vi.mock('@/server/logger', () => ({ getLogger: () => ({ warn: () => undefined }) }));
+vi.mock('@/server/logger', () => {
+  const record = (...args: unknown[]) => {
+    state.logged.push(args);
+  };
+  return { getLogger: () => ({ warn: record, info: record, error: record }) };
+});
 
 const { demoBlockedPath, demoFormRedirect, proxy } = await import('@/proxy');
 const { resetSingleton } = await import('@/server/globals');
@@ -44,6 +49,7 @@ function request(method: string, path: string, ip = '203.0.113.7'): NextRequest 
 beforeEach(() => {
   state.env = demoEnv();
   state.redisCalls = 0;
+  state.logged = [];
   resetSingleton('demo-rate-limit');
 });
 
@@ -315,5 +321,81 @@ describe('createMemoryRateLimiter', () => {
     }
     // Still answers (old buckets were dropped, not an error).
     expect(limiter.hit({ ...base, kind: 'checkout' }).allowed).toBe(true);
+  });
+});
+
+describe('demo proxy: the fit check (step 4, docs/fit-check.md)', () => {
+  const LINE = '01890000-0000-7000-8000-000000000001';
+  /** Synthetic VIN that passes isValidVin (never a real car). */
+  const VIN = 'XTA21099012345678';
+
+  it('a fit check post goes back to its cart line; nothing else reaches the URL', () => {
+    expect(demoFormRedirect('POST', '/api/fit-checks', new URLSearchParams({ line: LINE }))).toBe(
+      `/cart?fit_demo=${LINE}#fit-${LINE}`,
+    );
+    expect(demoFormRedirect('POST', '/api/fit-checks')).toBe('/cart');
+    expect(demoFormRedirect('GET', '/api/fit-checks')).toBeNull();
+  });
+
+  it('the proxy answers without reading the body (the VIN), touching Redis or logging', async () => {
+    let bodyRead = false;
+    const body = new ReadableStream(
+      {
+        pull(controller) {
+          bodyRead = true;
+          controller.enqueue(new TextEncoder().encode(`vin=${VIN}&lines=${LINE}`));
+          controller.close();
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const form = new NextRequest(new URL(`/api/fit-checks?line=${LINE}`, 'http://localhost:3000'), {
+      method: 'POST',
+      headers: {
+        'x-real-ip': '203.0.113.7',
+        origin: 'http://localhost:3000',
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body,
+      duplex: 'half',
+    } as ConstructorParameters<typeof NextRequest>[1]);
+    const response = await proxy(form);
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe(
+      `http://localhost:3000/cart?fit_demo=${LINE}#fit-${LINE}`,
+    );
+    expect(bodyRead).toBe(false);
+    expect(state.redisCalls).toBe(0);
+    expect(JSON.stringify(state.logged)).not.toContain(VIN);
+    expect(state.logged).toEqual([]);
+  });
+
+  it('the route handlers store nothing in the demo: a redirect and a 404, no database', async () => {
+    const submit = (await import('@/app/api/fit-checks/route')).POST;
+    const request = new Request(`http://localhost:3000/api/fit-checks?line=${LINE}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `vin=${VIN}&lines=${LINE}`,
+    });
+    const response = await submit(request);
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe(`/cart?fit_demo=${LINE}#fit-${LINE}`);
+    expect(request.bodyUsed).toBe(false);
+
+    const lineAction = (await import('@/app/api/cart/items/[id]/fit/route')).POST;
+    const answer = await lineAction(
+      new Request(`http://localhost:3000/api/cart/items/${LINE}/fit`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+          accept: 'application/json',
+        },
+        body: 'action=replace',
+      }),
+      { params: Promise.resolve({ id: LINE }) },
+    );
+    expect(answer.status).toBe(404);
+    expect(state.redisCalls).toBe(0);
+    expect(state.logged).toEqual([]);
   });
 });

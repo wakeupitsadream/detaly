@@ -1,9 +1,11 @@
 import {
+  DEFAULT_FIT_CHECK_SLA_MINUTES,
   DEFAULT_MAX_MARKUP_BP,
   DEFAULT_MIN_MARKUP_BP,
   DEFAULT_REVIEW_MAX_AGE_DAYS,
   DEFAULT_REVIEW_MIN_COUNT,
   DEFAULT_REVIEW_REMINDER_DAYS,
+  FIT_CHECK_SLA_KEY,
   REVIEW_SNAPSHOT_KEY,
 } from '@detaly/domain';
 import { describe, expect, it } from 'vitest';
@@ -39,6 +41,9 @@ describe('settingsDefaultsFromEnv', () => {
     expect(settings['reviews.max_age_days']).toBe(DEFAULT_REVIEW_MAX_AGE_DAYS);
     expect(settings['reviews.max_age_days']).toBe(45);
     expect(Object.keys(settings)).not.toContain(REVIEW_SNAPSHOT_KEY);
+    // Step 4: the master answers a fit check within 60 minutes of working time.
+    expect(settings[FIT_CHECK_SLA_KEY]).toBe(DEFAULT_FIT_CHECK_SLA_MINUTES);
+    expect(settings['fit_check.sla_minutes']).toBe(60);
   });
 
   it('converts percents with decimals exactly', () => {

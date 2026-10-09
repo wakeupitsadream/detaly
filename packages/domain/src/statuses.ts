@@ -521,3 +521,17 @@ export type FitCheckAnswer = (typeof FIT_CHECK_ANSWERS)[number];
  */
 export const KIT_STATUSES = ['draft', 'published'] as const;
 export type KitStatus = (typeof KIT_STATUSES)[number];
+
+// ---------------------------------------------------------------------------
+// Step 6 (docs/garage.md): «Моя машина», the client's cars
+// ---------------------------------------------------------------------------
+
+/**
+ * user_vehicles.source (text + check): where the latest data of a car came from — the client
+ * typed it at checkout (`checkout`), the checkout block was filled from the VIN request of the
+ * proposal (`proposal`), from the maintenance kit of the cart (`kit`) or from the order repeated
+ * with «Купить снова» in the client bot (`bot`); the staff wrote the mileage at the handover
+ * (`handover`). Appending a value requires a migration (the check constraint).
+ */
+export const VEHICLE_SOURCES = ['checkout', 'proposal', 'kit', 'handover', 'bot'] as const;
+export type VehicleSource = (typeof VEHICLE_SOURCES)[number];

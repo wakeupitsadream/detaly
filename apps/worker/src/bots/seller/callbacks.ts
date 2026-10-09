@@ -14,6 +14,10 @@
 // whose id is the claim or the booking of the card's order (order-workflow.ts). Step 4
 // (docs/fit-check.md): or to a fit check card (fit.ts), whose buttons carry one line's id.
 //
+// Step 6 (docs/garage.md): a successful «Выдал» is followed by the mileage question when the
+// order has a car (mileage.ts, GARAGE_ENABLED); its «Пропустить» (mskip) carries the order id and
+// is answered before any card lookup, like `dlq`.
+//
 // Logs carry the order number, the action and the staff id; never a phone or an order token.
 import { and, claims, desc, eq, installBookings, orderEvents, orders, type Db } from '@detaly/db';
 import {
@@ -44,6 +48,7 @@ import {
 import type { CardService, SellerCardRow } from './cards';
 import { describeBotError } from './errors';
 import { askInvoiceReference } from './invoice';
+import { askHandoverMileage, handleMileageSkip } from './mileage';
 import { handleOrderWorkflowPress, isOrderWorkflowCode } from './order-workflow';
 import { retryDeadLetterPress } from './queues';
 import { loadStaffMember, type StaffMember } from './staff';
@@ -108,7 +113,13 @@ async function targetBelongs(
   parsed: ParsedCallbackData,
 ): Promise<boolean> {
   const target = actionTarget(parsed.action);
-  if (target === null || target === 'dead_letter' || target === 'vin' || target === 'fit') {
+  if (
+    target === null ||
+    target === 'dead_letter' ||
+    target === 'vin' ||
+    target === 'fit' ||
+    target === 'vehicle'
+  ) {
     return false;
   }
   if (!isUuid(parsed.orderId)) return false;
@@ -134,6 +145,8 @@ async function targetBelongs(
 interface PressOutcome {
   message: string;
   menu: CardMenu | null;
+  /** The action was applied (step 6: «Выдал» then asks for the mileage). */
+  ok?: boolean;
 }
 
 /** What a press does once the card is claimed. */
@@ -157,7 +170,7 @@ async function runPress(
   if (isEventAction(code)) {
     if (!STAFF_EVENT_CODES.has(code)) return { message: STALE_CARD, menu: null };
     const result = await perform(code as StaffActionCode);
-    return { message: result.message, menu: null };
+    return { message: result.message, menu: null, ok: result.ok };
   }
 
   const spec = menuAction(code);
@@ -234,6 +247,8 @@ export function callbackHandler(input: {
       });
       return answer(ctx, message);
     }
+    // Step 6: «Пропустить» under the mileage question (not a card button).
+    if (parsed.action === 'mskip') return handleMileageSkip(ctx, deps, parsed, staff);
 
     const found = await cards.findAnyByNonce(parsed.nonce);
     const message = query.message;
@@ -318,5 +333,9 @@ export function callbackHandler(input: {
       },
       'seller bot action',
     );
+    // Step 6: the order is handed — the mileage question, after the card (never in its way).
+    if (parsed.action === 'handed' && outcome.ok === true) {
+      await askHandoverMileage(ctx, deps, card.orderId);
+    }
   };
 }

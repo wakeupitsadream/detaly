@@ -46,8 +46,9 @@ describe('migrations on an empty database', () => {
     expect(tables.map((t) => t.table_name)).toEqual(schemaTables);
     // 28 tables of phases 0 and 1A plus outbox, client_approvals and seller_cards (1B), plus
     // price_benchmarks and settings_audit (step 2, docs/pricing.md), plus fit_checks (step 4,
-    // docs/fit-check.md), plus kits and kit_lines (step 5, docs/kits.md)
-    expect(schemaTables).toHaveLength(36);
+    // docs/fit-check.md), plus kits and kit_lines (step 5, docs/kits.md), plus user_vehicles
+    // (step 6, docs/garage.md)
+    expect(schemaTables).toHaveLength(37);
     expect(schemaTables).toEqual(
       expect.arrayContaining([
         'outbox',
@@ -58,6 +59,7 @@ describe('migrations on an empty database', () => {
         'fit_checks',
         'kits',
         'kit_lines',
+        'user_vehicles',
       ]),
     );
     expect(schemaTables).not.toContain('vehicles');
@@ -130,6 +132,13 @@ describe('migrations on an empty database', () => {
       ['kits', 'updated_by'],
       ['kit_lines', 'kit_id'],
       ['kit_lines', 'alternative_of'],
+      // step 6 (0009): the client's cars, the car of an order, what a cart prefills it from
+      ['user_vehicles', 'make_slug'],
+      ['user_vehicles', 'mileage_km'],
+      ['user_vehicles', 'mileage_at'],
+      ['orders', 'vehicle_id'],
+      ['carts', 'kit_id'],
+      ['carts', 'repeat_order_id'],
     ] as const) {
       expect(columns).toContainEqual({ table_name: table, column_name: column });
     }

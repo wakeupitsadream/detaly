@@ -36,3 +36,6 @@ export * from './reviews';
 export * from './fit-checks';
 // step 5 (docs/kits.md)
 export * from './kits';
+// step 6 (docs/garage.md): «Моя машина»
+export * from './vin';
+export * from './vehicles';

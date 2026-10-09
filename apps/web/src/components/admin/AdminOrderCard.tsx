@@ -4,8 +4,14 @@
  * refunds, Rossko orders, client approvals, supplier returns, stock, the full journal with
  * payloads and rule labels, and the action forms.
  */
-import type { IsoDate } from '@detaly/domain';
-import { REFUND_TASK_ERROR, type StaffActionView } from '@detaly/orders';
+import {
+  formatMileage,
+  vehicleLabel,
+  VEHICLE_SOURCE_LABELS,
+  type IsoDate,
+  type VehicleSource,
+} from '@detaly/domain';
+import { REFUND_TASK_ERROR, type StaffActionView, type VehicleRow } from '@detaly/orders';
 import { vinRequestNumber } from '@detaly/vin';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
@@ -69,6 +75,26 @@ function Empty({ text }: { text: string }) {
 
 function shortId(id: string | null | undefined): string {
   return id ? id.slice(-8) : '—';
+}
+
+/**
+ * Step 6 (docs/garage.md): a car in the admin — «Lada Vesta 1.6, 2019 · VIN XTA… · 85 000 км
+ * (2026-10-09) · из набора для ТО». The full VIN only here (Basic auth, like the full phone).
+ */
+function VehicleLine({ vehicle }: { vehicle: VehicleRow }) {
+  const parts = [
+    vehicle.vin ? `VIN ${vehicle.vin}` : null,
+    vehicle.mileageKm !== null
+      ? `${formatMileage(vehicle.mileageKm)}${vehicle.mileageAt ? ` (${vehicle.mileageAt})` : ''}`
+      : null,
+    VEHICLE_SOURCE_LABELS[vehicle.source as VehicleSource] ?? vehicle.source,
+  ].filter((part): part is string => part !== null);
+  return (
+    <>
+      <span className="font-semibold">{vehicleLabel(vehicle)}</span>
+      <span className="block text-xs text-muted wrap-anywhere">{parts.join(' · ')}</span>
+    </>
+  );
 }
 
 export function AdminOrderCard({
@@ -168,6 +194,14 @@ export function AdminOrderCard({
                 </dd>
               </>
             ) : null}
+            {card.garage ? (
+              <>
+                <dt className="text-muted">Машина</dt>
+                <dd data-testid="admin-order-vehicle">
+                  {card.garage.vehicle ? <VehicleLine vehicle={card.garage.vehicle} /> : '—'}
+                </dd>
+              </>
+            ) : null}
           </dl>
         </Section>
 
@@ -191,6 +225,24 @@ export function AdminOrderCard({
             </dd>
             <dt className="text-muted">Неявок</dt>
             <dd>{client.noShowCount}</dd>
+            {card.garage ? (
+              <>
+                <dt className="text-muted">Машины</dt>
+                <dd data-testid="admin-client-vehicles">
+                  {card.garage.clientVehicles.length === 0 ? (
+                    '—'
+                  ) : (
+                    <ul className="space-y-1">
+                      {card.garage.clientVehicles.map((vehicle) => (
+                        <li key={vehicle.id} data-vehicle={vehicle.id}>
+                          <VehicleLine vehicle={vehicle} />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </dd>
+              </>
+            ) : null}
           </dl>
         </Section>
       </div>

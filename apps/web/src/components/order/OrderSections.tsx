@@ -3,6 +3,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import {
   IconArrowRight,
+  IconBody,
   IconCart,
   IconChevronDown,
   IconClock,
@@ -244,11 +245,14 @@ export function ItemsBlock({
   subtotalKop,
   courierFeeKop,
   totalKop,
+  vehicle = null,
 }: {
   items: readonly OrderItemView[];
   subtotalKop: number;
   courierFeeKop: number;
   totalKop: number;
+  /** Step 6 (docs/garage.md): the order's car, «Для: Lada Vesta 1.6, 2019». */
+  vehicle?: { label: string } | null;
 }) {
   return (
     <Card
@@ -258,6 +262,17 @@ export function ItemsBlock({
       tight
       aside={<span className="text-small text-muted">{cartCountLabel(items.length)}</span>}
     >
+      {vehicle ? (
+        <p
+          className="mt-2 mb-1 flex min-w-0 items-start gap-2 text-body"
+          data-testid="order-vehicle"
+        >
+          <IconBody size={22} className="mt-0.5 shrink-0 text-brand" />
+          <span className="min-w-0 wrap-anywhere">
+            Для: <span className="font-semibold">{vehicle.label}</span>
+          </span>
+        </p>
+      ) : null}
       <ul className="divide-y divide-line">
         {items.map((item) => (
           <ItemRow key={item.id} item={item} />

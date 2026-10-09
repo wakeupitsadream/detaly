@@ -7,6 +7,10 @@
 //   refused: only a link to /o/<token> (4 phone digits there, Б24) -> install: slot buttons ->
 //   islot: bookInstall(via 'bot').
 //
+// Step 6 (docs/garage.md), only with GARAGE_ENABLED: «Мои машины» (garage), «Купить снова»
+// (rebuy, an order of the client), «Удалить машину» and its confirmation (vdel, vdelok, a car of
+// the client) — garage.ts. Without the switch these presses are stale buttons.
+//
 // Logs: update id, order number, action, outcome. Never a phone, a token or a Telegram id.
 import { isClientAction, parseCallbackData, type ParsedCallbackData } from '@detaly/notify';
 import {
@@ -22,6 +26,14 @@ import type { WorkerDeps } from '../../deps';
 import { orderUrl } from '../../jobs/notify/template-data';
 import { describeBotError } from '../seller/errors';
 import { unsubscribe } from './bind';
+import {
+  askDeleteVehicle,
+  confirmDeleteVehicle,
+  garageEnabled,
+  rebuyOrder,
+  sendGarage,
+  type GarageOutcome,
+} from './garage';
 import {
   installPaidText,
   loadOwnedOrder,
@@ -205,6 +217,45 @@ async function bookSlot(
   return { ok: false, orderNumber: order.number };
 }
 
+/** The «Мои машины» codes (step 6). */
+const GARAGE_CODES: ReadonlySet<string> = new Set(['garage', 'rebuy', 'vdel', 'vdelok']);
+
+/** A press of «Мои машины», «Купить снова», «Удалить машину» or its confirmation. */
+async function garagePress(
+  ctx: Context,
+  deps: WorkerDeps,
+  parsed: ParsedCallbackData,
+  userId: string,
+): Promise<GarageOutcome> {
+  switch (parsed.action) {
+    case 'garage':
+      await answer(ctx);
+      return { ok: (await sendGarage(ctx, deps, userId)) >= 0, orderNumber: null };
+    case 'rebuy': {
+      const order = await loadOwnedOrder(deps, parsed.orderId, userId);
+      if (order === null) {
+        await answer(ctx, TEXTS.notYours);
+        return { ok: false, orderNumber: null };
+      }
+      // The search may take a few seconds: the spinner stops first.
+      await answer(ctx, TEXTS.rebuyChecking);
+      return rebuyOrder(ctx, deps, order);
+    }
+    case 'vdel':
+      await answer(ctx);
+      return askDeleteVehicle(ctx, deps, userId, parsed.orderId);
+    case 'vdelok': {
+      const outcome = await confirmDeleteVehicle(ctx, deps, userId, parsed.orderId);
+      // A car already gone is said by a message (confirmDeleteVehicle), not twice.
+      await answer(ctx, outcome.ok ? TEXTS.deletedShort : undefined);
+      return outcome;
+    }
+    default:
+      await answer(ctx, TEXTS.staleButton);
+      return { ok: false, orderNumber: null };
+  }
+}
+
 export function clientCallbackHandler(deps: WorkerDeps): Middleware<Context> {
   const token = deps.env.TG_CLIENT_BOT_TOKEN;
   return async (ctx) => {
@@ -243,6 +294,22 @@ export function clientCallbackHandler(deps: WorkerDeps): Middleware<Context> {
         const changed = await unsubscribe(ctx, deps);
         await answer(ctx, TEXTS.stopped);
         if (changed) await ctx.reply(TEXTS.stopped);
+        return;
+      }
+      if (GARAGE_CODES.has(parsed.action)) {
+        // Step 6: without GARAGE_ENABLED nothing about a car is shown or changed.
+        if (!garageEnabled(deps.env)) return answer(ctx, TEXTS.staleButton);
+        const outcome = await garagePress(ctx, deps, parsed, binding.userId);
+        deps.logger.info(
+          {
+            updateId: ctx.update.update_id,
+            orderNumber: outcome.orderNumber,
+            action: parsed.action,
+            ok: outcome.ok,
+            ...outcome.counts,
+          },
+          'client bot action',
+        );
         return;
       }
 

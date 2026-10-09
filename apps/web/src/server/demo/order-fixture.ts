@@ -29,6 +29,7 @@ import {
   type OfferView,
 } from '@detaly/domain';
 import type { RosskoClient } from '@detaly/rossko';
+import { DEMO_VEHICLE_EXAMPLE, vehicleFormLabel } from '@/lib/vehicle-form';
 import { demoSlotsForDate } from '../install/order-slots';
 import type { OrderItemView, OrderView } from '../orders/order-view';
 import {
@@ -72,6 +73,11 @@ export interface DemoOrderDeps {
    * guarantee line only with the switch on, as a real order).
    */
   fitGuarantee?: boolean;
+  /**
+   * Step 6 (docs/garage.md): GARAGE_ENABLED — the sample order is for the sample car of the demo
+   * checkout («Для: Lada Vesta 1.6, 2019»).
+   */
+  garage?: boolean;
 }
 
 /**
@@ -197,6 +203,7 @@ export async function buildDemoOrderView(deps: DemoOrderDeps): Promise<OrderView
       prepayNow: false,
     },
     moneyHeld: false,
+    vehicle: deps.garage ? { label: vehicleFormLabel(DEMO_VEHICLE_EXAMPLE) } : null,
     approval: null,
     partialArrival: null,
     refund: null,

@@ -69,3 +69,60 @@ export const FEATURED_BRANDS_COUNT = 24;
 export function brandLogoSrc(brand: Pick<CarBrand, 'slug'>): string {
   return `/images/brands/${brand.slug}.webp`;
 }
+
+/**
+ * Other spellings a buyer types for a make (step 6, docs/garage.md): «Моя машина» on the checkout
+ * and the «Марка и модель» of a VIN request map them to the storefront make. Cyrillic names and
+ * the old names people still use («ВАЗ» for Lada).
+ */
+const MAKE_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  lada: ['лада', 'ваз', 'vaz', 'жигули'],
+  kia: ['киа', 'кия'],
+  hyundai: ['хендай', 'хёндай', 'хундай', 'хендэ', 'хюндай', 'хьюндай'],
+  renault: ['рено'],
+  toyota: ['тойота'],
+  volkswagen: ['фольксваген', 'вольксваген', 'vw'],
+  skoda: ['шкода'],
+  nissan: ['ниссан', 'нисан'],
+  chevrolet: ['шевроле', 'шевролет'],
+  ford: ['форд'],
+  mitsubishi: ['мицубиси', 'митсубиси', 'мицубиши', 'митсубиши'],
+  mazda: ['мазда'],
+  haval: ['хавал', 'хавейл'],
+  chery: ['чери'],
+  geely: ['джили'],
+  'mercedes-benz': ['мерседес', 'мерседес-бенц', 'mercedes'],
+  bmw: ['бмв'],
+  audi: ['ауди'],
+  opel: ['опель'],
+  peugeot: ['пежо'],
+  daewoo: ['дэу', 'деу', 'дэо'],
+  honda: ['хонда'],
+  lexus: ['лексус'],
+  uaz: ['uaz'],
+  exeed: ['эксид'],
+  changan: ['чанган'],
+  omoda: ['омода'],
+  jetour: ['джетур'],
+  citroen: ['ситроен'],
+  subaru: ['субару'],
+  suzuki: ['сузуки'],
+  datsun: ['датсун'],
+  gaz: ['gaz'],
+  'land-rover': ['ленд ровер', 'лэнд ровер'],
+  volvo: ['вольво'],
+  infiniti: ['инфинити'],
+};
+
+/** The storefront makes with their other spellings (CarMake of @detaly/domain). */
+export const CAR_MAKES: readonly { slug: string; name: string; aliases: readonly string[] }[] =
+  CAR_BRANDS.map((brand) => ({
+    slug: brand.slug,
+    name: brand.name,
+    aliases: MAKE_ALIASES[brand.slug] ?? [],
+  }));
+
+/** The storefront name of a make slug ('lada' -> 'Lada'), or null for an unknown slug. */
+export function carMakeName(slug: string | null | undefined): string | null {
+  return CAR_BRANDS.find((brand) => brand.slug === slug)?.name ?? null;
+}

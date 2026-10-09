@@ -36,7 +36,7 @@ const getOrderPage = cache(async (token: string) => {
   try {
     const env = serverEnv();
     return await loadOrderPage(getDb(), token, {
-      view: { env, paymentsEnabled: paymentsEnabled(env) },
+      view: { env, paymentsEnabled: paymentsEnabled(env), garage: env.GARAGE_ENABLED },
       services: () => ({
         env,
         now: new Date(),

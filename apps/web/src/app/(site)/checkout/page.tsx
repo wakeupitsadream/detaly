@@ -34,6 +34,7 @@ import { getDb } from '@/server/db';
 import { DEMO_CHECKOUT_DONE_PATH } from '@/server/demo/checkout-done';
 import { errorInfo, PageDataError } from '@/server/errors';
 import { serverEnv } from '@/server/env';
+import { demoVehicleBlock } from '@/server/garage/checkout-block';
 import { getLogger } from '@/server/logger';
 import { isDemoMode } from '@/server/mode';
 import { storageDays } from '@/server/settings';
@@ -109,6 +110,9 @@ async function DemoCheckout() {
               contactPhone={brand.contactPhone}
               invalidMessages={FIELD_MESSAGES}
               demo={{ action: DEMO_CHECKOUT_DONE_PATH }}
+              // Step 6: with GARAGE_ENABLED the block renders over a sample car; the demo button
+              // submits an empty form, so none of its fields leaves the page.
+              vehicle={demoVehicleBlock(serverEnv())}
               receive={
                 <PickupPoint
                   pickup={brand.pickup}
@@ -163,6 +167,7 @@ export default async function CheckoutPage({
         supplier,
         loadSettings: () => supplier.settings.get(),
         gate: () => getCheckoutGate({ env, db, logger: getLogger() }),
+        garage: env.GARAGE_ENABLED,
       },
       { cartToken: readCartToken(cookieStore), part: parseCartPart(params.part) },
     );
@@ -261,6 +266,7 @@ export default async function CheckoutPage({
             blockedMessage={data.minimums.ok ? null : data.minimums.message}
             contactPhone={brand.contactPhone}
             invalidMessages={FIELD_MESSAGES}
+            vehicle={data.vehicle}
             receive={<PickupPoint pickup={brand.pickup} storageDays={data.storageDays} />}
             payment={
               <PaymentSchemeNote scheme={data.decision.scheme} sentences={data.explanation} />

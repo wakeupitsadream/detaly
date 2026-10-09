@@ -26,9 +26,11 @@ import { SheetTitle } from '@/components/page/SheetTitle';
 import { buttonClass, Spinner } from '@/components/ui/Button';
 import { ChoiceCard } from '@/components/ui/ChoiceCard';
 import { inputClass } from '@/components/ui/Input';
+import type { VehicleFormField, VehicleFormValues, VehiclePrefillView } from '@/lib/vehicle-form';
 import { PAYMENT_SCHEME_TITLE } from './scheme-text';
+import { VEHICLE_INPUT_NAMES, VehicleBlock } from './VehicleBlock';
 
-type Field = 'phone' | 'name' | 'channel' | 'acceptOffer' | 'consentPd';
+type Field = 'phone' | 'name' | 'channel' | 'acceptOffer' | 'consentPd' | VehicleFormField;
 
 export interface CheckoutFormProps {
   part: 'all' | 'local' | 'order';
@@ -63,6 +65,12 @@ export interface CheckoutFormProps {
   payment?: ReactNode;
   /** The order's lines and total, shown before the consents. */
   summary?: ReactNode;
+  /**
+   * Step 6 (docs/garage.md): GARAGE_ENABLED — the «Моя машина» block after the lines, with what
+   * the cart's context fills it with; its fields go in `vehicle` of the body. Absent: no block
+   * and no `vehicle` sent. In the demo `demoValues` is the sample car (nothing is sent).
+   */
+  vehicle?: { prefill: VehiclePrefillView | null; demoValues?: VehicleFormValues | null } | null;
   /**
    * The server's messages (FIELD_MESSAGES) for the browser's own check before a submit: a
    * missing phone or name is told under the field like a server error, not in a bubble.
@@ -274,6 +282,16 @@ export function CheckoutForm(props: CheckoutFormProps) {
           expectedScheme,
           expectedPromisedDate,
           website: String(data.get('website') ?? ''),
+          ...(props.vehicle
+            ? {
+                vehicle: Object.fromEntries(
+                  Object.entries(VEHICLE_INPUT_NAMES).map(([key, input]) => [
+                    key,
+                    String(data.get(input) ?? ''),
+                  ]),
+                ),
+              }
+            : {}),
         }),
       });
       body = (await response.json().catch(() => ({}))) as ApiBody;
@@ -445,6 +463,21 @@ export function CheckoutForm(props: CheckoutFormProps) {
         ) : null}
 
         {props.summary}
+
+        {props.vehicle ? (
+          <VehicleBlock
+            prefill={props.vehicle.prefill}
+            demoValues={props.vehicle.demoValues ?? null}
+            errors={{
+              vehicleMake: fieldErrors.vehicleMake,
+              vehicleModel: fieldErrors.vehicleModel,
+              vehicleEngine: fieldErrors.vehicleEngine,
+              vehicleYear: fieldErrors.vehicleYear,
+              vehicleVin: fieldErrors.vehicleVin,
+              vehicleMileage: fieldErrors.vehicleMileage,
+            }}
+          />
+        ) : null}
 
         <section
           className="min-w-0 space-y-1 rounded-tile bg-surface p-4 md:px-6"

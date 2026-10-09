@@ -116,3 +116,14 @@ export {
   type KitTextError,
   type KitTextLine,
 } from './kits';
+// step 6 (docs/garage.md): «Купить снова» — a repeat proposal from an order's items
+export {
+  createRepeatProposal,
+  REPEAT_SKIP_LABELS,
+  repeatSkippedNote,
+  type RepeatLine,
+  type RepeatProposalInput,
+  type RepeatProposalResult,
+  type RepeatSkipped,
+  type RepeatSkipReason,
+} from './repeat';

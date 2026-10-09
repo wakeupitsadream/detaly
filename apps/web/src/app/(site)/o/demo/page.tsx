@@ -53,6 +53,7 @@ export default async function DemoOrderPage({ searchParams }: { searchParams?: S
     loadSettings: () => supplier.settings.get(),
     now,
     fitGuarantee: serverEnv().FIT_GUARANTEE_ENABLED,
+    garage: serverEnv().GARAGE_ENABLED,
   });
   const brand = getBrand();
   const screen = parseDemoScreen((await searchParams) ?? {});

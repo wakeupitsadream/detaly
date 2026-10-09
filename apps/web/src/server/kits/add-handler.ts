@@ -18,6 +18,10 @@
  * Rate limit: the cart's (src/proxy.ts: writes to /api/cart/**). DEMO_MODE: the same handler
  * over the demo cart (server/demo/cart-http.ts) and the sample kits. Logs: the kit id and
  * counts, never the cart token.
+ *
+ * Step 6 (docs/garage.md): with GARAGE_ENABLED the cart remembers the kit (`rememberKit`,
+ * carts.kit_id) once a line of it went in: the «Моя машина» block of the checkout is filled with
+ * the kit's make, model and engine. A failure there never fails the kit (logged, the lines stay).
  */
 import type { Env } from '@detaly/config';
 import { readBoundedText } from '../body';
@@ -54,6 +58,8 @@ export interface KitAddDeps {
   loadKit: (id: string) => Promise<KitRecord | null>;
   /** Prices the kit now (kit-view.ts priceKit with the shared supplier). */
   price: (kit: KitRecord) => Promise<KitView>;
+  /** Step 6: GARAGE_ENABLED — the cart of `cartToken` was filled from `kitId` (carts.kit_id). */
+  rememberKit?: (cartToken: string, kitId: string) => Promise<void>;
   logger?: KitAddLogger;
 }
 
@@ -146,6 +152,13 @@ export async function handleKitAdd(request: Request, deps: KitAddDeps): Promise<
       'kit to cart',
     );
     const cookies = token ? [cartSetCookie(token, deps.env)] : [];
+    if (added > 0 && token && deps.rememberKit) {
+      try {
+        await deps.rememberKit(token, kit.id);
+      } catch (error) {
+        deps.logger?.error({ ...errorInfo(error), kit: kit.id }, 'kit to cart: kit not remembered');
+      }
+    }
     if (added === 0) {
       if (stop !== null) return seeOther(`/cart?error=${stop}`, cookies);
       return backToKit(kit, `kit_error=${firstLineError ?? 'internal'}`);

@@ -183,14 +183,22 @@ export interface RenderedList {
   keyboard: InlineKeyboardButton[][];
 }
 
-/** «Мои заказы»: one message, a block per order, buttons labelled by order when there are several. */
+/**
+ * «Мои заказы»: one message, a block per order, buttons labelled by order when there are several.
+ * Step 6 (docs/garage.md): with GARAGE_ENABLED a «Мои машины» button above «Отключить
+ * уведомления».
+ */
 export function renderOrdersList(
   views: readonly ClientOrderView[],
-  env: Pick<Env, 'APP_BASE_URL' | 'INSTALL_PARTNER_NAME'>,
+  env: Pick<Env, 'APP_BASE_URL' | 'INSTALL_PARTNER_NAME'> & Partial<Pick<Env, 'GARAGE_ENABLED'>>,
   nonce: () => string = newNonce,
 ): RenderedList {
   const unsub = [callbackButton('Отключить уведомления', 'unsub', LIST_TARGET, nonce)];
-  if (views.length === 0) return { text: TEXTS.noOrders, keyboard: [unsub] };
+  const garage =
+    env.GARAGE_ENABLED === true
+      ? [[callbackButton(TEXTS.garageButton, 'garage', LIST_TARGET, nonce)]]
+      : [];
+  if (views.length === 0) return { text: TEXTS.noOrders, keyboard: [...garage, unsub] };
   const blocks = views.map((order) => {
     const what = itemsLine(order.items);
     const step = nextStep(order);
@@ -206,6 +214,6 @@ export function renderOrdersList(
   const keyboard = views.flatMap((order) =>
     orderButtons(order, env, several ? `${order.number} · ` : '', nonce),
   );
-  keyboard.push(unsub);
+  keyboard.push(...garage, unsub);
   return { text: [TEXTS.ordersHead, ...blocks].join('\n\n'), keyboard };
 }

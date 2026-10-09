@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./statuses": "./src/statuses.ts",
     "./types": "./src/types.ts",
-    "./install-params": "./src/install-params.ts"
+    "./install-params": "./src/install-params.ts",
+    "./vin": "./src/vin.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

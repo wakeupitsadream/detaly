@@ -91,6 +91,10 @@ export REVIEW_URL_2GIS="${REVIEW_URL_2GIS:-}"
 # --- env: step 4 (docs/fit-check.md): the fit guarantee off, the default (e2e-1c switches it on)
 export FIT_GUARANTEE_ENABLED="${FIT_GUARANTEE_ENABLED:-false}"
 
+# --- env: step 6 (docs/garage.md): «Моя машина» off, the default (e2e-1c switches it on): the
+# garage spec checks that nothing about a car is collected, stored or shown
+export GARAGE_ENABLED="${GARAGE_ENABLED:-false}"
+
 # --- what the specs read -------------------------------------------------------------------
 export E2E_BASE_URL="$WEB_URL"
 export E2E_PAYMENTS=on
@@ -197,9 +201,12 @@ cleanup
 
 leaks=0
 count_matches() {
-  # Counts only: printing the matching lines would copy the data into the CI log.
+  # Counts only: printing the matching lines would copy the data into the CI log. Ids are masked
+  # first: a random UUID may hold «79» and nine digits (a receipt id did, 09.10), and an id is
+  # never a phone; the VIN and the secrets checks read the log as is.
   local count
-  count=$(grep -cE "$1" "$2" || true)
+  count=$(sed -E 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<uuid>/g' "$2" |
+    grep -cE "$1" || true)
   echo "${count:-0}"
 }
 for file in "$WEB_LOG" "$WORKER_LOG"; do

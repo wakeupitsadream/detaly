@@ -270,6 +270,7 @@ export function OrderDetails({
             subtotalKop={view.subtotalKop}
             courierFeeKop={view.courierFeeKop}
             totalKop={view.totalKop}
+            vehicle={view.vehicle}
           />
 
           {services ? <OrderPhotos photos={services.photos} /> : null}

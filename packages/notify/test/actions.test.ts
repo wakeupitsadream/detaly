@@ -18,6 +18,7 @@ import {
   menuAction,
   newNonce,
   parseCallbackData,
+  isClientAction,
   isWorkflowAction,
   WORKFLOW_ACTIONS,
   workflowAction,
@@ -234,6 +235,12 @@ describe('callback actions', () => {
       fanlg: 'fit',
       fnot: 'fit',
       fcall: 'fit',
+      // step 6 (docs/garage.md): «Мои машины» of the client bot, «Пропустить» of the seller bot
+      garage: 'order',
+      rebuy: 'order',
+      vdel: 'vehicle',
+      vdelok: 'vehicle',
+      mskip: 'order',
     };
     expect(Object.keys(WORKFLOW_ACTIONS).sort()).toEqual(Object.keys(expected).sort());
     for (const [code, target] of Object.entries(expected)) {
@@ -275,6 +282,44 @@ describe('callback actions', () => {
     for (const code of ['ffit', 'fanlg', 'fnot', 'fcall']) {
       const data = buildCallbackData(code, UUID, newNonce());
       expect(Buffer.byteLength(data), code).toBeLessThanOrEqual(CALLBACK_DATA_MAX_BYTES);
+    }
+  });
+
+  it('step 6: «Мои машины», «Купить снова», «Удалить машину» for the client, «Пропустить» for staff', () => {
+    expect(workflowAction('garage')).toEqual({
+      kind: 'garage',
+      action: 'list',
+      label: 'Мои машины',
+    });
+    expect(workflowAction('rebuy')).toEqual({
+      kind: 'garage',
+      action: 'rebuy',
+      label: 'Купить снова',
+    });
+    expect(workflowAction('vdel')).toEqual({
+      kind: 'garage',
+      action: 'delete',
+      label: 'Удалить машину',
+    });
+    expect(workflowAction('vdelok')).toEqual({
+      kind: 'garage',
+      action: 'delete_confirmed',
+      label: 'Да, удалить',
+    });
+    expect(workflowAction('mskip')).toEqual({
+      kind: 'mileage',
+      action: 'skip',
+      label: 'Пропустить',
+    });
+    for (const code of ['garage', 'rebuy', 'vdel', 'vdelok']) {
+      expect(isClientAction(code), code).toBe(true);
+    }
+    // The staff's «Пропустить» never works in the client bot.
+    expect(isClientAction('mskip')).toBe(false);
+    for (const code of ['garage', 'rebuy', 'vdel', 'vdelok', 'mskip']) {
+      const data = buildCallbackData(code, UUID, newNonce());
+      expect(Buffer.byteLength(data), code).toBeLessThanOrEqual(CALLBACK_DATA_MAX_BYTES);
+      expect(parseCallbackData(data)?.action).toBe(code);
     }
   });
 });

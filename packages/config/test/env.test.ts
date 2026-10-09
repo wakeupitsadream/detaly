@@ -370,6 +370,29 @@ describe('fit guarantee (step 4, docs/fit-check.md)', () => {
   });
 });
 
+describe('«Моя машина» (step 6, docs/garage.md)', () => {
+  it('GARAGE_ENABLED is off unless set to true', () => {
+    expect(parseEnv(minimalEnvSource()).GARAGE_ENABLED).toBe(false);
+    expect(parseEnv(minimalEnvSource({ GARAGE_ENABLED: '' })).GARAGE_ENABLED).toBe(false);
+    expect(parseEnv(minimalEnvSource({ GARAGE_ENABLED: 'true' })).GARAGE_ENABLED).toBe(true);
+    expect(parseEnv(minimalEnvSource({ GARAGE_ENABLED: 'false' })).GARAGE_ENABLED).toBe(false);
+    expect(() => parseEnv(minimalEnvSource({ GARAGE_ENABLED: 'maybe' }))).toThrow(/GARAGE_ENABLED/);
+  });
+
+  it('a demo may switch it on (the checkout block renders, nothing is sent)', () => {
+    const env = parseEnv(
+      minimalEnvSource({
+        DEMO_MODE: 'true',
+        DATABASE_URL: undefined,
+        REDIS_URL: undefined,
+        GARAGE_ENABLED: 'true',
+      }),
+    );
+    expect(env.DEMO_MODE).toBe(true);
+    expect(env.GARAGE_ENABLED).toBe(true);
+  });
+});
+
 describe('.env.example', () => {
   const example = readEnvExample();
 

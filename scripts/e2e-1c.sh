@@ -11,8 +11,9 @@
 #    src/main.ts, no Telegram tokens: no network, the client bot does not start) and web
 #    standalone on :3100, with the env of section 18: phase 1A + 1B e2e env plus
 #    FILES_STORAGE=local in a temporary directory, INSTALL_PARTNER_*, TG_CLIENT_BOT_USERNAME,
-#    the fake review links of step 3 (REVIEW_URL_YANDEX, REVIEW_URL_2GIS) and the fit guarantee
-#    of step 4 switched on (FIT_GUARANTEE_ENABLED=true);
+#    the fake review links of step 3 (REVIEW_URL_YANDEX, REVIEW_URL_2GIS), the fit guarantee
+#    of step 4 switched on (FIT_GUARANTEE_ENABLED=true) and «Моя машина» of step 6 switched on
+#    (GARAGE_ENABLED=true);
 # 4. Playwright, every spec of phases 1A, 1B and 1C, mobile 375 and desktop 1280;
 # 5. the web and worker logs must contain no phone numbers (+79…, 79… as in receipts), no VIN in
 #    full (a 17-character VIN-shaped run) and none of the phones, VINs and tokens (/o, /p, link)
@@ -105,6 +106,9 @@ export REVIEW_URL_2GIS="${REVIEW_URL_2GIS:-https://2gis.ru/orenburg/firm/1}"
 
 # --- env: step 4 (docs/fit-check.md): the fit guarantee on (e2e-1b runs it off) -------------
 export FIT_GUARANTEE_ENABLED="${FIT_GUARANTEE_ENABLED:-true}"
+
+# --- env: step 6 (docs/garage.md): «Моя машина» on (e2e-1b runs it off) ---------------------
+export GARAGE_ENABLED="${GARAGE_ENABLED:-true}"
 
 # --- what the specs read -------------------------------------------------------------------
 export E2E_BASE_URL="$WEB_URL"
@@ -217,9 +221,12 @@ cleanup
 
 leaks=0
 count_matches() {
-  # Counts only: printing the matching lines would copy the data into the CI log.
+  # Counts only: printing the matching lines would copy the data into the CI log. Ids are masked
+  # first: a random UUID may hold «79» and nine digits (a receipt id did, 09.10), and an id is
+  # never a phone; the VIN and the secrets checks read the log as is.
   local count
-  count=$(grep -cE "$1" "$2" || true)
+  count=$(sed -E 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<uuid>/g' "$2" |
+    grep -cE "$1" || true)
   echo "${count:-0}"
 }
 for file in "$WEB_LOG" "$WORKER_LOG"; do

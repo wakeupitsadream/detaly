@@ -40,12 +40,26 @@ const STATUS_TEXT: Record<Exclude<ProposalLineView['status'], 'ok'>, string> = {
   excluded: 'Не продаём онлайн — спросите в сервисе',
 };
 
+/** Step 6: the same lines of a «Купить снова» proposal (no master behind it). */
+const REPEAT_STATUS_TEXT: Record<Exclude<ProposalLineView['status'], 'ok'>, string> = {
+  unavailable: 'Сейчас нет в наличии',
+  excluded: 'Не продаём онлайн — спросите в сервисе',
+};
+
 /**
  * One line as an offer card: tile | brand, article, name | price, the badge and the date under
  * the name. On phones the badge row takes the card's full width (as in OfferRow), so «В
  * Оренбурге — оплата при получении» stays on one line.
  */
-function ProposalLine({ line, mixed }: { line: ProposalLineView; mixed: boolean }) {
+function ProposalLine({
+  line,
+  mixed,
+  repeat,
+}: {
+  line: ProposalLineView;
+  mixed: boolean;
+  repeat: boolean;
+}) {
   const off = line.status !== 'ok';
   return (
     <li
@@ -69,7 +83,9 @@ function ProposalLine({ line, mixed }: { line: ProposalLineView; mixed: boolean 
       </div>
       <div className="col-span-2 min-w-0 md:col-span-1 md:col-start-2">
         {line.status !== 'ok' ? (
-          <p className="text-small font-semibold text-danger">{STATUS_TEXT[line.status]}</p>
+          <p className="text-small font-semibold text-danger">
+            {(repeat ? REPEAT_STATUS_TEXT : STATUS_TEXT)[line.status]}
+          </p>
         ) : (
           <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
             {/* A mixed proposal is one prepaid order: no «оплата при получении» tail. */}
@@ -182,6 +198,8 @@ export function ProposalSheet({
   const canTake = mode.kind !== 'expired' && sellable;
   const paymentLine = proposalPaymentLine(view.lines);
   const mixed = isMixedProposal(view.lines);
+  // Step 6: «Купить снова» — the client's own earlier order, not a master's selection.
+  const repeat = Boolean(view.repeat);
   return (
     <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-10">
       <div className="min-w-0 space-y-6">
@@ -190,7 +208,12 @@ export function ProposalSheet({
             Пришлите свой VIN — подберём бесплатно.
           </Notice>
         ) : null}
-        {mode.kind === 'expired' ? (
+        {mode.kind === 'expired' && repeat ? (
+          <Notice tone="wait" title="Ссылка больше не действует" data-testid="proposal-expired">
+            Нажмите «Купить снова» в Telegram ещё раз — пришлём свежие цены.
+          </Notice>
+        ) : null}
+        {mode.kind === 'expired' && !repeat ? (
           <Notice tone="wait" title="Подборка больше не действует" data-testid="proposal-expired">
             Попросите мастера обновить подборку
             {contactPhone ? (
@@ -214,7 +237,13 @@ export function ProposalSheet({
           </Notice>
         ) : null}
 
-        {view.comment ? (
+        {view.comment && repeat ? (
+          // The parts of the order that could not go in («Не вошли: …»).
+          <Notice tone="info" data-testid="proposal-repeat-note">
+            {view.comment}
+          </Notice>
+        ) : null}
+        {view.comment && !repeat ? (
           <IconCard
             icon={<IconWrench size={24} />}
             title="Комментарий мастера"
@@ -226,10 +255,12 @@ export function ProposalSheet({
         ) : null}
 
         <section aria-labelledby="proposal-lines" className="min-w-0">
-          <SectionHeading id="proposal-lines">Что подобрал мастер</SectionHeading>
+          <SectionHeading id="proposal-lines">
+            {view.repeat ? `Что было в заказе ${view.repeat.orderNumber}` : 'Что подобрал мастер'}
+          </SectionHeading>
           <ul className="mt-5 flex min-w-0 flex-col gap-3" data-testid="proposal-lines">
             {view.lines.map((line) => (
-              <ProposalLine key={line.id} line={line} mixed={mixed} />
+              <ProposalLine key={line.id} line={line} mixed={mixed} repeat={repeat} />
             ))}
           </ul>
         </section>
@@ -286,11 +317,13 @@ export function ProposalSheet({
           ) : null}
         </section>
 
-        <IconCard icon={<IconShield size={24} />} title={'Подобрали мы\u00a0— отвечаем мы'}>
-          <p className="text-small font-normal text-muted" data-testid="proposal-guarantee">
-            Деталь не подошла к автомобилю из заявки — вернём деньги полностью.
-          </p>
-        </IconCard>
+        {repeat ? null : (
+          <IconCard icon={<IconShield size={24} />} title={'Подобрали мы\u00a0— отвечаем мы'}>
+            <p className="text-small font-normal text-muted" data-testid="proposal-guarantee">
+              Деталь не подошла к автомобилю из заявки — вернём деньги полностью.
+            </p>
+          </IconCard>
+        )}
       </aside>
 
       {canTake ? (

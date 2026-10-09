@@ -5,9 +5,10 @@
 // newer prompt replaces the older one. The wait lives in Redis, so a worker restart in between
 // does not lose it.
 //
-// The value holds ids (order, claim, VIN request, fit check, prompt message) and, between the two
-// prompts of the owner's «Вернуть деньги» without «Принял возврат», the override reason he typed
-// (it ends up in claims.override_reason anyway). Never the client's texts, phones or tokens.
+// The value holds ids (order, claim, VIN request, fit check, car, prompt message) and, between the
+// two prompts of the owner's «Вернуть деньги» without «Принял возврат», the override reason he
+// typed (it ends up in claims.override_reason anyway); step 6: a lower mileage waiting for its
+// confirmation. Never the client's texts, phones, VINs or tokens.
 import type { Redis } from '@detaly/config';
 
 export const AWAIT_TTL_SEC = 10 * 60;
@@ -48,7 +49,18 @@ export type Awaiting =
   /** «Закрыть заявку»: the reason. */
   | { kind: 'vin_close'; vinRequestId: string; promptMessageId: number }
   /** Step 4 «Аналог» on a fit check line: «БРЕНД АРТИКУЛ». */
-  | { kind: 'fit_analog'; fitCheckId: string; fitRequestId: string; promptMessageId: number };
+  | { kind: 'fit_analog'; fitCheckId: string; fitRequestId: string; promptMessageId: number }
+  /**
+   * Step 6 (docs/garage.md): «Пробег?» after «Выдал» — the odometer of the order's car.
+   * `correction`: a reading below the stored mileage waiting to be confirmed by the same number.
+   */
+  | {
+      kind: 'mileage';
+      orderId: string;
+      vehicleId: string;
+      correction: number | null;
+      promptMessageId: number;
+    };
 
 export type AwaitingKind = Awaiting['kind'];
 
@@ -134,6 +146,24 @@ export function parseAwaiting(raw: string | null): Awaiting | null {
             promptMessageId,
           }
         : null;
+    case 'mileage': {
+      if (!uuid(value.orderId) || !uuid(value.vehicleId)) return null;
+      const correction = value.correction;
+      if (
+        correction !== null &&
+        correction !== undefined &&
+        !(typeof correction === 'number' && Number.isSafeInteger(correction) && correction >= 0)
+      ) {
+        return null;
+      }
+      return {
+        kind: 'mileage',
+        orderId: value.orderId,
+        vehicleId: value.vehicleId,
+        correction: typeof correction === 'number' ? correction : null,
+        promptMessageId,
+      };
+    }
     default:
       return null;
   }

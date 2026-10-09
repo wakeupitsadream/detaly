@@ -5,6 +5,8 @@
 //   /start          -> orders of a bound account; a blocked one is switched back on
 //   /orders         -> «Мои заказы»
 //   /stop, «Отключить уведомления», my_chat_member kicked -> blocked_at
+//   /garage         -> «Мои машины» (step 6, docs/garage.md; only with GARAGE_ENABLED, otherwise
+//                      the auto reply like any unknown command)
 //   buttons         -> callbacks.ts
 //   anything else   -> «Бот присылает статусы заказов. Вопрос мастеру — по телефону …» (С24)
 //
@@ -18,6 +20,7 @@ import type { WorkerDeps } from '../../deps';
 import { describeBotError } from '../seller/errors';
 import { contactReceived, startPlain, startWithToken, unsubscribe } from './bind';
 import { clientCallbackHandler } from './callbacks';
+import { garageEnabled, sendGarage } from './garage';
 import { sendOrdersList } from './menu';
 import { TEXTS } from './texts';
 
@@ -82,6 +85,23 @@ export function createClientBot({ token, deps, botInfo, client, logger }: Client
     if (binding.blocked) return void (await ctx.reply(TEXTS.blocked));
     await sendOrdersList(ctx, deps, binding.userId);
   });
+
+  // Step 6 (docs/garage.md): the client's cars with their orders, «Купить снова».
+  if (garageEnabled(deps.env)) {
+    bot.command('garage', async (ctx) => {
+      const binding = await findBindingUser(deps.db, {
+        channel: 'telegram',
+        externalUserId: String(ctx.from?.id ?? ''),
+      });
+      if (binding === null) return void (await ctx.reply(TEXTS.notConnected(deps.env.BRAND_NAME)));
+      if (binding.blocked) return void (await ctx.reply(TEXTS.blocked));
+      const cars = await sendGarage(ctx, deps, binding.userId);
+      deps.logger.info(
+        { updateId: ctx.update.update_id, action: 'garage', ok: true, cars },
+        'client bot',
+      );
+    });
+  }
 
   bot.command('stop', async (ctx) => {
     const changed = await unsubscribe(ctx, deps);

@@ -83,6 +83,7 @@ export default async function ProposalPage({ params }: { params: Params }) {
                   lines: proposal.lines,
                   expiresAt: proposal.expiresAt,
                   expired: proposal.expired,
+                  repeat: proposal.repeat ? { orderNumber: proposal.repeat.orderNumber } : null,
                 },
                 { rossko: supplier.rossko, loadSettings: () => supplier.settings.get() },
               ),
@@ -101,13 +102,25 @@ export default async function ProposalPage({ params }: { params: Params }) {
 
   return (
     <InnerPage>
-      <PageBand
-        tone="light"
-        eyebrow="Подбор по VIN"
-        title="Подборка мастера"
-        lead="Мастер подобрал под вашу машину."
-        titleTestId="proposal-title"
-      />
+      {view.repeat ? (
+        // Step 6 (docs/garage.md): «Купить снова» from the client bot — the parts of an earlier
+        // order at today's prices, not a master's selection.
+        <PageBand
+          tone="light"
+          eyebrow="Купить снова"
+          title={`Повтор заказа ${view.repeat.orderNumber}`}
+          lead="Те же детали по сегодняшним ценам."
+          titleTestId="proposal-title"
+        />
+      ) : (
+        <PageBand
+          tone="light"
+          eyebrow="Подбор по VIN"
+          title="Подборка мастера"
+          lead="Мастер подобрал под вашу машину."
+          titleTestId="proposal-title"
+        />
+      )}
       <PageBody>
         <ProposalSheet view={view} mode={mode} contactPhone={brand.contactPhone} />
       </PageBody>

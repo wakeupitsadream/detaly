@@ -8,7 +8,8 @@
  * - A line with the same offer_key already in the cart gets the proposal's quantity (the master
  *   chose it), not the sum.
  * - The target cart remembers the request (`carts.vin_request_id`): the order created from it
- *   carries `orders.vin_request_id` and marks the request converted (markVinConverted).
+ *   carries `orders.vin_request_id` and marks the request converted (markVinConverted). A repeat
+ *   proposal of «Купить снова» (step 6) passes its `carts.repeat_order_id` the same way.
  * - The cart limits of the web cart hold (lines and distinct query articles), otherwise
  *   checkout would refuse the cart later.
  *
@@ -134,9 +135,15 @@ export async function copyProposalToCart(
       })),
     );
   }
+  // The cart's context goes with it: the VIN request, or (step 6, docs/garage.md) the order a
+  // «Купить снова» proposal repeats — the checkout fills «Моя машина» from it.
   await tx
     .update(carts)
-    .set({ vinRequestId: proposal.vinRequestId, updatedAt: at })
+    .set({
+      vinRequestId: proposal.vinRequestId,
+      repeatOrderId: proposal.repeatOrderId,
+      updatedAt: at,
+    })
     .where(eq(carts.id, target.id));
   return {
     ok: true,

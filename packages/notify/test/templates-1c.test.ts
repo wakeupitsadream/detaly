@@ -348,7 +348,17 @@ describe('channels (V3)', () => {
   });
 
   it('client workflow codes', () => {
-    expect([...CLIENT_WORKFLOW_ACTIONS]).toEqual(['install', 'islot', 'orders', 'unsub']);
+    // Step 6 (docs/garage.md): «Мои машины», «Купить снова», «Удалить машину» and its confirmation.
+    expect([...CLIENT_WORKFLOW_ACTIONS]).toEqual([
+      'install',
+      'islot',
+      'orders',
+      'unsub',
+      'garage',
+      'rebuy',
+      'vdel',
+      'vdelok',
+    ]);
     expect(isClientAction('install')).toBe(true);
     expect(isClientAction('confirm')).toBe(true);
     expect(isClientAction('cref')).toBe(false);

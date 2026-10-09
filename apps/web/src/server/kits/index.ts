@@ -4,8 +4,10 @@
  * shared pool. DEMO_MODE: the sample kits, never the database.
  */
 import type { Env } from '@detaly/config';
+import { and, carts, eq, isNull, type Executor } from '@detaly/db';
 import type { CartService } from '../cart/cart-service';
 import { getDb } from '../db';
+import { serverEnv } from '../env';
 import { getLogger } from '../logger';
 import { isDemoMode } from '../mode';
 import { getSupplier } from '../supplier';
@@ -39,6 +41,24 @@ export function loadPublishedKit(id: string): Promise<KitRecord | null> {
   return loadKit(getDb(), id, { published: true });
 }
 
+/**
+ * Step 6 (docs/garage.md): the client cart of `cartToken` remembers the kit it was filled from
+ * (carts.kit_id), the prefill of «Моя машина» on the checkout. Proposal carts are never touched.
+ */
+export async function rememberCartKit(
+  db: Executor,
+  cartToken: string,
+  kitId: string,
+): Promise<void> {
+  if (!UUID_RE.test(kitId)) return;
+  await db
+    .update(carts)
+    .set({ kitId })
+    .where(
+      and(eq(carts.anonToken, cartToken), eq(carts.status, 'active'), isNull(carts.proposalToken)),
+    );
+}
+
 /** Dependencies of POST /api/cart/kits over a cart service (live, or the demo one of a request). */
 export function kitAddDeps(
   service: CartService,
@@ -49,6 +69,11 @@ export function kitAddDeps(
     service,
     loadKit: loadPublishedKit,
     price: (kit) => priceKitNow(kit),
+    // Step 6: only with GARAGE_ENABLED (nothing collected otherwise); never in the demo (no db).
+    rememberKit:
+      !isDemoMode() && serverEnv().GARAGE_ENABLED
+        ? (cartToken, kitId) => rememberCartKit(getDb(), cartToken, kitId)
+        : undefined,
     logger: getLogger(),
   };
 }

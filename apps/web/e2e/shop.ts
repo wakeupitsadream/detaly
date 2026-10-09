@@ -53,12 +53,19 @@ export async function addToCart(page: Page, query: string, offerId: string): Pro
   await expect(page).toHaveURL(/\/cart\?added=1$/);
 }
 
-/** Changes the quantity of the cart line whose text contains `brand`. */
+/**
+ * Changes the quantity of the cart line whose text contains `brand` (with JavaScript). QtyStepper
+ * shows «Изменить» until it hydrates and then hides it while the field equals the cart; a number
+ * typed before hydration is reset by React and the button goes with it (reviews.spec.ts waited
+ * for it until the test timeout, 09.10). So the hydrated stepper comes first.
+ */
 export async function setCartQty(page: Page, brand: string, qty: number): Promise<void> {
   const line = page.getByTestId('cart-line').filter({ hasText: brand });
   await expect(line).toHaveCount(1);
+  const apply = line.getByRole('button', { name: 'Изменить' });
+  await expect(apply, 'the quantity stepper hydrated').toHaveCount(0, { timeout: 15_000 });
   await line.getByRole('spinbutton').fill(String(qty));
-  await line.getByRole('button', { name: 'Изменить' }).click();
+  await apply.click();
   await expect(line.getByRole('spinbutton')).toHaveValue(String(qty));
 }
 

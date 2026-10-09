@@ -4,6 +4,10 @@
  * once, totals, the delivery promise, the payment scheme as it would be without no-shows, the
  * order minimums and the hidden values of the form (expected total, items hash, checkout key).
  * POST /api/checkout repeats the repricing past the cache and answers 409 on any difference.
+ *
+ * Step 6 (docs/garage.md): with `garage` (GARAGE_ENABLED) the «Моя машина» block and what it is
+ * filled with — the cart's own context only (server/garage/prefill.ts), never the client's cars
+ * looked up by a phone.
  */
 import type { Executor } from '@detaly/db';
 import {
@@ -13,6 +17,7 @@ import {
   explainPaymentScheme,
   fitLineState,
   isFitCheckedState,
+  localDate,
   promisedDate,
   repriceCartLines,
   selectCartPart,
@@ -30,7 +35,9 @@ import type { RosskoClient } from '@detaly/rossko';
 import { fitFactsOf, latestFitChecksOfLines } from '@detaly/vin';
 import { promiseFor } from '../cart/summary';
 import { fetchFreshOffers, findActiveCart, persistRepricing } from '../cart-store';
+import type { VehiclePrefillView } from '@/lib/vehicle-form';
 import type { CheckoutGate } from '../checkout-gate';
+import { loadVehiclePrefill, prefillView } from '../garage/prefill';
 import type { CheckoutSettings } from './checkout-service';
 import { storageDays } from '../settings';
 import { itemsHash } from './hash';
@@ -43,6 +50,8 @@ export interface CheckoutPageDeps {
   loadSettings: () => Promise<CheckoutSettings>;
   gate: () => Promise<CheckoutGate>;
   now?: () => Date;
+  /** Step 6: GARAGE_ENABLED — the «Моя машина» block is on the page. */
+  garage?: boolean;
 }
 
 export interface CheckoutPageReady {
@@ -90,6 +99,11 @@ export interface CheckoutPageReady {
     consentPdVersionId: string;
     consentMarketingVersionId: string | null;
   };
+  /**
+   * Step 6: the «Моя машина» block with its prefill (null prefill: empty fields); null without
+   * GARAGE_ENABLED (no block at all).
+   */
+  vehicle: { prefill: VehiclePrefillView | null } | null;
 }
 
 export type CheckoutPageData =
@@ -164,6 +178,11 @@ export async function loadCheckoutPage(
     onPickupMaxTotalKop: settings.order.onPickupMaxTotalKop,
     fulfillment: 'pickup',
   });
+  const vehicle = deps.garage
+    ? {
+        prefill: prefillView(await loadVehiclePrefill(deps.db, active.cart.id, localDate(now))),
+      }
+    : null;
   const removedIds = new Set(repriced.lines.filter((l) => l.status !== 'ok').map((l) => l.id));
   const partIds = new Set(partLines.map((l) => l.id));
   return {
@@ -206,5 +225,6 @@ export async function loadCheckoutPage(
       consentPdVersionId: gate.docs.consentPd.id,
       consentMarketingVersionId: gate.docs.consentMarketing?.id ?? null,
     },
+    vehicle,
   };
 }

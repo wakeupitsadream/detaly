@@ -28,6 +28,7 @@ import {
   paymentScheme,
 } from './enums';
 import { documentVersions, staff, users } from './people';
+import { userVehicles } from './vehicles';
 
 /**
  * Human order number DT-000001. maxValue keeps lpad() from truncating 7-digit values into
@@ -99,10 +100,18 @@ export const orders = pgTable(
     updatedAt: updatedAt(),
     /** Phase 1C: the VIN request whose proposal (/p/<token>) this order was checked out from. */
     vinRequestId: uuid().references((): AnyPgColumn => vinRequests.id, { onDelete: 'set null' }),
+    /**
+     * Step 6 (docs/garage.md): the client's car the order is for, saved with the order when
+     * GARAGE_ENABLED; cleared when the car is deleted (the client bot, the anonymization).
+     */
+    vehicleId: uuid().references((): AnyPgColumn => userVehicles.id, { onDelete: 'set null' }),
   },
   (t) => [
     unique('orders_number_unique').on(t.number),
     index('orders_vin_request_id_idx').on(t.vinRequestId),
+    index('orders_vehicle_id_idx')
+      .on(t.vehicleId)
+      .where(sql`${t.vehicleId} is not null`),
     unique('orders_access_token_unique').on(t.accessToken),
     unique('orders_checkout_key_unique').on(t.checkoutKey),
     index('orders_cart_id_idx').on(t.cartId),

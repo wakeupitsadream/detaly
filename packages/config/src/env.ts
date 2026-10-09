@@ -207,6 +207,13 @@ const envShape = {
   // мастером».
   FIT_GUARANTEE_ENABLED: bool(false),
 
+  // --- «Моя машина» [шаг 6] (docs/garage.md): the client's cars, «Купить снова», mileage ---
+  // The car (make, model, engine, year, VIN, mileage) is personal data under 152-ФЗ, and the
+  // privacy policy and the PD consent do not name it yet: off, nothing about a car is collected,
+  // stored or shown anywhere (checkout, order page, bots, admin). Switch on only after the lawyer
+  // approved docs/legal-drafts/garage.md and the new policy and consent are published.
+  GARAGE_ENABLED: bool(false),
+
   // --- Installation partner [ф1C] (decision С6): without the name booking is hidden ---
   /** The service that installs parts and bills the client itself (e.g. «Сервис56»). */
   INSTALL_PARTNER_NAME: optionalString,

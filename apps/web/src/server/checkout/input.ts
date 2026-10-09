@@ -5,18 +5,28 @@
  * malformed mean a broken or forged client: 400. Fields the client types or ticks get Russian
  * messages per field: 422 `consent_required` when the offer or the PD consent is not accepted
  * (an order without consent is impossible), otherwise 422 `validation`.
+ *
+ * Step 6 (docs/garage.md): `vehicle` {make, model, engine, year, vin, mileage} of the optional
+ * «Моя машина» block is read only when the caller passes `garage` (GARAGE_ENABLED); otherwise it
+ * is dropped like any unknown field, whatever it holds. Blank everywhere: no car. A typed car
+ * needs the make and the model; its errors are 422 `validation` on `vehicle<Field>`.
  */
 import {
   isIsoDate,
   NOTIFICATION_CHANNELS,
   normalizeMobilePhone,
+  parseVehicleInput,
   PAYMENT_SCHEMES,
+  type CarMake,
   type CartPart,
   type IsoDate,
   type NotificationChannel,
   type PaymentScheme,
+  type VehicleData,
+  type VehicleField,
 } from '@detaly/domain';
 import { z } from 'zod';
+import { VEHICLE_FORM_FIELD, type VehicleFormField } from '@/lib/vehicle-form';
 import { ITEMS_HASH_RE } from './hash';
 
 export const CART_PARTS = ['all', 'local', 'order'] as const satisfies readonly CartPart[];
@@ -32,7 +42,7 @@ export const FIELD_MESSAGES = {
   consentPd: 'Без согласия на обработку персональных данных оформить заказ нельзя',
 } as const;
 
-export type CheckoutField = keyof typeof FIELD_MESSAGES;
+export type CheckoutField = keyof typeof FIELD_MESSAGES | VehicleFormField;
 
 export interface CheckoutInput {
   part: CartPart;
@@ -54,6 +64,17 @@ export interface CheckoutInput {
   expectedTotalKop: number;
   itemsHash: string;
   checkoutKey: string;
+  /**
+   * Step 6: the car of the «Моя машина» block (null when blank). Absent without GARAGE_ENABLED:
+   * the parsed input is then exactly what it was before the step.
+   */
+  vehicle?: VehicleData | null;
+}
+
+/** GARAGE_ENABLED: the makes the block's make is matched against and the client's today. */
+export interface CheckoutGarageOptions {
+  makes: readonly CarMake[];
+  today: IsoDate;
 }
 
 export type CheckoutInputResult =
@@ -94,7 +115,10 @@ function isChannel(value: unknown): value is NotificationChannel {
   return typeof value === 'string' && (NOTIFICATION_CHANNELS as readonly string[]).includes(value);
 }
 
-export function parseCheckoutInput(body: unknown): CheckoutInputResult {
+export function parseCheckoutInput(
+  body: unknown,
+  options: { garage?: CheckoutGarageOptions | null } = {},
+): CheckoutInputResult {
   const tech = technical.safeParse(body);
   if (!tech.success) return { ok: false, status: 400, error: 'bad_request' };
   // technical.safeParse succeeded, so the body is a plain object.
@@ -111,6 +135,18 @@ export function parseCheckoutInput(body: unknown): CheckoutInputResult {
   if (channel === null) fields.channel = FIELD_MESSAGES.channel;
   if (raw.acceptOffer !== true) fields.acceptOffer = FIELD_MESSAGES.acceptOffer;
   if (raw.consentPd !== true) fields.consentPd = FIELD_MESSAGES.consentPd;
+
+  // Step 6: without GARAGE_ENABLED `vehicle` is never read (nothing collected).
+  let vehicle: VehicleData | null = null;
+  if (options.garage) {
+    const parsed = parseVehicleInput(raw.vehicle, options.garage);
+    if (parsed.kind === 'ok') vehicle = parsed.vehicle;
+    if (parsed.kind === 'invalid') {
+      for (const [field, message] of Object.entries(parsed.errors) as [VehicleField, string][]) {
+        fields[VEHICLE_FORM_FIELD[field]] = message;
+      }
+    }
+  }
 
   if (phone === null || name === null || channel === null || Object.keys(fields).length > 0) {
     const consentMissing = fields.acceptOffer !== undefined || fields.consentPd !== undefined;
@@ -130,6 +166,7 @@ export function parseCheckoutInput(body: unknown): CheckoutInputResult {
       name,
       channel,
       consentMarketing: raw.consentMarketing === true,
+      ...(options.garage ? { vehicle } : {}),
     },
   };
 }

@@ -9,6 +9,7 @@ import { handoverQr } from '@/server/admin/handover-qr';
 import { loadAdminOrder1C } from '@/server/admin/order-1c';
 import { isUuid, loadAdminOrder } from '@/server/admin/queries';
 import { getEngineDeps } from '@/server/engine';
+import { serverEnv } from '@/server/env';
 import { errorInfo, PageDataError } from '@/server/errors';
 import { getLogger } from '@/server/logger';
 
@@ -42,7 +43,7 @@ export default async function AdminOrderPage({
   let data;
   try {
     const [card, actions, phase1c] = await Promise.all([
-      loadAdminOrder(deps.db, id),
+      loadAdminOrder(deps.db, id, { garage: serverEnv().GARAGE_ENABLED }),
       loadStaffActions(deps, id, 'owner'),
       loadAdminOrder1C(deps, id),
     ]);

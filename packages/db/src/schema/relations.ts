@@ -8,6 +8,7 @@ import { consents, documentVersions, messengerBindings, users } from './people';
 import { claims, installBookings, orderPhotos } from './service';
 import { supplierOrderItems, supplierOrders } from './supplier';
 import { notifications } from './system';
+import { userVehicles } from './vehicles';
 import { clientApprovals, sellerCards } from './workflow';
 
 export const cartsRelations = relations(carts, ({ many, one }) => ({
@@ -24,6 +25,8 @@ export const usersRelations = relations(users, ({ many }) => ({
   consents: many(consents),
   messengerBindings: many(messengerBindings),
   vinRequests: many(vinRequests),
+  // step 6 (docs/garage.md)
+  vehicles: many(userVehicles),
 }));
 
 export const ordersRelations = relations(orders, ({ many, one }) => ({
@@ -46,6 +49,8 @@ export const ordersRelations = relations(orders, ({ many, one }) => ({
   installBookings: many(installBookings),
   photos: many(orderPhotos),
   vinRequest: one(vinRequests, { fields: [orders.vinRequestId], references: [vinRequests.id] }),
+  // step 6 (docs/garage.md)
+  vehicle: one(userVehicles, { fields: [orders.vehicleId], references: [userVehicles.id] }),
 }));
 
 export const orderItemsRelations = relations(orderItems, ({ many, one }) => ({
@@ -156,4 +161,11 @@ export const linkTokensRelations = relations(linkTokens, ({ one }) => ({
 
 export const messengerBindingsRelations = relations(messengerBindings, ({ one }) => ({
   user: one(users, { fields: [messengerBindings.userId], references: [users.id] }),
+}));
+
+// --- step 6 (docs/garage.md) ------------------------------------------------------------------
+
+export const userVehiclesRelations = relations(userVehicles, ({ many, one }) => ({
+  user: one(users, { fields: [userVehicles.userId], references: [users.id] }),
+  orders: many(orders),
 }));

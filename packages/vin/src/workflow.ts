@@ -517,6 +517,11 @@ export interface ProposalView {
   expired: boolean;
   /** A newer proposal replaced this one. */
   superseded: boolean;
+  /**
+   * Step 6 (docs/garage.md): «Купить снова» — the order this proposal repeats (no VIN request,
+   * no master's comment: the note lists the parts that did not go in).
+   */
+  repeat: { orderId: string; orderNumber: string } | null;
 }
 
 /** The proposal behind /p/<token>, or null for an unknown or malformed token. */
@@ -531,9 +536,11 @@ export async function loadProposal(
       cart: carts,
       vinStatus: vinRequests.status,
       currentProposalId: vinRequests.proposalCartId,
+      repeatOrderNumber: orders.number,
     })
     .from(carts)
     .leftJoin(vinRequests, eq(vinRequests.id, carts.vinRequestId))
+    .leftJoin(orders, eq(orders.id, carts.repeatOrderId))
     .where(eq(carts.proposalToken, token));
   if (!row || row.cart.proposalExpiresAt === null) return null;
   const items = await db
@@ -568,5 +575,9 @@ export async function loadProposal(
     expiresAt: row.cart.proposalExpiresAt,
     expired,
     superseded,
+    repeat:
+      row.cart.repeatOrderId !== null && row.repeatOrderNumber !== null
+        ? { orderId: row.cart.repeatOrderId, orderNumber: row.repeatOrderNumber }
+        : null,
   };
 }

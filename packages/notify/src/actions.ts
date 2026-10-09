@@ -128,7 +128,15 @@ export type WorkflowActionSpec =
    * Seller bot, fit check line target (step 4, docs/fit-check.md): the master's answer to one
    * line of a fit check card (`analog` asks for «БРЕНД АРТИКУЛ» with a ForceReply first).
    */
-  | { kind: 'fit'; action: FitCheckAnswer; label: string };
+  | { kind: 'fit'; action: FitCheckAnswer; label: string }
+  /**
+   * Client bot, step 6 (docs/garage.md): «Мои машины» — the list (`garage`, the pressing user),
+   * «Купить снова» (`rebuy`, an order), «Удалить машину» and its confirmation (`vdel`, `vdelok`,
+   * a car of user_vehicles).
+   */
+  | { kind: 'garage'; action: 'list' | 'rebuy' | 'delete' | 'delete_confirmed'; label: string }
+  /** Seller bot, step 6: «Пропустить» under the mileage question after «Выдал» (an order). */
+  | { kind: 'mileage'; action: 'skip'; label: string };
 
 export const WORKFLOW_ACTIONS = {
   // --- client bot ---------------------------------------------------------------------------
@@ -160,6 +168,13 @@ export const WORKFLOW_ACTIONS = {
   fanlg: { kind: 'fit', action: 'analog', label: 'Аналог' },
   fnot: { kind: 'fit', action: 'not_fit', label: 'Не подходит' },
   fcall: { kind: 'fit', action: 'call_needed', label: 'Нужен звонок' },
+  // --- client bot: «Мои машины» (step 6, docs/garage.md) -----------------------------------
+  garage: { kind: 'garage', action: 'list', label: 'Мои машины' },
+  rebuy: { kind: 'garage', action: 'rebuy', label: 'Купить снова' },
+  vdel: { kind: 'garage', action: 'delete', label: 'Удалить машину' },
+  vdelok: { kind: 'garage', action: 'delete_confirmed', label: 'Да, удалить' },
+  // --- seller bot: the mileage at the handover (step 6) ------------------------------------
+  mskip: { kind: 'mileage', action: 'skip', label: 'Пропустить' },
 } as const satisfies Record<string, WorkflowActionSpec>;
 
 export type WorkflowAction = keyof typeof WORKFLOW_ACTIONS;
@@ -191,10 +206,20 @@ export const CALLBACK_ACTIONS: Readonly<Record<CallbackAction, CallbackActionKin
  * What the `<id>` part of callback_data refers to. Phase 1C: `claim` (claims.id), `booking`
  * (install_bookings.id), `vin` (vin_requests.id). The client bot's `orders` and `unsub` carry the
  * order of the message they are attached to; the bot acts on the pressing user. Step 4: `fit`
- * (fit_checks.id, one line of a fit check card).
+ * (fit_checks.id, one line of a fit check card). Step 6: `vehicle` (user_vehicles.id of «Удалить
+ * машину»); «Мои машины» carries the list target like `orders`, «Купить снова» and the seller's
+ * «Пропустить» an order.
  */
 export type ActionTarget =
-  'order' | 'item' | 'order_or_item' | 'dead_letter' | 'claim' | 'booking' | 'vin' | 'fit';
+  | 'order'
+  | 'item'
+  | 'order_or_item'
+  | 'dead_letter'
+  | 'claim'
+  | 'booking'
+  | 'vin'
+  | 'fit'
+  | 'vehicle';
 
 const ITEM_ACTIONS: ReadonlySet<string> = new Set<CallbackAction>([
   'icancel',
@@ -243,13 +268,18 @@ export const CLIENT_ACTIONS = [
 
 /**
  * Workflow codes a client may press in the client bot (decision С5): the installation menu and
- * the slot choice, «Мои заказы», «Отключить уведомления».
+ * the slot choice, «Мои заказы», «Отключить уведомления»; step 6 (docs/garage.md): «Мои машины»,
+ * «Купить снова», «Удалить машину» and its confirmation.
  */
 export const CLIENT_WORKFLOW_ACTIONS = [
   'install',
   'islot',
   'orders',
   'unsub',
+  'garage',
+  'rebuy',
+  'vdel',
+  'vdelok',
 ] as const satisfies readonly WorkflowAction[];
 
 /** A code the client bot accepts (event or workflow); every other code is staff-only. */
@@ -314,6 +344,12 @@ export function actionTarget(value: string): ActionTarget | null {
       workflow.kind === 'fit'
     ) {
       return workflow.kind;
+    }
+    if (
+      workflow.kind === 'garage' &&
+      (workflow.action === 'delete' || workflow.action === 'delete_confirmed')
+    ) {
+      return 'vehicle';
     }
     return 'order';
   }

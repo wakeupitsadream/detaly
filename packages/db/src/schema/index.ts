@@ -16,4 +16,6 @@ export * from './pricing';
 export * from './fit-checks';
 // step 5: maintenance kits by car model (docs/kits.md)
 export * from './kits';
+// step 6: «Моя машина», the client's cars (docs/garage.md)
+export * from './vehicles';
 export * from './relations';

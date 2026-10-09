@@ -35,7 +35,12 @@ import {
   type RecheckAlternative,
   type RecheckItemResult,
 } from '@detaly/domain';
-import { refundablePayment, type OrderSnapshot } from '@detaly/orders';
+import {
+  loadUserVehicles,
+  refundablePayment,
+  type OrderSnapshot,
+  type VehicleRow,
+} from '@detaly/orders';
 
 /** Orders per list page. */
 export const ADMIN_PAGE_SIZE = 50;
@@ -255,6 +260,11 @@ export interface AdminOrderCard {
    * «Вернуть платёж» of it returns the whole order instead of the bare payment.
    */
   orderPaymentId: string | null;
+  /**
+   * Step 6 (docs/garage.md): the order's car and every car of the client (the client block
+   * lists them); null without GARAGE_ENABLED (nothing about a car is shown).
+   */
+  garage: { vehicle: VehicleRow | null; clientVehicles: VehicleRow[] } | null;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -285,6 +295,7 @@ export async function latestRecheckItems(
 export async function loadAdminOrder(
   db: Executor,
   orderId: string,
+  options: { garage?: boolean } = {},
 ): Promise<AdminOrderCard | null> {
   if (!isUuid(orderId)) return null;
   const [found] = await db
@@ -364,6 +375,15 @@ export async function loadAdminOrder(
           .orderBy(asc(stockItems.createdAt), asc(stockItems.id)),
   ]);
 
+  // Step 6: the client's cars (the order's own among them) only with GARAGE_ENABLED.
+  const clientVehicles = options.garage ? await loadUserVehicles(db, order.userId) : [];
+  const garage = options.garage
+    ? {
+        vehicle: clientVehicles.find((vehicle) => vehicle.id === order.vehicleId) ?? null,
+        clientVehicles,
+      }
+    : null;
+
   const alternatives: Record<string, RecheckAlternative[]> = {};
   for (const result of recheck) {
     if (isUuid(result.orderItemId) && Array.isArray(result.alternatives)) {
@@ -398,5 +418,6 @@ export async function loadAdminOrder(
         refunds: refundRows,
       } as Pick<OrderSnapshot, 'order' | 'payments' | 'refunds'> as OrderSnapshot)?.id ?? null,
     alternatives,
+    garage,
   };
 }

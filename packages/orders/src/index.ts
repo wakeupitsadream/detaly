@@ -94,3 +94,20 @@ export {
   supplierReturnTaskNote,
 } from './claims';
 export { addOrderPhoto, loadOrderPhotos } from './photos';
+// step 6 (docs/garage.md): «Моя машина», the client's cars
+export {
+  deleteUserVehicle,
+  GARAGE_ORDERS_PER_VEHICLE,
+  GARAGE_VEHICLES_SHOWN,
+  loadGarage,
+  loadOrderVehicle,
+  loadUserVehicle,
+  loadUserVehicles,
+  recordHandoverMileage,
+  saveUserVehicle,
+  type GarageOrderView,
+  type GarageVehicleView,
+  type HandoverMileageResult,
+  type SavedVehicle,
+  type VehicleRow,
+} from './vehicles';

@@ -27,6 +27,12 @@
  * fit_checked_at, fit_checked_by and fit_guarantee = FIT_GUARANTEE_ENABLED now; a check still
  * waiting is cancelled with the line leaving the cart (removeCartLines).
  *
+ * Step 6 (docs/garage.md): with GARAGE_ENABLED the optional «Моя машина» block is read; a typed
+ * car is stored for the client by the merge rules (saveUserVehicle, under the client's row lock)
+ * and becomes orders.vehicle_id — in the order transaction, so a refused order stores no car.
+ * Its source is the cart's prefill when the client kept its make and model (kit, proposal, bot),
+ * else `checkout`. Without the switch `vehicle` is never read and nothing is stored.
+ *
  * Personal data (phone, name, IP, user agent) goes only to the database: log lines carry the
  * order number, scheme and counts.
  */
@@ -51,11 +57,13 @@ import {
   choosePaymentScheme,
   explainPaymentScheme,
   formatPromise,
+  localDate,
   promisedDate,
   repriceCartLines,
   resolveTransition,
   selectCartPart,
   splitCartLines,
+  vehicleSourceOf,
   type CartPart,
   type IsoDate,
   type LineChange,
@@ -69,6 +77,7 @@ import {
   loadOrderSnapshot,
   persistTransition,
   recordJournalEvent,
+  saveUserVehicle,
   type EngineDeps,
 } from '@detaly/orders';
 import { RosskoRateLimitError, type RosskoClient } from '@detaly/rossko';
@@ -80,9 +89,11 @@ import {
   persistRepricing,
   removeCartLines,
 } from '../cart-store';
+import { CAR_MAKES } from '@/lib/brands';
 import type { CheckoutGate } from '../checkout-gate';
 import { getClientIp } from '../client-ip';
 import { errorInfo, isNamedError, pgErrorOf } from '../errors';
+import { loadVehiclePrefill } from '../garage/prefill';
 import {
   consentIp,
   HONEYPOT_FIELD,
@@ -258,6 +269,8 @@ type TxOutcome =
       number: string;
       scheme: PaymentScheme;
       vinRequestId: string | null;
+      /** Step 6: the order got a car of «Моя машина». */
+      vehicle: boolean;
     }
   | { kind: 'replay'; accessToken: string; number: string }
   | { kind: 'cart_changed' };
@@ -379,6 +392,19 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
       // condition, so a different one (prepay for this phone) is shown first, never applied
       // silently. Thrown: the user upsert above rolls back too.
       if (decision.scheme !== input.expectedScheme) throw new SchemeChangedError(decision);
+
+      // Step 6 (docs/garage.md): the car of «Моя машина», typed or kept from the cart's prefill.
+      let vehicleId: string | null = null;
+      if (deps.env.GARAGE_ENABLED && input.vehicle) {
+        const prefill = await loadVehiclePrefill(tx, cartId, localDate(at));
+        const saved = await saveUserVehicle(tx, {
+          userId: user.id,
+          vehicle: input.vehicle,
+          source: vehicleSourceOf(input.vehicle, prefill?.identity ?? null),
+          now: at,
+        });
+        vehicleId = saved?.vehicleId ?? null;
+      }
       const courierFeeKop = 0;
       const totalKop = totals.subtotalKop + courierFeeKop;
       const accessToken = newAccessToken();
@@ -405,6 +431,7 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
           checkoutKey: input.checkoutKey,
           cartId,
           vinRequestId,
+          vehicleId,
           // expires_at is set by the transition below (engine, decision Б5).
           expiresAt: null,
         })
@@ -556,6 +583,7 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
         number: order.number,
         scheme: decision.scheme,
         vinRequestId,
+        vehicle: vehicleId !== null,
       };
     });
   }
@@ -579,7 +607,9 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
       return respond(403, { error: 'checkout_closed', message: gate.message });
     }
 
-    const parsed = parseCheckoutInput(body);
+    const parsed = parseCheckoutInput(body, {
+      garage: deps.env.GARAGE_ENABLED ? { makes: CAR_MAKES, today: localDate(now()) } : null,
+    });
     if (!parsed.ok) {
       if (parsed.status === 400) {
         return respond(400, { error: 'bad_request', message: MESSAGES.badRequest });
@@ -749,6 +779,7 @@ export function createCheckoutService(deps: CheckoutServiceDeps): CheckoutServic
         items: okLines.length,
         part,
         ...(outcome.vinRequestId ? { vinRequest: outcome.vinRequestId } : {}),
+        ...(outcome.vehicle ? { vehicle: true } : {}),
       },
       'order created',
     );

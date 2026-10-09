@@ -55,6 +55,11 @@ export interface ProposalPageView {
   changed: boolean;
   /** Lines that cannot be sold any more (out of stock, stop list). */
   unavailable: number;
+  /**
+   * Step 6 (docs/garage.md): a «Купить снова» proposal — the order it repeats. Its `comment` is
+   * then the note about the parts that did not go in, not a master's comment.
+   */
+  repeat?: { orderNumber: string } | null;
 }
 
 export interface ProposalSource {
@@ -62,6 +67,8 @@ export interface ProposalSource {
   lines: readonly CartLine[];
   expiresAt: Date;
   expired: boolean;
+  /** Step 6: the order a «Купить снова» proposal repeats. */
+  repeat?: { orderNumber: string } | null;
 }
 
 export interface ProposalPageDeps {
@@ -125,6 +132,7 @@ export function buildProposalPageView(
     stale: repriced.some((line) => line.stale),
     changed: changes > 0,
     unavailable: repriced.length - live.length,
+    repeat: source.repeat ?? null,
   };
 }
 

@@ -70,4 +70,44 @@ export const TEXTS = {
     `Заказ ${orderNumber}: записали на ${slot}, ждём подтверждения мастера.`,
   installDoneShort: 'Записали',
   installRequested: (slot: string): string => `Запись на установку: ${slot}`,
+  // --- «Мои машины» (step 6, docs/garage.md): no VIN beyond its last 4 characters -----------
+  garageButton: 'Мои машины',
+  garageEmpty:
+    'Машин пока нет. Укажите машину при оформлении заказа на сайте — блок «Моя машина», ' +
+    'и здесь появятся её заказы и кнопка «Купить снова».',
+  garageDetails: (vinTail: string | null, mileage: string | null): string | null => {
+    const parts = [vinTail ? `VIN ${vinTail}` : null, mileage ? `пробег ${mileage}` : null].filter(
+      (part): part is string => part !== null,
+    );
+    return parts.length > 0 ? parts.join(' · ') : null;
+  },
+  garageOrdersHead: 'Последние заказы:',
+  garageOrderLine: (number: string, date: string, items: string): string =>
+    items === '' ? `${number} от ${date}` : `${number} от ${date} — ${items}`,
+  garageNoOrders: 'Заказов на эту машину пока нет.',
+  rebuyButton: (orderNumber: string): string => `Купить снова ${orderNumber}`,
+  deleteButton: 'Удалить машину',
+  deleteAsk: (label: string): string =>
+    `Удалить ${label} из «Моих машин»? Заказы останутся, но больше не будут привязаны к машине.`,
+  deleteYes: 'Да, удалить',
+  deleteNo: 'Не удалять',
+  deleted: (label: string): string => `Машина ${label} удалена из «Моих машин».`,
+  deletedShort: 'Удалено',
+  vehicleGone: 'Этой машины уже нет — откройте /garage',
+  rebuyChecking: 'Проверяю цены у поставщика…',
+  rebuyHead: (orderNumber: string): string => `Заказ ${orderNumber} снова — по сегодняшним ценам:`,
+  rebuyLine: (title: string, qty: number, price: string): string =>
+    `• ${title} × ${qty} — ${price}`,
+  rebuyTotal: (total: string, promise: string | null): string =>
+    promise ? `Итого ${total}, получение ${promise}.` : `Итого ${total}.`,
+  rebuySkipped: (list: string): string => `Не вошли: ${list}.`,
+  rebuyExpires: (date: string): string =>
+    `Оформить и оплатить — по ссылке, цены держим до ${date}.`,
+  rebuyOpen: 'Оформить на сайте',
+  rebuyNone: (orderNumber: string, list: string): string =>
+    `Заказ ${orderNumber}: сейчас ни одной детали из него нельзя заказать (${list}). ` +
+    'Попробуйте позже или спросите мастера.',
+  rebuyEmpty: (orderNumber: string): string =>
+    `В заказе ${orderNumber} не осталось деталей, которые можно повторить.`,
+  rebuySupplier: 'Поставщик сейчас не отвечает — нажмите «Купить снова» через несколько минут.',
 } as const;

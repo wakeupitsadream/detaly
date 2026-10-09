@@ -18,6 +18,8 @@ import {
 } from 'drizzle-orm/pg-core';
 import { createdAt, id, kop, kopCheck, namedCheck, sqlList, tstz, updatedAt } from './columns';
 import { cartStatus, notificationChannel, vinProvider, vinRequestStatus } from './enums';
+import { kits } from './kits';
+import { orders } from './orders';
 import { staff, users } from './people';
 
 /**
@@ -38,11 +40,25 @@ export const carts = pgTable(
     updatedAt: updatedAt(),
     /** Phase 1C: a proposal can be checked out until this moment (PROPOSAL_TTL_DAYS). */
     proposalExpiresAt: tstz(),
+    // --- step 6 (docs/garage.md): what the «Моя машина» block of the checkout is filled from ---
+    /** The published kit «Весь набор в корзину» last filled this cart from (GARAGE_ENABLED). */
+    kitId: uuid().references((): AnyPgColumn => kits.id, { onDelete: 'set null' }),
+    /**
+     * «Купить снова» of the client bot: the order a repeat proposal repeats; copied into the
+     * client's cart with the proposal (copyProposalToCart), like vin_request_id.
+     */
+    repeatOrderId: uuid().references((): AnyPgColumn => orders.id, { onDelete: 'set null' }),
   },
   (t) => [
     unique('carts_anon_token_unique').on(t.anonToken),
     unique('carts_proposal_token_unique').on(t.proposalToken),
     index('carts_user_id_idx').on(t.userId),
+    index('carts_kit_id_idx')
+      .on(t.kitId)
+      .where(sql`${t.kitId} is not null`),
+    index('carts_repeat_order_id_idx')
+      .on(t.repeatOrderId)
+      .where(sql`${t.repeatOrderId} is not null`),
     namedCheck(
       'carts',
       'proposal_expires_at',

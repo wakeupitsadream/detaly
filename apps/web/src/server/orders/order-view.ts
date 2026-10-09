@@ -17,6 +17,7 @@ import {
   localDate,
   resolveTransition,
   safeMul,
+  vehicleLabel,
   weekdayShort,
   type ApprovalKind,
   type Fulfillment,
@@ -34,6 +35,7 @@ import {
   isLiveState,
   loadOrderSettings,
   loadOrderSnapshot,
+  loadOrderVehicle,
   moneyHeldOf,
   planItemChanges,
   type OrderSettings,
@@ -161,6 +163,11 @@ export interface OrderView {
   /** Part of the order arrived, the rest is awaited: «Жду до <дата>». */
   partialArrival: { waitUntilText: string | null } | null;
   refund: RefundView | null;
+  /**
+   * Step 6 (docs/garage.md): the car of the order, «Lada Vesta 1.6, 2019» (no VIN, no mileage);
+   * null without one or without GARAGE_ENABLED.
+   */
+  vehicle: { label: string } | null;
 }
 
 const PICKUP_CODE_SET: ReadonlySet<OrderStatus> = new Set(PICKUP_CODE_STATUSES);
@@ -330,6 +337,8 @@ export interface LoadOrderViewOptions {
   env: Env;
   /** Online payment is configured (decision Б6). */
   paymentsEnabled?: boolean;
+  /** Step 6: GARAGE_ENABLED — the order's car is read and shown. */
+  garage?: boolean;
   now?: Date;
   /**
    * Test seam: runs inside the read snapshot right after the order is found by its token and
@@ -378,15 +387,17 @@ export async function loadOrderView(
     });
     if (!found) return null;
     await options.afterOrderFound?.(tx);
-    const [snapshot, events, settings] = await Promise.all([
+    const [snapshot, events, settings, vehicle] = await Promise.all([
       loadOrderSnapshot(tx, found.id, { lock: false }),
       loadEvents(tx, found.id),
       loadOrderSettings(tx, options.env),
+      // Step 6: only with GARAGE_ENABLED (nothing about a car is shown otherwise).
+      options.garage ? loadOrderVehicle(tx, found.id) : Promise.resolve(null),
     ]);
-    return snapshot === null ? null : { snapshot, events, settings };
+    return snapshot === null ? null : { snapshot, events, settings, vehicle };
   });
   if (read === null) return null;
-  const { snapshot, events, settings } = read;
+  const { snapshot, events, settings, vehicle } = read;
   const now = options.now ?? new Date();
   const { order } = snapshot;
   const status = order.status;
@@ -468,5 +479,6 @@ export async function loadOrderView(
     approval,
     partialArrival: partialArrival(snapshot),
     refund: refundView(snapshot),
+    vehicle: vehicle === null ? null : { label: vehicleLabel(vehicle) },
   };
 }

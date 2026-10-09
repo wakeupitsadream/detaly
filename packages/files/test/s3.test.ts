@@ -167,18 +167,32 @@ describe('createS3FileStore', () => {
   });
 
   it('a hanging provider times out (timeoutMs), without the key in the error', async () => {
-    server.use(
-      http.all(`${ENDPOINT}/*`, async () => {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        return new HttpResponse(null, { status: 200 });
-      }),
-    );
+    // A provider that never answers: every attempt hangs until the store's own timeout aborts
+    // it. An injected fetch, not the msw double: msw intercepts undici at the socket level, and
+    // under load a request whose connection undici opens while an aborted one is torn down can
+    // escape the interception and go to the real DNS (getaddrinfo ENOTFOUND s3.example.test).
+    // That attempt then fails as a network error instead of the timeout under test (seen once in
+    // four full `pnpm test` runs, in about a quarter of the gets of a loaded probe).
+    let attempts = 0;
+    const hanging: typeof fetch = (_input, init) => {
+      attempts += 1;
+      return new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) return;
+        if (signal.aborted) reject(signal.reason);
+        else signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+    };
     const key = newFileKey('vin', owner);
-    const error = await store({ timeoutMs: 50 })
+    const error = await store({ timeoutMs: 50, fetch: hanging })
       .get(key)
       .catch((e: unknown) => e);
     expect(error).toMatchObject({ name: 'S3FileStoreError', timeout: true, status: null });
     expect((error as Error).message).toBe('S3 GET timed out');
+    expect((error as Error).message).not.toContain(key);
+    // The timeout is retried once, as a network error or a 5xx.
+    expect(attempts).toBe(2);
+    expect(seen).toHaveLength(0);
   });
 
   it('an injected fetch is used instead of the global one', async () => {

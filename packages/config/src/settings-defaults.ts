@@ -65,5 +65,24 @@ export function settingsDefaultsFromEnv(env: Env): SettingsValues {
     // Step 4 (docs/fit-check.md): the master answers a fit check within 60 minutes of working time
     // (DEFAULT_FIT_CHECK_SLA_MINUTES of @detaly/domain, checked by settings-defaults.test.ts).
     'fit_check.sla_minutes': 60,
+    // Step 7 (docs/month-close.md): the acquiring estimate of the margin, 2.8 % — an estimate to
+    // replace with the real tariff (DEFAULT_ACQUIRING_BP); the days of the owner's reminders
+    // (DEFAULT_FINANCE_REMINDER_DAYS: confirm them with the bank); the pickup point's contract
+    // rates, all 0 until the contract is signed (DEFAULT_CONTRACT_RATES). Checked by
+    // settings-defaults.test.ts.
+    'finance.acquiring_bp': 280,
+    'finance.reminder_days': { act: 3, bank_check: 5, tax: 25 },
+    'contract.rates': {
+      perOperationKop: {
+        receive: 0,
+        store_day: 0,
+        handover: 0,
+        return_accept: 0,
+        vin_selection: 0,
+        fit_check: 0,
+        claim_diagnostics: 0,
+      },
+      turnoverBp: 0,
+    },
   };
 }

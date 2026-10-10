@@ -9,6 +9,7 @@
 // | invoice        | every 4 h in awaiting_supplier_invoice                 | owner   | staff_supplier_invoice_due  |
 // | attention      | every 4 h in needs_attention                           | sellers | staff_problem               |
 // | supplier_return| 3 days before supplier_return_deadline_at, open returns| sellers | staff_supplier_return_task  |
+// | supplier_return_1d / supplier_return_overdue (step 7) — 1 day before, and once it passed     | sellers |
 // | refund_deadline| 2 days before refunds.deadline_at, refund not done     | owner   | staff_refund_deadline       |
 // | payment        | half of the payment TTL, once per deadline             | client  | payment_link                |
 // | confirmation   | half of the confirmation TTL, once per deadline        | client  | confirm_request             |
@@ -17,6 +18,11 @@
 //
 // After a gap (worker stopped) only the latest due reminder of a kind is sent: no backlog of
 // «day 3» after «day 6».
+//
+// Step 7 (docs/month-close.md): a part handed to the Rossko driver (or accepted by Rossko) whose
+// money has not come back SUPPLIER_REFUND_WAIT_DAYS later is one alert to the owner (notify/alert,
+// key `alert:supplier-refund-due:<supplier return id>`).
+import { NOTIFY_JOBS } from '@detaly/config';
 import {
   and,
   asc,
@@ -33,15 +39,81 @@ import {
   sql,
   supplierReturns,
 } from '@detaly/db';
-import { localDate, TIMERS, type OrderStatus } from '@detaly/domain';
-import { loadOrderSettings } from '@detaly/orders';
+import {
+  CLIENT_TIME_ZONE,
+  formatDayMonth,
+  formatRub,
+  localDate,
+  SUPPLIER_REFUND_WAIT_DAYS,
+  TIMERS,
+  type OrderStatus,
+} from '@detaly/domain';
+import { enqueueOutbox, loadOrderSettings } from '@detaly/orders';
 import type { WorkerDeps } from '../../deps';
+import type { NotifyAlertJobData } from '../notify';
 import { BATCH, DAY_MS, HOUR_MS, MINUTE_MS, notAfter, nudge, queueReminder } from './common';
 import { runReminders1c } from './reminders-1c';
 import { runReviewReminders } from './review-reminder';
 
 /** The sellers get the supplier return reminder this long before the deadline. */
 export const SUPPLIER_RETURN_WARN_MS = 3 * DAY_MS;
+/** The second supplier return reminder (step 7). */
+export const SUPPLIER_RETURN_LAST_DAY_MS = DAY_MS;
+
+/** A stage of the supplier return reminders (step 7): its key kind and the line on the card. */
+export interface SupplierReturnStage {
+  kind: 'supplier_return' | 'supplier_return_1d' | 'supplier_return_overdue';
+  /** The extra line of the sellers card (notify/order `note`); none for the first reminder. */
+  note: string | null;
+}
+
+/**
+ * The latest due stage of an order whose part still waits at the point: overdue once the deadline
+ * passed, the last day within 24 hours of it, 3 days before it otherwise; null earlier.
+ */
+export function supplierReturnStage(deadline: Date, now: Date): SupplierReturnStage | null {
+  const left = deadline.getTime() - now.getTime();
+  if (left <= 0) {
+    return {
+      kind: 'supplier_return_overdue',
+      note: 'Срок возврата Rossko прошёл. Сдайте деталь водителю или нажмите «Не берут» — она уйдёт на склад.',
+    };
+  }
+  if (left <= SUPPLIER_RETURN_LAST_DAY_MS) {
+    return {
+      kind: 'supplier_return_1d',
+      note: 'Остался последний день: сдайте деталь водителю Rossko и нажмите «Сдал водителю».',
+    };
+  }
+  if (left <= SUPPLIER_RETURN_WARN_MS) return { kind: 'supplier_return', note: null };
+  return null;
+}
+
+/** «Rossko не вернул деньги за возврат…» to the owner (no PD: the order number and the part). */
+export function supplierRefundDueText(input: {
+  orderNumber: string;
+  brand: string;
+  article: string;
+  qty: number;
+  amountExpectedKop: number | null;
+  /** «Сдал водителю»; null for a return Rossko accepted before step 7 tracked the handing. */
+  shippedAt: Date | null;
+  /** When the money became due: shippedAt, else the moment Rossko accepted the return. */
+  since: Date;
+  baseUrl: string;
+}): string {
+  const expected =
+    input.amountExpectedKop === null ? '' : `, ждём ${formatRub(input.amountExpectedKop)}`;
+  const date = formatDayMonth(localDate(input.since));
+  const when = input.shippedAt === null ? `принят Rossko ${date}` : `сдан водителю ${date}`;
+  const link = new URL('/admin/returns', input.baseUrl).toString();
+  return (
+    `Rossko не вернул деньги за возврат: заказ ${input.orderNumber}, ` +
+    `${input.brand} ${input.article} × ${input.qty}${expected} — ${when}, ` +
+    `денег нет ${SUPPLIER_REFUND_WAIT_DAYS} дней и больше. ` +
+    `Сверьте с выпиской Rossko и отметьте «Деньги вернулись» — ${link}`
+  );
+}
 
 export interface RemindersResult {
   queued: number;
@@ -158,7 +230,10 @@ export async function runReminders(deps: WorkerDeps): Promise<RemindersResult> {
     }
   }
 
-  // 5. supplier returns still requested 3 days before the Rossko deadline.
+  // 5. supplier returns still at the point (requested): 3 days and (step 7) 1 day before the
+  // Rossko deadline, and once it passed — the latest due stage only, n = the deadline date. An
+  // order whose overdue reminder is queued leaves the scan: nothing comes after it.
+  const overdueKey = sql`'reminder:' || "orders"."id"::text || ':supplier_return_overdue:' || to_char("orders"."supplier_return_deadline_at" at time zone ${CLIENT_TIME_ZONE}, 'YYYY-MM-DD')`;
   const returns = await deps.db
     .selectDistinct({ id: orders.id, deadline: orders.supplierReturnDeadlineAt })
     .from(orders)
@@ -168,23 +243,80 @@ export async function runReminders(deps: WorkerDeps): Promise<RemindersResult> {
       and(
         eq(supplierReturns.status, 'requested'),
         notAfter(orders.supplierReturnDeadlineAt, new Date(nowMs + SUPPLIER_RETURN_WARN_MS)),
+        sql`not exists (select 1 from outbox o where o.job_id = ${overdueKey})`,
       ),
     )
+    .orderBy(asc(orders.supplierReturnDeadlineAt))
     .limit(BATCH);
   for (const order of returns) {
     if (order.deadline === null) continue;
+    const stage = supplierReturnStage(order.deadline, now);
+    if (stage === null) continue;
     const deadlineDate = localDate(order.deadline);
     add(
-      'supplier_return',
+      stage.kind,
       await queueReminder(deps, {
         orderId: order.id,
-        kind: 'supplier_return',
+        kind: stage.kind,
         n: deadlineDate,
         audience: 'sellers',
         template: 'staff_supplier_return_task',
-        extras: { deadlineDate },
+        extras: { deadlineDate, ...(stage.note ? { note: stage.note } : {}) },
       }),
     );
+  }
+
+  // 5b. step 7: handed to the driver (or accepted by Rossko) and no money SUPPLIER_REFUND_WAIT_DAYS
+  // later: one alert to the owner per return. TODO(phase 4): GetSettlements of the Rossko API is
+  // the automatic check of these refunds; until then the owner compares the Rossko statement and
+  // marks «Деньги вернулись» on /admin/returns.
+  const refundKey = sql`'alert:supplier-refund-due:' || "supplier_returns"."id"::text`;
+  const waiting = await deps.db
+    .select({
+      id: supplierReturns.id,
+      shippedAt: supplierReturns.shippedAt,
+      updatedAt: supplierReturns.updatedAt,
+      amountExpectedKop: supplierReturns.amountExpectedKop,
+      brand: orderItems.brand,
+      article: orderItems.article,
+      qty: orderItems.qty,
+      orderNumber: orders.number,
+    })
+    .from(supplierReturns)
+    .innerJoin(orderItems, eq(orderItems.id, supplierReturns.orderItemId))
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .where(
+      and(
+        inArray(supplierReturns.status, ['shipped', 'accepted']),
+        sql`coalesce(${supplierReturns.shippedAt}, ${supplierReturns.updatedAt}) <= ${new Date(nowMs - SUPPLIER_REFUND_WAIT_DAYS * DAY_MS).toISOString()}::timestamptz`,
+        sql`not exists (select 1 from outbox o where o.job_id = ${refundKey})`,
+      ),
+    )
+    .orderBy(asc(supplierReturns.createdAt))
+    .limit(BATCH);
+  for (const ret of waiting) {
+    const dedupeKey = `supplier-refund-due:${ret.id}`;
+    const data: NotifyAlertJobData = {
+      audience: 'owner',
+      text: supplierRefundDueText({
+        orderNumber: ret.orderNumber,
+        brand: ret.brand,
+        article: ret.article,
+        qty: ret.qty,
+        amountExpectedKop: ret.amountExpectedKop,
+        shippedAt: ret.shippedAt,
+        since: ret.shippedAt ?? ret.updatedAt,
+        baseUrl: deps.env.APP_BASE_URL,
+      }),
+      dedupeKey,
+    };
+    const queued = await enqueueOutbox(deps.db, {
+      queue: 'notify',
+      name: NOTIFY_JOBS.alert,
+      key: `alert:${dedupeKey}`,
+      data: { ...data },
+    });
+    add('supplier_refund_due', queued);
   }
 
   // 6. refunds not done 2 days before the 10-day legal deadline: pending ones, failed ones and

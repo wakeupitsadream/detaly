@@ -18,4 +18,6 @@ export * from './fit-checks';
 export * from './kits';
 // step 6: «Моя машина», the client's cars (docs/garage.md)
 export * from './vehicles';
+// step 7: the month close, the YooKassa reconciliation snapshots (docs/month-close.md)
+export * from './finance';
 export * from './relations';

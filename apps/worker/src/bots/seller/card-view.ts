@@ -8,6 +8,10 @@
 // the admin, decision С2) and the active installation booking (slot, status), their buttons from
 // availableStaffActions1C with the claim or booking id, «Фото упаковки» and its hint. Never the
 // client's claim text: it may hold PD.
+//
+// Step 7 (docs/month-close.md): the task of each part going back to Rossko — the part, the
+// deadline (orders.supplier_return_deadline_at), and «Сдал водителю» / «Не берут» while it waits
+// at the point (supplierReturnActions, the id is the supplier return).
 import {
   addDays,
   CLAIM_DECISION_LABELS,
@@ -24,6 +28,8 @@ import {
   type OrderStatus,
   type PaymentScheme,
   type RecheckAlternative,
+  type SupplierReturnKind,
+  type SupplierReturnStatus,
 } from '@detaly/domain';
 import {
   buildCallbackData,
@@ -41,6 +47,7 @@ import {
   ORDER_STATUS_LABELS,
   type StaffActionView,
   type StaffActionView1C,
+  type SupplierReturnActionView,
 } from '@detaly/orders';
 
 export type InlineButton = { text: string; callback_data: string } | { text: string; url: string };
@@ -163,6 +170,17 @@ export interface CardBooking {
   status: InstallBookingStatus;
 }
 
+/** A part going back to Rossko (step 7): waiting at the point or waiting for the money. */
+export interface CardSupplierReturn {
+  id: string;
+  brand: string;
+  article: string;
+  qty: number;
+  kind: SupplierReturnKind;
+  status: SupplierReturnStatus;
+  shippedAt: Date | null;
+}
+
 export interface CardData {
   order: CardOrder;
   items: CardItem[];
@@ -177,6 +195,10 @@ export interface CardData {
   bookings?: CardBooking[];
   /** Packaging photos stored for the order (phase 1C). */
   packagingPhotos?: number;
+  /** Open supplier returns of the order (step 7). */
+  returns?: CardSupplierReturn[];
+  /** «Сдал водителю» / «Не берут» per return still at the point (step 7). */
+  returnActions?: SupplierReturnActionView[];
   /** APP_BASE_URL/admin/orders/<id>. */
   adminUrl: string;
   headline?: string | null;
@@ -237,6 +259,22 @@ export function claimLine(claim: CardClaim): string {
   return parts.join(' · ');
 }
 
+/**
+ * Step 7: «Вернуть Rossko до 12 октября: MANN W 914/2 × 2 — «Сдал водителю» или «Не берут»» while
+ * the part waits, «Возврат Rossko: MANN W 914/2 × 2 — сдан водителю 8 октября, ждём деньги» after.
+ */
+export function supplierReturnLine(ret: CardSupplierReturn, deadlineAt: Date | null): string {
+  const part = `${itemTitle(ret)} × ${ret.qty}${ret.kind === 'claim' ? ' (рекламация)' : ''}`;
+  if (ret.status === 'requested') {
+    const until = deadlineAt ? ` до ${deadline(localDate(deadlineAt))}` : '';
+    return `Вернуть Rossko${until}: ${part} — «Сдал водителю» или «Не берут»`;
+  }
+  const when = ret.shippedAt ? ` ${deadline(localDate(ret.shippedAt))}` : '';
+  return ret.status === 'accepted'
+    ? `Возврат Rossko: ${part} — принят поставщиком, ждём деньги`
+    : `Возврат Rossko: ${part} — сдан водителю${when}, ждём деньги`;
+}
+
 /** «Запись на установку: чт 9 окт 14:00 — ждёт подтверждения». */
 export function bookingLine(booking: CardBooking): string {
   return `Запись на установку: ${booking.dayText} ${booking.timeText} — ${BOOKING_STATUS_LABELS[booking.status]}`;
@@ -260,7 +298,13 @@ export function renderCardText(data: CardData, menu: CardMenu | null = null): st
   const attention =
     order.status === 'needs_attention' ? attentionLabel(order.attentionReason) : null;
   if (attention) lines.push(`Внимание: ${attention}`);
-  if (order.supplierReturnDeadlineAt && data.headline === HEADLINES.staff_supplier_return_task) {
+  const returns = data.returns ?? [];
+  if (returns.length > 0) {
+    for (const ret of returns) lines.push(supplierReturnLine(ret, order.supplierReturnDeadlineAt));
+  } else if (
+    order.supplierReturnDeadlineAt &&
+    data.headline === HEADLINES.staff_supplier_return_task
+  ) {
     const date = formatReplyBy(order.supplierReturnDeadlineAt);
     if (date) lines.push(`Вернуть Rossko до ${date}`);
   }
@@ -295,6 +339,14 @@ function action1CButton(view: StaffActionView1C, orderId: string, nonce: string)
   };
 }
 
+/** A step 7 button: the id is the supplier return. */
+function returnButton(view: SupplierReturnActionView, nonce: string): InlineButton {
+  return {
+    text: view.label,
+    callback_data: buildCallbackData(view.code, view.supplierReturnId, nonce),
+  };
+}
+
 export function adminRow(adminUrl: string): InlineButton[] {
   return [{ text: 'Открыть в админке', url: adminUrl }];
 }
@@ -306,6 +358,9 @@ export function mainKeyboard(data: CardData, nonce: string): InlineKeyboard {
     .map((action) => [actionButton(action, data.order.id, nonce)]);
   for (const action of data.actions1C ?? []) {
     if (action.enabled) rows.push([action1CButton(action, data.order.id, nonce)]);
+  }
+  for (const action of data.returnActions ?? []) {
+    if (action.enabled) rows.push([returnButton(action, nonce)]);
   }
   rows.push(adminRow(data.adminUrl));
   return rows;

@@ -18,8 +18,22 @@
 // order has a car (mileage.ts, GARAGE_ENABLED); its «Пропустить» (mskip) carries the order id and
 // is answered before any card lookup, like `dlq`.
 //
+// Step 7 (docs/month-close.md): «Сдал водителю» / «Не берут» on the order card carry the id of a
+// supplier return of the card's order (supplier-returns.ts); any staff member may press them.
+//
 // Logs carry the order number, the action and the staff id; never a phone or an order token.
-import { and, claims, desc, eq, installBookings, orderEvents, orders, type Db } from '@detaly/db';
+import {
+  and,
+  claims,
+  desc,
+  eq,
+  installBookings,
+  orderEvents,
+  orderItems,
+  orders,
+  supplierReturns,
+  type Db,
+} from '@detaly/db';
 import {
   addDays,
   localDate,
@@ -53,6 +67,7 @@ import { handleOrderWorkflowPress, isOrderWorkflowCode } from './order-workflow'
 import { retryDeadLetterPress } from './queues';
 import { loadStaffMember, type StaffMember } from './staff';
 import { handleFitPress } from './fit';
+import { handleSupplierReturnPress, isSupplierReturnCode } from './supplier-returns';
 import { handleVinPress } from './vin';
 
 export const STALE_CARD = 'Карточка устарела, откройте свежую';
@@ -136,6 +151,14 @@ async function targetBelongs(
       .select({ orderId: installBookings.orderId })
       .from(installBookings)
       .where(eq(installBookings.id, parsed.orderId));
+    return row?.orderId === card.orderId;
+  }
+  if (target === 'supplier_return') {
+    const [row] = await db
+      .select({ orderId: orderItems.orderId })
+      .from(supplierReturns)
+      .innerJoin(orderItems, eq(orderItems.id, supplierReturns.orderItemId))
+      .where(eq(supplierReturns.id, parsed.orderId));
     return row?.orderId === card.orderId;
   }
   if (target === 'order_or_item' && parsed.orderId === card.orderId) return true;
@@ -282,6 +305,9 @@ export function callbackHandler(input: {
 
     if (isOrderWorkflowCode(parsed.action)) {
       return handleOrderWorkflowPress(ctx, { deps, cards, card, parsed, staff });
+    }
+    if (isSupplierReturnCode(parsed.action)) {
+      return handleSupplierReturnPress(ctx, { deps, cards, card, parsed, staff });
     }
 
     if (parsed.action === 'invpaid') {

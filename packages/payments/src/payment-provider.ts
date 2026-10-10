@@ -6,9 +6,11 @@ import type {
   CreatePaymentRequest,
   CreateRefundRequest,
   ListPaymentsRequest,
+  ListRefundsRequest,
   ProviderPayment,
   ProviderPaymentPage,
   ProviderRefund,
+  ProviderRefundPage,
   WebhookNotification,
 } from './types';
 
@@ -26,6 +28,11 @@ export interface PaymentProvider {
    * reconciliation (decision Б29). VERIFY: GET /payments list format and filters.
    */
   listPayments(request: ListPaymentsRequest): Promise<ProviderPaymentPage>;
+  /**
+   * One page of the shop's refunds created in [createdGte, createdLt) for the month
+   * reconciliation of /admin/month (step 7). VERIFY: GET /refunds list format and filters.
+   */
+  listRefunds(request: ListRefundsRequest): Promise<ProviderRefundPage>;
   /** Parses a notification body; throws WebhookParseError on anything unexpected. */
   parseWebhook(body: unknown): WebhookNotification;
 }

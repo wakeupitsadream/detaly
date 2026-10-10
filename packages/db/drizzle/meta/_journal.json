@@ -71,6 +71,13 @@
       "when": 1791547478826,
       "tag": "0009_garage",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791577660434,
+      "tag": "0010_month_close",
+      "breakpoints": true
     }
   ]
 }

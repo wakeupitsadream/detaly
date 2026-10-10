@@ -89,7 +89,12 @@ export const supplierOrderItems = pgTable(
   ],
 );
 
-/** Return or claim to Rossko; does not affect the client order status. */
+/**
+ * Return or claim to Rossko; does not affect the client order status. Step 7
+ * (docs/month-close.md): «Сдал водителю» -> `shipped` with shipped_at, «Не берут» -> `rejected`
+ * and a stock_items row, «Деньги вернулись» -> `refunded` with amount_received_kop and
+ * refunded_at (the date of the month's «не доход» list).
+ */
 export const supplierReturns = pgTable(
   'supplier_returns',
   {
@@ -104,11 +109,27 @@ export const supplierReturns = pgTable(
     note: text(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
+    /** «Сдал водителю»: the part left with Rossko's driver (step 7). */
+    shippedAt: tstz(),
+    /** «Деньги вернулись»: Rossko's money for the part came back (step 7). */
+    refundedAt: tstz(),
   },
   (t) => [
     index('supplier_returns_order_item_id_idx').on(t.orderItemId),
     kopCheck('supplier_returns', 'amount_expected_kop', t.amountExpectedKop),
     kopCheck('supplier_returns', 'amount_received_kop', t.amountReceivedKop),
+    // `::text`: migration 0010 adds the value `shipped` in the same transaction, where a literal
+    // of the enum type could not use it yet.
+    namedCheck(
+      'supplier_returns',
+      'shipped',
+      sql`${t.status}::text <> 'shipped' or ${t.shippedAt} is not null`,
+    ),
+    namedCheck(
+      'supplier_returns',
+      'refunded',
+      sql`${t.status}::text <> 'refunded' or (${t.refundedAt} is not null and ${t.amountReceivedKop} is not null)`,
+    ),
   ],
 );
 

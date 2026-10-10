@@ -75,6 +75,16 @@ export const HOUSEKEEPING_JOBS = {
    * sellers chat once.
    */
   fitChecks: 'fit-checks',
+  /**
+   * On the 1st at 09:00 local (step 7, docs/month-close.md): «Закрытие <месяц>» of the month that
+   * ended to the owner, once per month.
+   */
+  monthClose: 'month-close',
+  /**
+   * Daily at 09:10 local (step 7): the owner's reminders of the act, the bank check and the tax
+   * payment date on the days of settings finance.reminder_days, once per month each.
+   */
+  financeReminders: 'finance-reminders',
 } as const;
 
 /** Job names of the reconciliation queue (decision Б29, PLAN section 1). */

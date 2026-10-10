@@ -85,6 +85,13 @@ export const JOURNAL_EVENTS = [
    * review reminder and the funnel of /admin/reviews read it.
    */
   'review_link_opened',
+  // step 7 (docs/month-close.md): supplier returns to the end, the stock
+  /** «Сдал водителю»: the part left with Rossko's driver (payload supplierReturnId, itemId). */
+  'supplier_return_shipped',
+  /** «Деньги вернулись»: Rossko paid the part back (payload supplierReturnId, amountKop). */
+  'supplier_return_refunded',
+  /** «Списать» of a part kept in stock (payload stockItemId, itemId). */
+  'stock_item_written_off',
 ] as const;
 export type JournalEvent = (typeof JOURNAL_EVENTS)[number];
 

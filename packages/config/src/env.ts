@@ -214,6 +214,30 @@ const envShape = {
   // approved docs/legal-drafts/garage.md and the new policy and consent are published.
   GARAGE_ENABLED: bool(false),
 
+  // --- Pickup point contract [шаг 7] (docs/month-close.md): the parties of the monthly act ---
+  // The pickup point that receives, stores and hands the parts for the seller and is paid per
+  // operation (settings contract.rates). The name is printed as given («ИП Петров Пётр
+  // Петрович», «ООО «Сервис»»); without it the act shows a blank line for the name. Real values
+  // only in the server's env, never in the repository.
+  CONTRACTOR_REQUISITES_NAME: optionalString,
+  CONTRACTOR_REQUISITES_INN: z
+    .string()
+    .regex(/^\d{10}(\d{2})?$/, 'expected 10 or 12 digits')
+    .optional(),
+  // ОГРНИП (15 digits) of a sole proprietor, or ОГРН (13 digits) of a company.
+  CONTRACTOR_REQUISITES_OGRNIP: z
+    .string()
+    .regex(/^\d{13}(\d{2})?$/, 'expected 13 or 15 digits')
+    .optional(),
+  CONTRACTOR_REQUISITES_ADDRESS: optionalString,
+  /** The number of the pickup point contract («12/2026»), printed in the act. */
+  CONTRACT_NUMBER: optionalString,
+  /** The date of the contract, YYYY-MM-DD. */
+  CONTRACT_DATE: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD')
+    .optional(),
+
   // --- Installation partner [ф1C] (decision С6): without the name booking is hidden ---
   /** The service that installs parts and bills the client itself (e.g. «Сервис56»). */
   INSTALL_PARTNER_NAME: optionalString,

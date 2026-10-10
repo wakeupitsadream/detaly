@@ -43,6 +43,8 @@ describe('queue names', () => {
       'priceCheck',
       'reviewsCheck',
       'fitChecks',
+      'monthClose',
+      'financeReminders',
     ]);
     expect(RECONCILIATION_JOBS).toEqual({ sweep: 'sweep', nightly: 'nightly' });
   });
@@ -71,5 +73,12 @@ describe('step 4 jobs', () => {
   it('notify/fit (the sellers card of a fit check) and the 5-minute fit-checks run', () => {
     expect(NOTIFY_JOBS).toEqual({ order: 'order', alert: 'alert', vin: 'vin', fit: 'fit' });
     expect(HOUSEKEEPING_JOBS.fitChecks).toBe('fit-checks');
+  });
+});
+
+describe('step 7 jobs', () => {
+  it('the month close on the 1st and the daily finance reminders', () => {
+    expect(HOUSEKEEPING_JOBS.monthClose).toBe('month-close');
+    expect(HOUSEKEEPING_JOBS.financeReminders).toBe('finance-reminders');
   });
 });

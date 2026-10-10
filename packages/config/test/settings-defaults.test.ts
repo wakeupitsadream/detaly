@@ -1,5 +1,11 @@
 import {
+  CONTRACT_RATES_KEY,
+  DEFAULT_ACQUIRING_BP,
+  DEFAULT_CONTRACT_RATES,
+  DEFAULT_FINANCE_REMINDER_DAYS,
   DEFAULT_FIT_CHECK_SLA_MINUTES,
+  FINANCE_ACQUIRING_KEY,
+  FINANCE_REMINDER_DAYS_KEY,
   DEFAULT_MAX_MARKUP_BP,
   DEFAULT_MIN_MARKUP_BP,
   DEFAULT_REVIEW_MAX_AGE_DAYS,
@@ -44,6 +50,17 @@ describe('settingsDefaultsFromEnv', () => {
     // Step 4: the master answers a fit check within 60 minutes of working time.
     expect(settings[FIT_CHECK_SLA_KEY]).toBe(DEFAULT_FIT_CHECK_SLA_MINUTES);
     expect(settings['fit_check.sla_minutes']).toBe(60);
+    // Step 7: the acquiring estimate 2.8 %, the reminder days 3 / 5 / 25 and the contract rates
+    // of the pickup point, all 0 until the contract is signed.
+    expect(settings[FINANCE_ACQUIRING_KEY]).toBe(DEFAULT_ACQUIRING_BP);
+    expect(settings['finance.acquiring_bp']).toBe(280);
+    expect(settings[FINANCE_REMINDER_DAYS_KEY]).toEqual(DEFAULT_FINANCE_REMINDER_DAYS);
+    expect(settings['finance.reminder_days']).toEqual({ act: 3, bank_check: 5, tax: 25 });
+    expect(settings[CONTRACT_RATES_KEY]).toEqual(DEFAULT_CONTRACT_RATES);
+    expect(Object.values(settings['contract.rates'].perOperationKop)).toEqual([
+      0, 0, 0, 0, 0, 0, 0,
+    ]);
+    expect(settings['contract.rates'].turnoverBp).toBe(0);
   });
 
   it('converts percents with decimals exactly', () => {

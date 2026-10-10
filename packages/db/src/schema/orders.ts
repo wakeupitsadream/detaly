@@ -213,7 +213,11 @@ export const orderEvents = pgTable(
     payload: jsonb().$type<Record<string, unknown>>().notNull().default({}),
     createdAt: createdAt(),
   },
-  (t) => [index('order_events_order_id_created_at_idx').on(t.orderId, t.createdAt)],
+  (t) => [
+    index('order_events_order_id_created_at_idx').on(t.orderId, t.createdAt),
+    // Step 7 (docs/month-close.md): the act counts events of a kind within a month.
+    index('order_events_type_created_at_idx').on(t.type, t.createdAt),
+  ],
 );
 
 /**

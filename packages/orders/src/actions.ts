@@ -45,6 +45,12 @@ import {
   settlementReceiptSucceededOf,
 } from './context';
 import { acceptClaimReturn, closeClaim, decideClaim, REPLACEMENT_NOT_ORDERED } from './claims';
+import {
+  markSupplierReturnRefunded,
+  rejectSupplierReturn,
+  shipSupplierReturn,
+  supplierReturnOrderId,
+} from './supplier-returns';
 import { applyTransition, applyTransitionInTx, clock, nudge } from './engine';
 import { bookingSlot, decideInstall } from './install';
 import { addOrderPhoto } from './photos';
@@ -76,6 +82,7 @@ import type {
   StaffActionResult,
   StaffActionView,
   StaffActionView1C,
+  StaffRef,
   TransitionFacts,
   Tx,
 } from './types';
@@ -178,6 +185,8 @@ const SUCCESS_MESSAGES: Record<AnyStaffActionCode, string> = {
   bdone: 'Установка отмечена выполненной',
   bnoshow: 'Отмечено: клиент не приехал на установку',
   pphoto: 'Фото сохранено',
+  srship: 'Отмечено: сдано водителю',
+  srrej: 'Отмечено: не берут, деталь на складе',
 };
 
 const CLAIM_ACTIONS: ReadonlySet<AnyStaffActionCode> = new Set<ClaimStaffActionCode>([
@@ -198,6 +207,12 @@ const BOOKING_DECISIONS: Readonly<Record<BookingStaffActionCode, InstallDecision
 function isBookingAction(code: AnyStaffActionCode): code is BookingStaffActionCode {
   return code in BOOKING_DECISIONS;
 }
+
+/** Step 7: buttons whose target id is supplier_returns.id. */
+const SUPPLIER_RETURN_ACTIONS: ReadonlySet<AnyStaffActionCode> = new Set<AnyStaffActionCode>([
+  'srship',
+  'srrej',
+]);
 
 /** Statuses after the handover: the part is with the client. */
 const AFTER_HANDOVER: readonly OrderStatus[] = ['handed', 'completed'];
@@ -571,6 +586,10 @@ async function resolveTarget(
       .where(eq(installBookings.id, targetId));
     return booking ? { orderId: booking.orderId, itemId: null } : null;
   }
+  if (SUPPLIER_RETURN_ACTIONS.has(action)) {
+    const orderId = await supplierReturnOrderId(deps.db, targetId);
+    return orderId === null ? null : { orderId, itemId: null };
+  }
   if (!ITEM_ACTIONS.has(action)) {
     const [order] = await deps.db
       .select({ id: orders.id })
@@ -836,7 +855,7 @@ export async function performStaffAction(
       return manualSupplierOrder(deps, orderId, actor, input, done, refuse);
     case 'supplier_return_accept':
     case 'supplier_return_reject':
-      return supplierReturnDecision(deps, orderId, actor, action, input, done, refuse);
+      return supplierReturnDecision(deps, orderId, staff, action, input, done, refuse);
     case 'stock_item':
       return stockItem(deps, orderId, itemId, actor, input, done, refuse);
     case 'refund_payment':
@@ -876,6 +895,15 @@ export async function performStaffAction(
         kind: input.photoKind ?? 'packaging',
         fileKey: input.photoKey,
         staff,
+      });
+    // --- step 7: the target id is the supplier return (any staff member) ---------------------
+    case 'srship':
+      return shipSupplierReturn(deps, { supplierReturnId: args.targetId, staff });
+    case 'srrej':
+      return rejectSupplierReturn(deps, {
+        supplierReturnId: args.targetId,
+        staff,
+        note: input.note ?? null,
       });
   }
 }
@@ -1046,51 +1074,72 @@ async function supplierReturnOf(tx: Tx, orderId: string, supplierReturnId: strin
   return row ?? null;
 }
 
-/** «Rossko принял / не принял возврат»: not accepted -> the part goes to stock_items. */
+/**
+ * «Rossko принял / не принял возврат» (admin, owner): accepted while the part waits or after
+ * «Сдал водителю» (step 7); not accepted -> the part goes to stock_items through the same function
+ * as the bot's «Не берут» (supplier-returns.ts), with this action's own reason code. Accepted with
+ * the amount received (the card's «Получено, ₽») is the money back: «Деньги вернулись» of step 7
+ * (refunded with refunded_at), so it shows in the month's «не доход» and stops the 10-day alert.
+ */
 async function supplierReturnDecision(
   deps: EngineDeps,
   orderId: string,
-  actor: ActorRef,
+  staff: StaffRef,
   action: 'supplier_return_accept' | 'supplier_return_reject',
   input: StaffActionInput,
   done: Done,
   refuse: Refuse,
 ): Promise<StaffActionResult> {
+  const withAmount =
+    action === 'supplier_return_accept' &&
+    input.amountKop !== undefined &&
+    input.amountKop !== null &&
+    input.amountKop > 0;
+  if (action === 'supplier_return_reject' || withAmount) {
+    const [found] = isUuid(input.supplierReturnId)
+      ? await deps.db
+          .select({ id: supplierReturns.id, status: supplierReturns.status })
+          .from(supplierReturns)
+          .innerJoin(orderItems, eq(orderItems.id, supplierReturns.orderItemId))
+          .where(
+            and(eq(supplierReturns.id, input.supplierReturnId), eq(orderItems.orderId, orderId)),
+          )
+      : [];
+    if (!found) return refuse('Возврат поставщику не найден');
+    if (withAmount) {
+      if (found.status === 'rejected' || found.status === 'refunded') {
+        return refuse('Решение по возврату уже записано');
+      }
+      return markSupplierReturnRefunded(deps, {
+        supplierReturnId: found.id,
+        amountKop: input.amountKop as number,
+        staff,
+      });
+    }
+    return rejectSupplierReturn(deps, {
+      supplierReturnId: found.id,
+      staff,
+      reason: input.reason?.trim() || 'rossko_rejected_return',
+      note: input.note ?? null,
+      strict: true,
+      message: SUCCESS_MESSAGES.supplier_return_reject,
+    });
+  }
   return withLockedOrder(deps, orderId, async ({ tx, at }) => {
     const found = await supplierReturnOf(tx, orderId, input.supplierReturnId);
     if (found === null) return refuse('Возврат поставщику не найден');
-    if (found.ret.status !== 'requested') return refuse('Решение по возврату уже записано');
-    if (action === 'supplier_return_accept') {
-      await tx
-        .update(supplierReturns)
-        .set({
-          status: 'accepted',
-          amountReceivedKop: input.amountKop ?? null,
-          ...(input.note ? { note: input.note } : {}),
-          updatedAt: at,
-        })
-        .where(eq(supplierReturns.id, found.ret.id));
-      return done();
+    if (found.ret.status !== 'requested' && found.ret.status !== 'shipped') {
+      return refuse('Решение по возврату уже записано');
     }
     await tx
       .update(supplierReturns)
-      .set({ status: 'rejected', ...(input.note ? { note: input.note } : {}), updatedAt: at })
-      .where(eq(supplierReturns.id, found.ret.id));
-    const [stock] = await tx
-      .insert(stockItems)
-      .values({
-        orderItemId: found.item.id,
-        costKop: found.item.priceSupplierAtOrderKop * found.item.qty,
-        reason: input.reason?.trim() || 'rossko_rejected_return',
+      .set({
+        status: 'accepted',
+        amountReceivedKop: input.amountKop ?? null,
+        ...(input.note ? { note: input.note } : {}),
+        updatedAt: at,
       })
-      .returning({ id: stockItems.id });
-    await recordJournalEvent(tx, {
-      orderId,
-      type: 'stock_item_created',
-      actor,
-      payload: { stockItemId: stock?.id, itemId: found.item.id, supplierReturnId: found.ret.id },
-      at,
-    });
+      .where(eq(supplierReturns.id, found.ret.id));
     return done();
   });
 }

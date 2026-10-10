@@ -53,6 +53,8 @@ import {
   loadOrderPhotos,
   loadOrderSettings,
   loadOrderSnapshot,
+  loadOrderSupplierReturns,
+  supplierReturnActions,
   type StaffActionView,
 } from '@detaly/orders';
 import { loadFitRequestForStaff, loadFitSlaMinutes, loadVinRequestForStaff } from '@detaly/vin';
@@ -254,6 +256,10 @@ export function createCardService(
     const actions1C = availableStaffActions1C(snapshot, CARD_ROLE, settings, deps.now());
     const phone = await loadClientPhone(db, snapshot.order.userId);
     const packaging = await loadOrderPhotos(db, orderId, ['packaging']);
+    // Step 7: the parts going back to Rossko (open ones only; closed ones live in the admin).
+    const returns = (await loadOrderSupplierReturns(db, orderId)).filter(
+      (ret) => ret.status === 'requested' || ret.status === 'shipped' || ret.status === 'accepted',
+    );
     const { order } = snapshot;
     const itemOf = (id: string | null) => snapshot.items.find((item) => item.id === id) ?? null;
     return {
@@ -307,6 +313,16 @@ export function createCardService(
           };
         }),
       packagingPhotos: packaging.length,
+      returns: returns.map((ret) => ({
+        id: ret.id,
+        brand: ret.brand,
+        article: ret.article,
+        qty: ret.qty,
+        kind: ret.kind,
+        status: ret.status,
+        shippedAt: ret.shippedAt,
+      })),
+      returnActions: supplierReturnActions(returns),
       adminUrl: adminUrl(env, order.id),
       headline: extra.headline ?? null,
       note: extra.note ?? null,

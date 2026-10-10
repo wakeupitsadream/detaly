@@ -104,8 +104,9 @@ export interface SchedulerSpec {
  * 1 h, deferred 1A effects 10 min, reconciliation sweep 10 min, the nightly check at 03:15, the
  * VIN photo retention at 04:40 Asia/Yekaterinburg (phase 1C, decision С16), the weekly price
  * check reminder on Mondays at 10:00 Asia/Yekaterinburg (step 2, docs/pricing.md), the
- * weekly reviews reminder on Mondays at 10:05 (step 3, docs/reviews.md) and the fit checks
- * every 5 minutes: expiry and the SLA reminder (step 4, docs/fit-check.md).
+ * weekly reviews reminder on Mondays at 10:05 (step 3, docs/reviews.md), the fit checks
+ * every 5 minutes: expiry and the SLA reminder (step 4, docs/fit-check.md), and the month close
+ * on the 1st at 09:00 with the finance reminders daily at 09:10 (step 7, docs/month-close.md).
  */
 export const SCHEDULERS: readonly SchedulerSpec[] = [
   {
@@ -156,6 +157,18 @@ export const SCHEDULERS: readonly SchedulerSpec[] = [
     name: HOUSEKEEPING_JOBS.fitChecks,
     repeat: { every: 5 * 60_000 },
     keep: 20,
+  },
+  {
+    queue: 'housekeeping',
+    name: HOUSEKEEPING_JOBS.monthClose,
+    repeat: { pattern: '0 9 1 * *', tz: SCHEDULER_TZ },
+    keep: 12,
+  },
+  {
+    queue: 'housekeeping',
+    name: HOUSEKEEPING_JOBS.financeReminders,
+    repeat: { pattern: '10 9 * * *', tz: SCHEDULER_TZ },
+    keep: 30,
   },
   {
     queue: 'reconciliation',

@@ -78,11 +78,11 @@ export const DELAY_WHOLE_ORDER_ONLY =
 /**
  * Sellers card line of a claim refund with the part accepted back: the part lies at the point
  * and must go back to Rossko before the supplier window closes (PLAN section 3, risk 8), or to
- * stock («Rossko не принял»).
+ * stock. Step 7: «Сдал водителю» / «Не берут» are buttons of the same card (supplier-returns.ts).
  */
 export function supplierReturnTaskNote(deadline: Date | null): string {
   const until = deadline === null ? '' : ` до ${formatDayMonth(localDate(deadline))}`;
-  return `Возврат по претензии: деталь у вас — вернуть Rossko${until} (возврат поставщику в админке); не примут — «Rossko не принял», деталь на склад`;
+  return `Возврат по претензии: деталь у вас — вернуть Rossko${until}, «Сдал водителю» в карточке; не примут — «Не берут», деталь на склад`;
 }
 
 /** A FileStore key of this order: `<scope>/<order id>/<uuid>.jpg` with an allowed scope. */

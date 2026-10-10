@@ -241,6 +241,9 @@ describe('callback actions', () => {
       vdel: 'vehicle',
       vdelok: 'vehicle',
       mskip: 'order',
+      // step 7 (docs/month-close.md): a part going back to the supplier
+      srship: 'supplier_return',
+      srrej: 'supplier_return',
     };
     expect(Object.keys(WORKFLOW_ACTIONS).sort()).toEqual(Object.keys(expected).sort());
     for (const [code, target] of Object.entries(expected)) {
@@ -320,6 +323,27 @@ describe('callback actions', () => {
       const data = buildCallbackData(code, UUID, newNonce());
       expect(Buffer.byteLength(data), code).toBeLessThanOrEqual(CALLBACK_DATA_MAX_BYTES);
       expect(parseCallbackData(data)?.action).toBe(code);
+    }
+  });
+
+  it('step 7: «Сдал водителю» and «Не берут» of a supplier return, for any staff member', () => {
+    expect(workflowAction('srship')).toEqual({
+      kind: 'supplier_return',
+      action: 'shipped',
+      label: 'Сдал водителю',
+    });
+    expect(workflowAction('srrej')).toEqual({
+      kind: 'supplier_return',
+      action: 'rejected',
+      label: 'Не берут',
+    });
+    for (const code of ['srship', 'srrej']) {
+      expect(actionTarget(code)).toBe('supplier_return');
+      expect(isOwnerOnlyAction(code)).toBe(false);
+      expect(isClientAction(code)).toBe(false);
+      const data = buildCallbackData(code, UUID, newNonce());
+      expect(Buffer.byteLength(data), code).toBeLessThanOrEqual(CALLBACK_DATA_MAX_BYTES);
+      expect(parseCallbackData(data)).toMatchObject({ action: code, orderId: UUID });
     }
   });
 });

@@ -6,6 +6,9 @@
 // A notifications row (chat_id, dedupe_key = `alert:<dedupeKey>`) is written before the send:
 // a key that was sent (or skipped) once is never sent again, so a retried job or a repeated
 // dead-letter event does not spam the chat. Without a bot token the row is `skipped`.
+//
+// An owner alert with `fallbackText` (step 7: the monthly close) sends that text instead when it
+// lands in the sellers chat, so the figures meant for the owner stay out of the shared chat.
 import type { Logger } from '@detaly/config';
 import { and, asc, eq, isNotNull, notifications, sql, staff, type Db } from '@detaly/db';
 import { FALLBACK_REASONS, type TelegramSender } from '@detaly/notify';
@@ -78,9 +81,16 @@ export function createAlerts(options: CreateAlertsOptions): AlertPort {
   }
 
   return {
-    async send({ audience, text, dedupeKey }) {
+    async send({ audience, text, dedupeKey, fallbackText }) {
       const key = alertDedupeKey(dedupeKey);
       const body = redactText(text, ALERT_TEXT_MAX);
+      const fallbackBody =
+        audience === 'owner' && fallbackText !== undefined && fallbackText.trim() !== ''
+          ? redactText(fallbackText, ALERT_TEXT_MAX)
+          : null;
+      /** The text a target gets: the sellers chat of an owner alert may get the fallback. */
+      const textFor = (target: Target): string =>
+        !target.owner && fallbackBody !== null ? fallbackBody : body;
 
       const [existing] = await db
         .select({
@@ -116,7 +126,7 @@ export function createAlerts(options: CreateAlertsOptions): AlertPort {
             staffId: first.staffId,
             channel: 'telegram',
             template: ALERT_TEMPLATE,
-            payload: { audience, text: body },
+            payload: { audience, text: textFor(first) },
             dedupeKey: key,
             status: 'queued',
           })
@@ -138,8 +148,9 @@ export function createAlerts(options: CreateAlertsOptions): AlertPort {
 
       let lastError: unknown = null;
       for (const [index, target] of targets.entries()) {
+        const sent = textFor(target);
         try {
-          await telegram.sendMessage(target.chatId, body, {
+          await telegram.sendMessage(target.chatId, sent, {
             link_preview_options: { is_disabled: true },
           });
           await db
@@ -149,6 +160,7 @@ export function createAlerts(options: CreateAlertsOptions): AlertPort {
               sentAt: now(),
               chatId: target.chatId,
               staffId: target.staffId,
+              payload: { audience, text: sent },
               fallbackReason: index > 0 ? 'owner_chat_unreachable' : null,
               attempts: sql`${notifications.attempts} + 1`,
               error: null,

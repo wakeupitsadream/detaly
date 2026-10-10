@@ -63,6 +63,19 @@ describe('demo proxy: hidden paths', () => {
     expect(demoBlockedPath('/admin/pricing')).toBe('page');
     expect(demoBlockedPath('/api/admin/prices')).toBe('api');
     expect(demoBlockedPath('/api/admin/pricing')).toBe('api');
+    // step 7: the month close, its act and rates, the supplier returns and the stock
+    for (const path of [
+      '/admin/month',
+      '/admin/month/act',
+      '/admin/month/rates',
+      '/admin/returns',
+      '/admin/stock',
+    ]) {
+      expect(demoBlockedPath(path), path).toBe('page');
+    }
+    for (const path of ['/api/admin/month', '/api/admin/month/csv', '/api/admin/returns']) {
+      expect(demoBlockedPath(path), path).toBe('api');
+    }
     expect(demoBlockedPath('/api/webhooks/yookassa')).toBe('api');
     expect(demoBlockedPath('/api/orders/abc/cancel')).toBe('api');
     expect(demoBlockedPath('/o/some-real-looking-token-1234')).toBe('page');
@@ -82,6 +95,8 @@ describe('demo proxy: hidden paths', () => {
       '/api/admin/orders/1/actions',
       '/api/admin/prices',
       '/api/admin/pricing',
+      '/api/admin/month',
+      '/api/admin/returns',
     ]) {
       const response = await proxy(request('POST', path));
       expect(response.status, path).toBe(404);
@@ -89,6 +104,10 @@ describe('demo proxy: hidden paths', () => {
       expect(response.headers.get('cache-control')).toBe('no-store');
     }
     expect(state.redisCalls).toBe(0);
+    // step 7: «Скачать CSV» of the act is a GET
+    const csv = await proxy(request('GET', '/api/admin/month/csv?m=2026-09'));
+    expect(csv.status).toBe(404);
+    expect(await csv.json()).toEqual({ error: 'not_found' });
   });
 
   it('sends /admin and real order pages to the not-found page', async () => {
@@ -97,6 +116,11 @@ describe('demo proxy: hidden paths', () => {
       '/admin/orders/1',
       '/admin/prices',
       '/admin/pricing',
+      '/admin/month',
+      '/admin/month/act?m=2026-09',
+      '/admin/month/rates',
+      '/admin/returns',
+      '/admin/stock',
       '/o/abcdefghijklmnopqrstu',
       '/%6f/x',
     ]) {

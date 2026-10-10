@@ -106,6 +106,12 @@ export interface ProviderPaymentPage {
   nextCursor: string | null;
 }
 
+/**
+ * The month reconciliation of /admin/month (step 7, docs/month-close.md): refunds created in
+ * [createdGte, createdLt), the same window and paging as the payments list.
+ */
+export type ListRefundsRequest = ListPaymentsRequest;
+
 // ---------------------------------------------------------------------------------------------
 // Refunds
 // ---------------------------------------------------------------------------------------------
@@ -135,6 +141,12 @@ export interface ProviderRefund {
   /** cancellation_details.reason of a `canceled` refund. */
   cancellationReason: string | null;
   raw: unknown;
+}
+
+export interface ProviderRefundPage {
+  items: ProviderRefund[];
+  /** null on the last page. */
+  nextCursor: string | null;
 }
 
 // ---------------------------------------------------------------------------------------------

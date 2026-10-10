@@ -21,6 +21,8 @@ export interface NotifyAlertJobData {
   audience: 'sellers' | 'owner';
   text: string;
   dedupeKey: string;
+  /** The text of an owner alert that lands in the sellers chat (AlertPort fallbackText). */
+  fallbackText?: string;
 }
 
 function parseAlert(raw: unknown): NotifyAlertJobData {
@@ -34,7 +36,14 @@ function parseAlert(raw: unknown): NotifyAlertJobData {
   ) {
     throw new UnrecoverableError('notify/alert: bad job data');
   }
-  return { audience: data.audience, text: data.text, dedupeKey: data.dedupeKey };
+  return {
+    audience: data.audience,
+    text: data.text,
+    dedupeKey: data.dedupeKey,
+    ...(typeof data.fallbackText === 'string' && data.fallbackText.trim() !== ''
+      ? { fallbackText: data.fallbackText }
+      : {}),
+  };
 }
 
 export type NotifyJobResult =

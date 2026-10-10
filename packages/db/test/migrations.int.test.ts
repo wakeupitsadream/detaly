@@ -8,6 +8,7 @@ import {
   ORDER_ITEM_STATES,
   ORDER_STATUSES,
   REFUND_SCOPES,
+  SUPPLIER_RETURN_STATUSES,
 } from '@detaly/domain/statuses';
 import { getTableName, isTable } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -47,8 +48,8 @@ describe('migrations on an empty database', () => {
     // 28 tables of phases 0 and 1A plus outbox, client_approvals and seller_cards (1B), plus
     // price_benchmarks and settings_audit (step 2, docs/pricing.md), plus fit_checks (step 4,
     // docs/fit-check.md), plus kits and kit_lines (step 5, docs/kits.md), plus user_vehicles
-    // (step 6, docs/garage.md)
-    expect(schemaTables).toHaveLength(37);
+    // (step 6, docs/garage.md), plus finance_reconciliations (step 7, docs/month-close.md)
+    expect(schemaTables).toHaveLength(38);
     expect(schemaTables).toEqual(
       expect.arrayContaining([
         'outbox',
@@ -60,6 +61,7 @@ describe('migrations on an empty database', () => {
         'kits',
         'kit_lines',
         'user_vehicles',
+        'finance_reconciliations',
       ]),
     );
     expect(schemaTables).not.toContain('vehicles');
@@ -76,6 +78,8 @@ describe('migrations on an empty database', () => {
     expect(await enumValues('refund_scope')).toEqual([...REFUND_SCOPES]);
     expect(await enumValues('approval_kind')).toEqual([...APPROVAL_KINDS]);
     expect(await enumValues('approval_decision')).toEqual([...APPROVAL_DECISIONS]);
+    // step 7: «Сдал водителю» appended to the supplier return statuses (0010)
+    expect(await enumValues('supplier_return_status')).toEqual([...SUPPLIER_RETURN_STATUSES]);
 
     const seq =
       await db.$client`select 1 from pg_sequences where sequencename = 'order_number_seq'`;
@@ -139,6 +143,12 @@ describe('migrations on an empty database', () => {
       ['orders', 'vehicle_id'],
       ['carts', 'kit_id'],
       ['carts', 'repeat_order_id'],
+      // step 7 (0010): the supplier return dates and the reconciliation snapshots
+      ['supplier_returns', 'shipped_at'],
+      ['supplier_returns', 'refunded_at'],
+      ['finance_reconciliations', 'month'],
+      ['finance_reconciliations', 'created_by'],
+      ['finance_reconciliations', 'result'],
     ] as const) {
       expect(columns).toContainEqual({ table_name: table, column_name: column });
     }

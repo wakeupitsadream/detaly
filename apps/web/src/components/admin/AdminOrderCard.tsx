@@ -11,7 +11,14 @@ import {
   type IsoDate,
   type VehicleSource,
 } from '@detaly/domain';
-import { REFUND_TASK_ERROR, type StaffActionView, type VehicleRow } from '@detaly/orders';
+import {
+  REFUND_TASK_ERROR,
+  stockReasonLabel,
+  SUPPLIER_RETURN_KIND_LABELS,
+  SUPPLIER_RETURN_STATUS_LABELS,
+  type StaffActionView,
+  type VehicleRow,
+} from '@detaly/orders';
 import { vinRequestNumber } from '@detaly/vin';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
@@ -517,6 +524,15 @@ export function AdminOrderCard({
       </Section>
 
       <Section title="Возвраты поставщику" testId="admin-supplier-returns">
+        {card.supplierReturns.length > 0 ? (
+          <p className="mb-2 text-sm">
+            «Сдал водителю», «Не берут» и «Деньги вернулись» — на странице{' '}
+            <Link href="/admin/returns" className="text-accent underline">
+              «Возвраты Rossko»
+            </Link>
+            .
+          </p>
+        ) : null}
         {card.supplierReturns.length === 0 ? (
           <Empty text="Возвратов поставщику нет." />
         ) : (
@@ -527,12 +543,14 @@ export function AdminOrderCard({
                   <span className="font-semibold">
                     {itemTitle.get(ret.orderItemId) ?? shortId(ret.orderItemId)}
                   </span>{' '}
-                  — {ret.kind === 'claim' ? 'рекламация' : 'возврат'}, {ret.status}
+                  — {SUPPLIER_RETURN_KIND_LABELS[ret.kind]},{' '}
+                  {SUPPLIER_RETURN_STATUS_LABELS[ret.status] ?? ret.status}
+                  {ret.shippedAt ? ` (${dateTime(ret.shippedAt)})` : ''}
                   {ret.amountExpectedKop !== null ? `, ждём ${rub(ret.amountExpectedKop)}` : ''}
                   {ret.amountReceivedKop !== null ? `, получено ${rub(ret.amountReceivedKop)}` : ''}
                 </p>
                 {ret.note ? <p className="text-muted">{ret.note}</p> : null}
-                {ret.status === 'requested' ? (
+                {ret.status === 'requested' || ret.status === 'shipped' ? (
                   <div className="mt-2 flex flex-col gap-2">
                     <ActionForm
                       orderId={order.id}
@@ -578,7 +596,14 @@ export function AdminOrderCard({
               <tr key={stock.id} className="border-b border-line last:border-0">
                 <Cell>{itemTitle.get(stock.orderItemId) ?? shortId(stock.orderItemId)}</Cell>
                 <Cell className="whitespace-nowrap">{rub(stock.costKop)}</Cell>
-                <Cell>{stock.reason}</Cell>
+                <Cell>
+                  {stockReasonLabel(stock.reason)}
+                  {stock.writtenOffAt ? (
+                    <span className="block text-xs text-muted">
+                      списано {dateTime(stock.writtenOffAt)}
+                    </span>
+                  ) : null}
+                </Cell>
                 <Cell className="whitespace-nowrap">{dateTime(stock.createdAt)}</Cell>
               </tr>
             ))}

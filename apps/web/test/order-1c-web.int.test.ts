@@ -21,7 +21,7 @@ import {
   users,
   type Db,
 } from '@detaly/db';
-import type { Offer, OrderItemState, OrderStatus } from '@detaly/domain';
+import { localDate, type Offer, type OrderItemState, type OrderStatus } from '@detaly/domain';
 import { INSTALL_LIFTS } from '@detaly/domain/install-params';
 import { createMemoryFileStore, newFileKey, type MemoryFileStore } from '@detaly/files';
 import { installSlotsForOrder, type EngineDeps } from '@detaly/orders';
@@ -794,8 +794,11 @@ describe('order page with the phase 1C blocks', () => {
   });
 
   it('handed: the claim form with 3 kinds and the memo; an open claim shows the steps and the deadline', async () => {
-    const order = await insertOrder();
-    const other = await insertOrder();
+    // Handed on time: the promised date follows the clock (a fixed date in the past made the
+    // handover of `now - 1 day` late, and the delay kind appeared, from 10 October 2026 on).
+    const onTime = localDate(new Date(Date.now() + 5 * DAY_MS));
+    const order = await insertOrder({ promisedDate: onTime });
+    const other = await insertOrder({ promisedDate: onTime });
     let html = await renderOrder(order);
     expect(html).toContain('data-testid="claim-form"');
     for (const kind of ['refusal', 'not_fit', 'defect']) {

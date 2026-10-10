@@ -202,8 +202,31 @@ export type SupplierOrderStatus = (typeof SUPPLIER_ORDER_STATUSES)[number];
 export const SUPPLIER_RETURN_KINDS = ['return', 'claim'] as const;
 export type SupplierReturnKind = (typeof SUPPLIER_RETURN_KINDS)[number];
 
-export const SUPPLIER_RETURN_STATUSES = ['requested', 'accepted', 'rejected', 'refunded'] as const;
+/**
+ * supplier_returns.status. `requested`: the part waits at the point to go back to Rossko;
+ * `shipped` (step 7, docs/month-close.md, appended by migration 0010): «Сдал водителю», the part
+ * left with Rossko's driver (shipped_at); `accepted`: Rossko confirmed it took the part back;
+ * `rejected`: «Не берут» / «Rossko не принял» — the part stays with us (a stock_items row);
+ * `refunded`: «Деньги вернулись» with amount_received_kop (refunded_at).
+ */
+export const SUPPLIER_RETURN_STATUSES = [
+  'requested',
+  'accepted',
+  'rejected',
+  'refunded',
+  'shipped',
+] as const;
 export type SupplierReturnStatus = (typeof SUPPLIER_RETURN_STATUSES)[number];
+
+/**
+ * Returns still waiting for something: the part to leave (`requested`), or the money after it
+ * left (`shipped`, `accepted`). /admin/returns lists them; the reminders watch `requested`.
+ */
+export const SUPPLIER_RETURN_OPEN_STATUSES = [
+  'requested',
+  'shipped',
+  'accepted',
+] as const satisfies readonly SupplierReturnStatus[];
 
 // ---------------------------------------------------------------------------
 // Claims and VIN requests

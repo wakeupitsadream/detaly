@@ -33,6 +33,7 @@ import {
   type CreatePaymentRequest,
   type CreateRefundRequest,
   type ListPaymentsRequest,
+  type ListRefundsRequest,
   PAYMENT_DESCRIPTION_MAX,
   PAYMENT_METADATA_KEY_MAX,
   PAYMENT_METADATA_MAX_KEYS,
@@ -42,6 +43,7 @@ import {
   type ProviderPaymentPage,
   type ProviderReceipt,
   type ProviderRefund,
+  type ProviderRefundPage,
   type ReceiptData,
   type ReceiptLine,
   RECEIPT_REGISTRATIONS,
@@ -229,8 +231,8 @@ function receiptPaymentMode(items: unknown): PaymentMode | null {
 }
 
 /**
- * List envelope {type: 'list', items: [...], next_cursor?}. VERIFY: list format of GET /payments
- * and GET /receipts (type 'list', next_cursor absent on the last page).
+ * List envelope {type: 'list', items: [...], next_cursor?}. VERIFY: list format of GET /payments,
+ * GET /refunds and GET /receipts (type 'list', next_cursor absent on the last page).
  */
 function parseList(raw: unknown, what: string): { items: unknown[]; nextCursor: string | null } {
   if (
@@ -295,6 +297,29 @@ function isoTimestamp(value: string, name: string): string {
     throw new PaymentRequestError(`${name} is not a timestamp with a time zone`);
   }
   return new Date(ms).toISOString();
+}
+
+/**
+ * The query of a list window (GET /payments, GET /refunds): created_at.gte / created_at.lt with an
+ * explicit zone, limit 1..100, the cursor of the previous page. Checked before any request.
+ */
+function listWindowQuery(request: ListPaymentsRequest): URLSearchParams {
+  const limit = request.limit ?? LIST_LIMIT_MAX;
+  if (!Number.isInteger(limit) || limit < 1 || limit > LIST_LIMIT_MAX) {
+    throw new PaymentRequestError(`limit must be 1..${LIST_LIMIT_MAX}`);
+  }
+  const createdGte = isoTimestamp(request.createdGte, 'createdGte');
+  const createdLt = isoTimestamp(request.createdLt, 'createdLt');
+  if (Date.parse(createdGte) >= Date.parse(createdLt)) {
+    throw new PaymentRequestError('createdGte must be earlier than createdLt');
+  }
+  const query = new URLSearchParams({
+    'created_at.gte': createdGte,
+    'created_at.lt': createdLt,
+    limit: String(limit),
+  });
+  if (request.cursor) query.set('cursor', request.cursor);
+  return query;
 }
 
 function assertPositiveKop(amountKop: number, what: string): void {
@@ -481,24 +506,18 @@ export function createYooKassaProvider(
     },
 
     async listPayments(request: ListPaymentsRequest): Promise<ProviderPaymentPage> {
-      const limit = request.limit ?? LIST_LIMIT_MAX;
-      if (!Number.isInteger(limit) || limit < 1 || limit > LIST_LIMIT_MAX) {
-        throw new PaymentRequestError(`limit must be 1..${LIST_LIMIT_MAX}`);
-      }
       // VERIFY: filter names created_at.gte / created_at.lt, limit and cursor of GET /payments.
-      const createdGte = isoTimestamp(request.createdGte, 'createdGte');
-      const createdLt = isoTimestamp(request.createdLt, 'createdLt');
-      if (Date.parse(createdGte) >= Date.parse(createdLt)) {
-        throw new PaymentRequestError('createdGte must be earlier than createdLt');
-      }
-      const query = new URLSearchParams({
-        'created_at.gte': createdGte,
-        'created_at.lt': createdLt,
-        limit: String(limit),
-      });
-      if (request.cursor) query.set('cursor', request.cursor);
+      const query = listWindowQuery(request);
       const list = parseList(await call('GET', `/payments?${query.toString()}`), 'payment');
       return { items: list.items.map(parsePayment), nextCursor: list.nextCursor };
+    },
+
+    async listRefunds(request: ListRefundsRequest): Promise<ProviderRefundPage> {
+      // VERIFY: GET /refunds takes the same created_at.gte / created_at.lt, limit and cursor
+      // as GET /payments (yookassa.ru/developers/using-api/lists).
+      const query = listWindowQuery(request);
+      const list = parseList(await call('GET', `/refunds?${query.toString()}`), 'refund');
+      return { items: list.items.map(parseRefund), nextCursor: list.nextCursor };
     },
 
     parseWebhook: parseYooKassaWebhook,

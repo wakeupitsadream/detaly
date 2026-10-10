@@ -42,9 +42,10 @@ export function adminPage(status: number, message: string, back: { href: string;
   });
 }
 
-/** 303 to an admin page with `?done=<message>`. */
+/** 303 to an admin page with `done=<message>` (after the page's own query, if any). */
 export function adminDone(path: string, message: string): Response {
-  const location = `${path}?done=${encodeURIComponent(message.slice(0, 300))}`;
+  const joiner = path.includes('?') ? '&' : '?';
+  const location = `${path}${joiner}done=${encodeURIComponent(message.slice(0, 300))}`;
   return new Response(null, {
     status: 303,
     headers: { ...ADMIN_RESPONSE_HEADERS, Location: location },

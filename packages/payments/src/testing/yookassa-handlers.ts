@@ -2,8 +2,8 @@
  * msw 3 emulation of YooKassa API v3 for tests ('@detaly/payments/testing'). No network.
  *
  * Covers POST /payments, GET /payments (list), GET /payments/:id, POST /refunds,
- * GET /refunds/:id, POST /receipts, GET /receipts (list by payment_id / refund_id),
- * GET /receipts/:id with an in-memory store:
+ * GET /refunds (list, step 7), GET /refunds/:id, POST /receipts, GET /receipts (list by
+ * payment_id / refund_id), GET /receipts/:id with an in-memory store:
  * - Basic auth is required (and checked against shopId/secretKey when given);
  * - POST requires Idempotence-Key; a repeated key with the same body returns the stored
  *   response, with another body 400 (VERIFY: behaviour of the real API);
@@ -633,6 +633,29 @@ export function createYooKassaMock(initialOptions: YooKassaMockOptions = {}): Yo
           }
           return { status: 200, response: refund };
         }),
+    ),
+
+    route(
+      'GET',
+      '/refunds',
+      () => '/refunds',
+      ({ query }) => {
+        const filter = createdAtFilter(query);
+        if (typeof filter === 'string')
+          return error(400, 'invalid_request', `${filter} is invalid`, filter);
+        const status = query.get('status');
+        const paymentId = query.get('payment_id');
+        // VERIFY: order of GET /refunds (newest first assumed, as for payments).
+        const items = [...refunds.values()]
+          .filter(
+            (r) =>
+              filter(r.created_at) &&
+              (status === null || r.status === status) &&
+              (paymentId === null || r.payment_id === paymentId),
+          )
+          .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+        return listResponse(items, query);
+      },
     ),
 
     route(

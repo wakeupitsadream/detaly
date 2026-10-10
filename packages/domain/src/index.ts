@@ -39,3 +39,5 @@ export * from './kits';
 // step 6 (docs/garage.md): «Моя машина»
 export * from './vin';
 export * from './vehicles';
+// step 7 (docs/month-close.md): the month close, the act, the margin, the reconciliation diff
+export * from './finance';

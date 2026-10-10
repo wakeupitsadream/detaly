@@ -335,8 +335,15 @@ export type StaffActionCode =
  */
 export type StaffActionCode1C = ClaimStaffActionCode | BookingStaffActionCode | 'pphoto';
 
+/**
+ * Step 7 (docs/month-close.md): the seller bot's buttons of a supplier return; the target id is
+ * supplier_returns.id. «Сдал водителю» (srship) and «Не берут» (srrej) — any staff member.
+ */
+export type SupplierReturnStaffActionCode = 'srship' | 'srrej';
+
 /** Every staff action code performStaffAction accepts. */
-export type AnyStaffActionCode = StaffActionCode | StaffActionCode1C;
+export type AnyStaffActionCode =
+  StaffActionCode | StaffActionCode1C | SupplierReturnStaffActionCode;
 
 /**
  * Claim buttons; the target id is claims.id: «Принял возврат» (cret, with a photo), the decision
@@ -357,6 +364,8 @@ export interface StaffActionView {
   claimId?: string;
   /** Set for booking actions (bconf, bdecl, bdone, bnoshow). */
   bookingId?: string;
+  /** Set for supplier return actions (srship, srrej; step 7). */
+  supplierReturnId?: string;
   enabled: boolean;
   /** «Ждём чек», «Сначала „Клиент пришёл“» ... */
   disabledReason?: string | null;
@@ -370,7 +379,13 @@ export interface StaffActionView {
 /** A phase 1C button (availableStaffActions1C): a claim, a booking or the packaging photo. */
 export type StaffActionView1C = Omit<StaffActionView, 'code'> & { code: StaffActionCode1C };
 
-export type AnyStaffActionView = StaffActionView | StaffActionView1C;
+/** A supplier return button (step 7, supplierReturnActions): the return's id is set. */
+export type SupplierReturnActionView = Omit<StaffActionView, 'code'> & {
+  code: SupplierReturnStaffActionCode;
+  supplierReturnId: string;
+};
+
+export type AnyStaffActionView = StaffActionView | StaffActionView1C | SupplierReturnActionView;
 
 export interface StaffActionInput {
   /** ialt: the chosen alternative (from recheck_result). */

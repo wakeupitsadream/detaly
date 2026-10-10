@@ -1,13 +1,20 @@
 // Processor of the `housekeeping` queue (docs/phase-1b-implementation.md section 12.2):
 // heartbeat (phase 0), timers (every minute), reminders (15 min), sms-budget (hourly),
 // deferred-1a (10 min), retention (daily, phase 1C), price-check (Mondays, step 2),
-// reviews-check (Mondays, step 3) and fit-checks (5 min, step 4). One attempt each: the next
-// scheduled run picks up what one missed.
+// reviews-check (Mondays, step 3), fit-checks (5 min, step 4), month-close (the 1st) and
+// finance-reminders (daily, step 7). One attempt each: the next scheduled run picks up what one
+// missed.
 import { HOUSEKEEPING_JOBS, writeHeartbeat } from '@detaly/config';
 import { UnrecoverableError, type Job } from 'bullmq';
 import type { WorkerDeps } from '../deps';
 import { runDeferred1a, type Deferred1aResult } from './housekeeping/deferred-1a';
 import { runFitChecks, type FitChecksResult } from './housekeeping/fit-checks';
+import {
+  runFinanceReminders,
+  runMonthClose,
+  type FinanceRemindersResult,
+  type MonthCloseResult,
+} from './housekeeping/month-close';
 import { runPriceCheck, type PriceCheckResult } from './housekeeping/price-check';
 import { runReminders, type RemindersResult } from './housekeeping/reminders';
 import { runRetention, type RetentionResult } from './housekeeping/retention';
@@ -17,6 +24,13 @@ import { runTimers, type TimersResult } from './housekeeping/timers';
 
 export { planDeferred, runDeferred1a } from './housekeeping/deferred-1a';
 export { fitReminderNote, runFitChecks } from './housekeeping/fit-checks';
+export {
+  FINANCE_REMINDER_GRACE_DAYS,
+  financeReminderKey,
+  monthCloseKey,
+  runFinanceReminders,
+  runMonthClose,
+} from './housekeeping/month-close';
 export { PRICE_CHECK_TARGET, priceCheckText, runPriceCheck } from './housekeeping/price-check';
 export { runReminders } from './housekeeping/reminders';
 export { runRetention } from './housekeeping/retention';
@@ -40,7 +54,9 @@ export type HousekeepingResult =
   | RetentionResult
   | PriceCheckResult
   | ReviewsCheckResult
-  | FitChecksResult;
+  | FitChecksResult
+  | MonthCloseResult
+  | FinanceRemindersResult;
 
 const FULL_DEPS_JOBS: readonly string[] = [
   HOUSEKEEPING_JOBS.timers,
@@ -51,6 +67,8 @@ const FULL_DEPS_JOBS: readonly string[] = [
   HOUSEKEEPING_JOBS.priceCheck,
   HOUSEKEEPING_JOBS.reviewsCheck,
   HOUSEKEEPING_JOBS.fitChecks,
+  HOUSEKEEPING_JOBS.monthClose,
+  HOUSEKEEPING_JOBS.financeReminders,
 ];
 
 function fullDeps(job: Pick<Job, 'name'>, deps: HousekeepingDeps | WorkerDeps): WorkerDeps {
@@ -100,6 +118,12 @@ export async function processHousekeeping(
       break;
     case HOUSEKEEPING_JOBS.fitChecks:
       result = await runFitChecks(full);
+      break;
+    case HOUSEKEEPING_JOBS.monthClose:
+      result = await runMonthClose(full);
+      break;
+    case HOUSEKEEPING_JOBS.financeReminders:
+      result = await runFinanceReminders(full);
       break;
     default:
       result = await runDeferred1a(full);

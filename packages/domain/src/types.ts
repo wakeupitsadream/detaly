@@ -362,8 +362,38 @@ export interface SettingsValues {
    * pickup point's working hours; past it the sellers chat gets one reminder per request.
    */
   'fit_check.sla_minutes': number;
+  /**
+   * Step 7 (docs/month-close.md): the acquiring fee estimate of the margin, bp of the revenue
+   * (DEFAULT_ACQUIRING_BP = 280, 2.8 %): an estimate to replace with the shop's real tariff.
+   */
+  'finance.acquiring_bp': BasisPoints;
+  /** Days of the month for the owner's reminders: the act, the bank check, the tax payment. */
+  'finance.reminder_days': FinanceReminderDaysSetting;
+  /** The pickup point's services contract: a price per operation and a turnover rate (all 0). */
+  'contract.rates': ContractRatesSetting;
 }
 export type SettingsKey = keyof SettingsValues;
+
+/** settings `finance.reminder_days` (FinanceReminderDays of finance.ts). */
+export interface FinanceReminderDaysSetting {
+  act: number;
+  bank_check: number;
+  tax: number;
+}
+
+/** settings `contract.rates` (ContractRates of finance.ts; store_day may be absent). */
+export interface ContractRatesSetting {
+  perOperationKop: {
+    receive: Kop;
+    store_day?: Kop;
+    handover: Kop;
+    return_accept: Kop;
+    vin_selection: Kop;
+    fit_check: Kop;
+    claim_diagnostics: Kop;
+  };
+  turnoverBp: BasisPoints;
+}
 
 // ---------------------------------------------------------------------------
 // 54-FZ receipts (phase 1B; moved from @detaly/payments, which re-exports them)

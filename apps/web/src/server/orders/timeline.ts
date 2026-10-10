@@ -104,6 +104,10 @@ export const HIDDEN_TIMELINE_EVENTS: ReadonlySet<OrderEvent | JournalEvent> = ne
   'messenger_unbound',
   // Step 3 (docs/reviews.md): opening a review link is the shop's counter, not an order event.
   'review_link_opened',
+  // Step 7 (docs/month-close.md): the part going back to the supplier is the shop's business.
+  'supplier_return_shipped',
+  'supplier_return_refunded',
+  'stock_item_written_off',
 ]);
 
 type PhraseInput = Pick<TimelineEvent, 'type' | 'toStatus'> &
@@ -346,6 +350,9 @@ function journalPhrase(event: PhraseInput): string | null {
     case 'install_reminder':
     case 'messenger_unbound':
     case 'review_link_opened':
+    case 'supplier_return_shipped':
+    case 'supplier_return_refunded':
+    case 'stock_item_written_off':
       return null;
     default:
       // Not a JournalEvent: an unknown type.

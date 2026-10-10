@@ -69,6 +69,12 @@ export interface AlertPort {
     text: string;
     /** notifications.dedupe_key = `alert:<dedupeKey>`. */
     dedupeKey: string;
+    /**
+     * An owner alert that ends up in the sellers chat (no owner chat with the bot, or Telegram
+     * refused it) carries this text instead of `text`: e.g. the monthly close without the money
+     * figures (step 7, docs/month-close.md). Without it the sellers chat gets `text`.
+     */
+    fallbackText?: string;
   }): Promise<void>;
 }
 

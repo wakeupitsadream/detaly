@@ -136,7 +136,12 @@ export type WorkflowActionSpec =
    */
   | { kind: 'garage'; action: 'list' | 'rebuy' | 'delete' | 'delete_confirmed'; label: string }
   /** Seller bot, step 6: «Пропустить» under the mileage question after «Выдал» (an order). */
-  | { kind: 'mileage'; action: 'skip'; label: string };
+  | { kind: 'mileage'; action: 'skip'; label: string }
+  /**
+   * Seller bot, step 7 (docs/month-close.md): a part going back to the supplier, on the order
+   * card — «Сдал водителю» and «Не берут» (a supplier_returns row; any staff member).
+   */
+  | { kind: 'supplier_return'; action: 'shipped' | 'rejected'; label: string };
 
 export const WORKFLOW_ACTIONS = {
   // --- client bot ---------------------------------------------------------------------------
@@ -175,6 +180,9 @@ export const WORKFLOW_ACTIONS = {
   vdelok: { kind: 'garage', action: 'delete_confirmed', label: 'Да, удалить' },
   // --- seller bot: the mileage at the handover (step 6) ------------------------------------
   mskip: { kind: 'mileage', action: 'skip', label: 'Пропустить' },
+  // --- seller bot: supplier returns (step 7, docs/month-close.md) -------------------------
+  srship: { kind: 'supplier_return', action: 'shipped', label: 'Сдал водителю' },
+  srrej: { kind: 'supplier_return', action: 'rejected', label: 'Не берут' },
 } as const satisfies Record<string, WorkflowActionSpec>;
 
 export type WorkflowAction = keyof typeof WORKFLOW_ACTIONS;
@@ -208,7 +216,8 @@ export const CALLBACK_ACTIONS: Readonly<Record<CallbackAction, CallbackActionKin
  * order of the message they are attached to; the bot acts on the pressing user. Step 4: `fit`
  * (fit_checks.id, one line of a fit check card). Step 6: `vehicle` (user_vehicles.id of «Удалить
  * машину»); «Мои машины» carries the list target like `orders`, «Купить снова» and the seller's
- * «Пропустить» an order.
+ * «Пропустить» an order. Step 7: `supplier_return` (supplier_returns.id of «Сдал водителю» and
+ * «Не берут»).
  */
 export type ActionTarget =
   | 'order'
@@ -219,7 +228,8 @@ export type ActionTarget =
   | 'booking'
   | 'vin'
   | 'fit'
-  | 'vehicle';
+  | 'vehicle'
+  | 'supplier_return';
 
 const ITEM_ACTIONS: ReadonlySet<string> = new Set<CallbackAction>([
   'icancel',
@@ -341,7 +351,8 @@ export function actionTarget(value: string): ActionTarget | null {
       workflow.kind === 'claim' ||
       workflow.kind === 'booking' ||
       workflow.kind === 'vin' ||
-      workflow.kind === 'fit'
+      workflow.kind === 'fit' ||
+      workflow.kind === 'supplier_return'
     ) {
       return workflow.kind;
     }

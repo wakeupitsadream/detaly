@@ -38,9 +38,12 @@ describe('seed (globalSetup already ran it once)', () => {
     expect(Object.keys(byKey).sort()).toEqual(
       [
         'approval.timeout_h',
+        'contract.rates',
         'courier.fee_kop',
         'eta.buffer_days',
         'eta.supplier_invoice_lag_days',
+        'finance.acquiring_bp',
+        'finance.reminder_days',
         'fit_check.sla_minutes',
         'handed.complete_days',
         'handover.qr_ttl_min',
@@ -78,6 +81,22 @@ describe('seed (globalSetup already ran it once)', () => {
     expect(byKey['pricing.min_markup_bp']).toBe(1000);
     expect(byKey['pricing.max_markup_bp']).toBe(6000);
     expect(byKey['reminder.days']).toEqual([3, 6, 9]);
+    // step 7 (docs/month-close.md): the acquiring estimate, the owner's reminder days and the
+    // pickup point's contract rates, all 0 until the contract is signed
+    expect(byKey['finance.acquiring_bp']).toBe(280);
+    expect(byKey['finance.reminder_days']).toEqual({ act: 3, bank_check: 5, tax: 25 });
+    expect(byKey['contract.rates']).toEqual({
+      perOperationKop: {
+        receive: 0,
+        store_day: 0,
+        handover: 0,
+        return_accept: 0,
+        vin_selection: 0,
+        fit_check: 0,
+        claim_diagnostics: 0,
+      },
+      turnoverBp: 0,
+    });
     // step 3: the review reminder and the storefront rating line; no snapshot is seeded
     expect(byKey['reviews.reminder_days']).toBe(3);
     expect(byKey['reviews.min_count']).toBe(5);

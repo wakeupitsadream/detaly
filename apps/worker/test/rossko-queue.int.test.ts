@@ -1163,7 +1163,8 @@ describe.skipIf(!enabled)('rossko queue', () => {
       const h = await make();
       const bad = { name: 'checkout', data: { supplierOrderId: 'nope' } } as unknown as Job;
       await expect(processRossko(bad, h.t.deps)).rejects.toBeInstanceOf(UnrecoverableError);
-      const unknown = { name: 'poll-orders', data: {} } as unknown as Job;
+      // GetSettlements is phase 4 (step 8 made poll-orders a real job).
+      const unknown = { name: 'settlements', data: {} } as unknown as Job;
       await expect(processRossko(unknown, h.t.deps)).rejects.toBeInstanceOf(UnrecoverableError);
       const missing = {
         name: 'checkout',

@@ -575,6 +575,38 @@ export const ORDER_TEMPLATES: Record<OrderNotifyTemplate, Render> = {
       ),
       adminLink(d),
     ),
+  // --- staff, step 8 (docs/rossko-automation.md) ---------------------------------------------
+  // The sellers chat gets the order card with its buttons and the alert as the note line; these
+  // texts are what an owner audience would read.
+  staff_not_ordered: (d) =>
+    msg(lines(`Заказ ${d.orderNumber}: не заказано у поставщика.`, d.note), adminLink(d)),
+  staff_supplier_late: (d) =>
+    msg(
+      lines(
+        `Заказ ${d.orderNumber}: срок поставщика под угрозой, клиенту обещано ${promise(d.promisedDate)}.`,
+        d.note,
+      ),
+      adminLink(d),
+    ),
+  staff_supplier_overdue: (d) =>
+    msg(
+      lines(`Заказ ${d.orderNumber}: срок сорван, обещали ${promise(d.promisedDate)}.`, d.note),
+      adminLink(d),
+    ),
+  staff_not_picked_up: (d) =>
+    msg(
+      lines(
+        `Заказ ${d.orderNumber}: не забирают — позвоните клиенту.`,
+        d.note,
+        `Клиент ${maskPhone(d.clientPhone)}`,
+      ),
+      adminLink(d),
+    ),
+  staff_supplier_shipped: (d) =>
+    msg(
+      lines(`Rossko отгрузил заказ ${d.orderNumber} на точку — проверьте приёмку.`, d.note),
+      adminLink(d),
+    ),
 };
 
 export function renderOrderTemplate(

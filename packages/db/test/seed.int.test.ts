@@ -65,7 +65,12 @@ describe('seed (globalSetup already ran it once)', () => {
         'reviews.max_age_days',
         'reviews.min_count',
         'reviews.reminder_days',
+        'rossko.auto_order_max_total_kop',
+        'rossko.cutoff_times',
         'rossko.local_stock_ids',
+        'rossko.order_status_map',
+        'rossko.order_within_minutes',
+        'rossko.poll_enabled',
         'rossko.prepay_invoice',
         'supplier.return_days',
       ].sort(),
@@ -105,6 +110,13 @@ describe('seed (globalSetup already ran it once)', () => {
     // step 4: the master's SLA for fit checks, minutes of working time
     expect(byKey['fit_check.sla_minutes']).toBe(60);
     expect(byKey['rossko.prepay_invoice']).toBe(false);
+    // step 8 (docs/rossko-automation.md): nothing mapped, the polling off, 120 working minutes,
+    // the shadow auto-order limit 15 000 ₽, no cutoff times
+    expect(byKey['rossko.order_status_map']).toEqual({});
+    expect(byKey['rossko.poll_enabled']).toBe(false);
+    expect(byKey['rossko.order_within_minutes']).toBe(120);
+    expect(byKey['rossko.auto_order_max_total_kop']).toBe(1_500_000);
+    expect(byKey['rossko.cutoff_times']).toEqual([]);
     // Stored as real jsonb, not a JSON string.
     const [typed] = await db.$client<{ t: string }[]>`
       select jsonb_typeof(value) as t from settings where key = 'pricing.markup_rules'`;

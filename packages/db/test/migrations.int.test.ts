@@ -149,6 +149,12 @@ describe('migrations on an empty database', () => {
       ['finance_reconciliations', 'month'],
       ['finance_reconciliations', 'created_by'],
       ['finance_reconciliations', 'result'],
+      // step 8 (0011): what the GetOrders polling stores per supplier order
+      ['supplier_orders', 'status_code'],
+      ['supplier_orders', 'status_name'],
+      ['supplier_orders', 'status_checked_at'],
+      ['supplier_orders', 'status_changed_at'],
+      ['supplier_orders', 'rossko_statuses'],
     ] as const) {
       expect(columns).toContainEqual({ table_name: table, column_name: column });
     }

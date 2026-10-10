@@ -165,6 +165,8 @@ describe('DEMO_MODE routes', () => {
       import('@/app/api/proposals/[token]/take/route').then((m) =>
         m.POST(request(), { params: Promise.resolve({ token: 'A'.repeat(32) }) }),
       ),
+      // Step 8: the settings of Rossko without the manual cabinet.
+      import('@/app/api/admin/rossko/route').then((m) => m.POST(request())),
     ]);
     for (const response of routes) expect(response.status).toBe(404);
   });

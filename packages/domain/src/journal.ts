@@ -92,6 +92,18 @@ export const JOURNAL_EVENTS = [
   'supplier_return_refunded',
   /** «Списать» of a part kept in stock (payload stockItemId, itemId). */
   'stock_item_written_off',
+  // step 8 (docs/rossko-automation.md): Rossko without the manual cabinet
+  /**
+   * The shadow auto-order at «Проверить и заказать», after the recheck: payload decision
+   * ('yes' | 'no'), reasons, masterOrdered (the press sent the order to the supplier), outcome
+   * (the status it led to), recheckEventId. The real auto-order stays off (PLAN decision 7).
+   */
+  'auto_order_shadow',
+  /**
+   * GetOrders polling saw a new status code of a Rossko order: payload supplierOrderId,
+   * rosskoOrderId, code, name, previousCode and the mapped action (or 'unmapped').
+   */
+  'rossko_status',
 ] as const;
 export type JournalEvent = (typeof JOURNAL_EVENTS)[number];
 

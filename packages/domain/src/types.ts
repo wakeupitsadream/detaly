@@ -371,8 +371,42 @@ export interface SettingsValues {
   'finance.reminder_days': FinanceReminderDaysSetting;
   /** The pickup point's services contract: a price per operation and a turnover rate (all 0). */
   'contract.rates': ContractRatesSetting;
+  /**
+   * Step 8 (docs/rossko-automation.md): GetOrders status code -> what to do; {} until the codes
+   * are known (docs/external.md R11), so nothing is mapped and nothing is acted on.
+   */
+  'rossko.order_status_map': Record<string, RosskoStatusActionSetting>;
+  /** Step 8: the GetOrders polling every 20 minutes; works only with ROSSKO_MODE=live (false). */
+  'rossko.poll_enabled': boolean;
+  /** Step 8: «Не заказано у поставщика» after this many working minutes of the point (120). */
+  'rossko.order_within_minutes': number;
+  /** Step 8: the shadow auto-order says «НЕТ» above this order total (1 500 000 = 15 000 ₽). */
+  'rossko.auto_order_max_total_kop': Kop;
+  /** Step 8: the Rossko manager's order deadlines 'HH:MM' ([] until they are known). */
+  'rossko.cutoff_times': string[];
 }
 export type SettingsKey = keyof SettingsValues;
+
+/** An action of settings `rossko.order_status_map` (ROSSKO_STATUS_ACTIONS of rossko-automation). */
+export type RosskoStatusActionSetting = 'shipped_to_point' | 'refused' | 'in_progress' | 'ignore';
+
+/**
+ * supplier_orders.rossko_statuses[<Rossko order id>] (step 8, docs/rossko-automation.md): the last
+ * GetOrders status of one Rossko order of a supplier order.
+ */
+export interface RosskoOrderStatusState {
+  /** The status code (null: GetOrders gave none). */
+  code: number | null;
+  /** The status name as Rossko wrote it. */
+  name: string | null;
+  /** ISO instant the code was first seen. */
+  changedAt: string;
+  /**
+   * The mapped action of the code was applied, or there is nothing to do; false while the code
+   * is not in settings rossko.order_status_map (it is applied once the map has it).
+   */
+  handled: boolean;
+}
 
 /** settings `finance.reminder_days` (FinanceReminderDays of finance.ts). */
 export interface FinanceReminderDaysSetting {

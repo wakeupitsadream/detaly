@@ -194,6 +194,11 @@ export interface RecentOrdersOptions {
   since?: Date;
 }
 
+export interface OrdersOptions {
+  /** Limiter priority of every GetOrders call (default `critical`). */
+  priority?: CallPriority;
+}
+
 export interface OrdersResult {
   success: boolean;
   message: string | null;
@@ -229,8 +234,12 @@ export type LocalStockIdsSource =
 export interface RosskoClient {
   search(text: string, options?: SearchOptions): Promise<SearchResult>;
   checkoutDetails(): Promise<CheckoutDetails>;
-  /** Fetches orders by id; more than 20 ids are split into several calls. */
-  orders(ids: readonly string[]): Promise<OrdersResult>;
+  /**
+   * Fetches orders by id; more than 20 ids are split into several calls. `priority` defaults to
+   * `critical` (the recovery after a GetCheckout timeout); the step 8 polling passes `search`, so
+   * it stops at the quota breaker (docs/rossko-automation.md).
+   */
+  orders(ids: readonly string[], options?: OrdersOptions): Promise<OrdersResult>;
   /**
    * GetOrders without order_ids: the account's recent orders, for the recovery after a
    * GetCheckout timeout (decision Б14). VERIFY: the list mode is unconfirmed; when Rossko refuses

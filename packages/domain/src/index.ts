@@ -41,3 +41,5 @@ export * from './vin';
 export * from './vehicles';
 // step 7 (docs/month-close.md): the month close, the act, the margin, the reconciliation diff
 export * from './finance';
+// step 8 (docs/rossko-automation.md): deadline alerts, the cutoff reminder, the shadow auto-order
+export * from './rossko-automation';

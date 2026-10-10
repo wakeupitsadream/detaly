@@ -7,6 +7,7 @@ import {
   OUTBOX_QUEUES,
   QUEUE_NAMES,
   RECONCILIATION_JOBS,
+  ROSSKO_JOBS,
 } from '../src/queues';
 
 describe('bullJobId (decision Б2)', () => {
@@ -45,6 +46,8 @@ describe('queue names', () => {
       'fitChecks',
       'monthClose',
       'financeReminders',
+      'rosskoDeadlines',
+      'rosskoCutoff',
     ]);
     expect(RECONCILIATION_JOBS).toEqual({ sweep: 'sweep', nightly: 'nightly' });
   });
@@ -80,5 +83,18 @@ describe('step 7 jobs', () => {
   it('the month close on the 1st and the daily finance reminders', () => {
     expect(HOUSEKEEPING_JOBS.monthClose).toBe('month-close');
     expect(HOUSEKEEPING_JOBS.financeReminders).toBe('finance-reminders');
+  });
+});
+
+describe('step 8 jobs', () => {
+  it('the deadline alerts, the cutoff reminder and the GetOrders polling', () => {
+    expect(HOUSEKEEPING_JOBS.rosskoDeadlines).toBe('rossko-deadlines');
+    expect(HOUSEKEEPING_JOBS.rosskoCutoff).toBe('rossko-cutoff');
+    expect(ROSSKO_JOBS).toEqual({
+      recheck: 'recheck',
+      checkout: 'checkout',
+      recover: 'recover',
+      pollOrders: 'poll-orders',
+    });
   });
 });

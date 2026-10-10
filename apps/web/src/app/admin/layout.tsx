@@ -70,6 +70,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <Link href="/admin/month" className="text-sm text-accent underline">
             Месяц
           </Link>
+          <Link href="/admin/rossko" className="text-sm text-accent underline">
+            Rossko
+          </Link>
+          <Link href="/admin/auto-order" className="text-sm text-accent underline">
+            Автозаказ
+          </Link>
         </nav>
       </header>
       <main className="mx-auto w-full max-w-6xl min-w-0 flex-1 px-4 py-6 print:max-w-none print:p-0">

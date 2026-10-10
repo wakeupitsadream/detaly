@@ -87,6 +87,7 @@ import { handleYooKassaWebhook } from '../../../web/src/server/payments/webhook-
 import { runWorker } from '../../src/app';
 import { createSellerBot } from '../../src/bots/seller/bot';
 import { createSellerCards } from '../../src/bots/seller/cards';
+import { isSchedulerJob } from '../../src/dead-letter';
 import type { WorkerDeps } from '../../src/deps';
 import type { ShutdownHandle } from '../../src/shutdown';
 import { prepareOwnDatabase } from '../fixtures/databases';
@@ -584,7 +585,8 @@ const WORK_QUEUES: QueueName[] = ['payments', 'receipts', 'rossko', 'notify'];
 
 /**
  * Nothing left to do: every due outbox row dispatched and the work queues without waiting,
- * active, prioritized or delayed jobs (housekeeping and reconciliation keep their schedulers).
+ * active, prioritized or delayed jobs (housekeeping and reconciliation keep their schedulers;
+ * since step 8 the rossko queue keeps one too — the next run of rossko/poll-orders is not work).
  */
 export async function settled(h: FlowHarness, timeoutMs = 20_000): Promise<void> {
   const worker = h.worker;
@@ -598,14 +600,16 @@ export async function settled(h: FlowHarness, timeoutMs = 20_000): Promise<void>
         .where(and(isNull(outbox.dispatchedAt), sql`${outbox.availableAt} <= now()`));
       if ((due?.n ?? 0) > 0) return false;
       for (const name of WORK_QUEUES) {
-        const counts = await worker.deps.queues[name].getJobCounts(
+        const queue = worker.deps.queues[name];
+        const counts = await queue.getJobCounts(
           'waiting',
           'active',
-          'delayed',
           'prioritized',
           'waiting-children',
         );
         if (Object.values(counts).some((n) => n > 0)) return false;
+        const delayed = await queue.getDelayed();
+        if (delayed.some((job) => !isSchedulerJob(job))) return false;
       }
       const hk = await worker.deps.queues.housekeeping.getJobCounts('active', 'waiting');
       return Object.values(hk).every((n) => n === 0);

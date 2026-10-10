@@ -84,5 +84,15 @@ export function settingsDefaultsFromEnv(env: Env): SettingsValues {
       },
       turnoverBp: 0,
     },
+    // Step 8 (docs/rossko-automation.md): the GetOrders status codes are unknown until the Rossko
+    // keys arrive (docs/external.md R11), so nothing is mapped and the polling is off; «Не
+    // заказано у поставщика» after 2 working hours; the shadow auto-order says «НЕТ» above
+    // 15 000 ₽; no cutoff times until the Rossko manager names them (DEFAULT_ROSSKO_* and
+    // DEFAULT_AUTO_ORDER_MAX_TOTAL_KOP of @detaly/domain, checked by settings-defaults.test.ts).
+    'rossko.order_status_map': {},
+    'rossko.poll_enabled': false,
+    'rossko.order_within_minutes': 120,
+    'rossko.auto_order_max_total_kop': 1_500_000,
+    'rossko.cutoff_times': [],
   };
 }

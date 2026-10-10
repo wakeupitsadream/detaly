@@ -85,6 +85,18 @@ export const HOUSEKEEPING_JOBS = {
    * payment date on the days of settings finance.reminder_days, once per month each.
    */
   financeReminders: 'finance-reminders',
+  /**
+   * Every 10 minutes (step 8, docs/rossko-automation.md): the deadline alerts to the sellers chat,
+   * one per order and kind — «Не заказано у поставщика», «Срок поставщика под угрозой», «Срок
+   * сорван», «Не забирают».
+   */
+  rosskoDeadlines: 'rossko-deadlines',
+  /**
+   * Every 5 minutes (step 8): 25 minutes before a Rossko cutoff of settings rossko.cutoff_times on
+   * a working day, one push «Через 25 минут отсечка Rossko: не заказано N заказов» when there is
+   * something to order.
+   */
+  rosskoCutoff: 'rossko-cutoff',
 } as const;
 
 /** Job names of the reconciliation queue (decision Б29, PLAN section 1). */
@@ -117,6 +129,11 @@ export const ROSSKO_JOBS = {
   recheck: 'recheck',
   checkout: 'checkout',
   recover: 'recover',
+  /**
+   * Every 20 minutes (step 8, docs/rossko-automation.md): GetOrders of the open supplier orders,
+   * only with ROSSKO_MODE=live and settings rossko.poll_enabled; acts on mapped status codes only.
+   */
+  pollOrders: 'poll-orders',
 } as const;
 
 /** Job names of the notify queue (section 12.1). */

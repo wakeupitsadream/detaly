@@ -92,6 +92,7 @@ export {
   type CheckoutRequest,
   type CheckoutResult,
   type LocalStockIdsSource,
+  type OrdersOptions,
   type OrdersResult,
   type ParsedSearch,
   type QuotaStatus,

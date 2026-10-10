@@ -12,13 +12,20 @@
 // Step 7 (docs/month-close.md): the task of each part going back to Rossko — the part, the
 // deadline (orders.supplier_return_deadline_at), and «Сдал водителю» / «Не берут» while it waits
 // at the point (supplierReturnActions, the id is the supplier return).
+//
+// Step 8 (docs/rossko-automation.md): the shadow auto-order of the latest «Проверить и заказать»
+// as one line «Автозаказ бы: ДА» / «Автозаказ бы: НЕТ — <причины>» while the order is on its way
+// from the supplier; the deadline alerts and «Отгружено Rossko» have their own headlines.
 import {
   addDays,
+  autoOrderLine,
+  DEADLINE_ALERT_HEADLINES,
   CLAIM_DECISION_LABELS,
   CLAIM_KIND_LABELS,
   fitGuaranteeClaimLabel,
   formatRub,
   localDate,
+  type AutoOrderReason,
   type ClaimDecision,
   type ClaimKind,
   type InstallBookingStatus,
@@ -115,6 +122,12 @@ const HEADLINES: Partial<Record<OrderNotifyTemplate, string>> = {
   staff_claim_deadline: 'Претензия',
   staff_claim_opened: 'Претензия',
   staff_install_request: 'Запись на установку',
+  // step 8: the deadline alerts and the GetOrders «shipped to the point» push
+  staff_not_ordered: DEADLINE_ALERT_HEADLINES.not_ordered,
+  staff_supplier_late: DEADLINE_ALERT_HEADLINES.supplier_late,
+  staff_supplier_overdue: DEADLINE_ALERT_HEADLINES.supplier_overdue,
+  staff_not_picked_up: DEADLINE_ALERT_HEADLINES.not_picked_up,
+  staff_supplier_shipped: 'Отгружено Rossko',
 };
 
 export function headlineFor(template: OrderNotifyTemplate | null | undefined): string {
@@ -201,6 +214,15 @@ export interface CardData {
   returnActions?: SupplierReturnActionView[];
   /** APP_BASE_URL/admin/orders/<id>. */
   adminUrl: string;
+  /**
+   * Step 8: the shadow auto-order of the latest «Проверить и заказать» (journal
+   * auto_order_shadow), shown while the order is on its way from the supplier.
+   */
+  autoOrder?: {
+    decision: 'yes' | 'no';
+    reasons: readonly AutoOrderReason[];
+    maxTotalKop: number | null;
+  } | null;
   headline?: string | null;
   /** Extra line without PD (recheck failure and the like). */
   note?: string | null;
@@ -298,6 +320,14 @@ export function renderCardText(data: CardData, menu: CardMenu | null = null): st
   const attention =
     order.status === 'needs_attention' ? attentionLabel(order.attentionReason) : null;
   if (attention) lines.push(`Внимание: ${attention}`);
+  if (data.autoOrder) {
+    lines.push(
+      autoOrderLine(
+        { decision: data.autoOrder.decision, reasons: [...data.autoOrder.reasons] },
+        { maxTotalKop: data.autoOrder.maxTotalKop },
+      ),
+    );
+  }
   const returns = data.returns ?? [];
   if (returns.length > 0) {
     for (const ret of returns) lines.push(supplierReturnLine(ret, order.supplierReturnDeadlineAt));

@@ -144,6 +144,8 @@ describe.skipIf(!hasTestDatabase)('full order cycle on the queues', () => {
       'recheck_requested',
       'recheck_result',
       'supplier_order_requested:confirmed->ordering',
+      // step 8: the shadow auto-order of the press (docs/rossko-automation.md)
+      'auto_order_shadow',
       'supplier_checkout_succeeded:ordering->ordered_at_supplier',
       'item_arrived',
       'item_arrived:ordered_at_supplier->ready',
@@ -286,6 +288,8 @@ describe.skipIf(!hasTestDatabase)('full order cycle on the queues', () => {
       'recheck_requested',
       'recheck_result',
       'supplier_order_requested:confirmed->ordering',
+      // step 8: the shadow auto-order of the press (docs/rossko-automation.md)
+      'auto_order_shadow',
       'supplier_checkout_succeeded:ordering->ordered_at_supplier',
       'item_arrived',
       'item_arrived:ordered_at_supplier->ready',
@@ -381,6 +385,8 @@ describe.skipIf(!hasTestDatabase)('full order cycle on the queues', () => {
       'recheck_requested',
       'recheck_result',
       'supplier_order_requested:confirmed->ordering',
+      // step 8: the shadow auto-order of the press (docs/rossko-automation.md)
+      'auto_order_shadow',
       'supplier_checkout_succeeded:ordering->needs_attention',
       'item_cancelled:needs_attention->ordered_at_supplier',
       'refund_created',

@@ -297,7 +297,7 @@ export function createRosskoClient(options: RosskoClientOptions): RosskoClient {
       return invoke('GetCheckoutDetails', credentials(), 'critical', mapCheckoutDetails);
     },
 
-    async orders(ids): Promise<OrdersResult> {
+    async orders(ids, { priority = 'critical' } = {}): Promise<OrdersResult> {
       const unique = [...new Set(ids.map((id) => id.trim()).filter((id) => id !== ''))];
       const merged: OrdersResult = { success: true, message: null, orders: [] };
       for (let i = 0; i < unique.length; i += ORDERS_BATCH_SIZE) {
@@ -306,7 +306,7 @@ export function createRosskoClient(options: RosskoClientOptions): RosskoClient {
         const result = await invoke(
           'GetOrders',
           { ...credentials(), order_ids: { id: batch } },
-          'critical',
+          priority,
           mapOrdersResult,
         );
         merged.success &&= result.success;

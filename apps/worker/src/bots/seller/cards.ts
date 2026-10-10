@@ -27,6 +27,7 @@ import {
   eq,
   inArray,
   isNull,
+  orderEvents,
   orderItems,
   orders,
   payments,
@@ -35,8 +36,11 @@ import {
   type Db,
 } from '@detaly/db';
 import {
+  AUTO_ORDER_LINE_STATUSES,
   CLIENT_TIME_ZONE,
   DateError,
+  isOneOf,
+  parseAutoOrderShadow,
   etaDate,
   formatPromise,
   formatRub,
@@ -240,6 +244,20 @@ export function createCardService(
 ): CardService {
   const { db, env, logger } = deps;
 
+  /** Step 8: the shadow auto-order of the latest «Проверить и заказать» of the order. */
+  async function loadAutoOrder(orderId: string): Promise<CardData['autoOrder']> {
+    const [event] = await db
+      .select({ payload: orderEvents.payload })
+      .from(orderEvents)
+      .where(and(eq(orderEvents.orderId, orderId), eq(orderEvents.type, 'auto_order_shadow')))
+      .orderBy(desc(orderEvents.createdAt), desc(orderEvents.id))
+      .limit(1);
+    const shadow = parseAutoOrderShadow(event?.payload);
+    return shadow === null
+      ? null
+      : { decision: shadow.decision, reasons: shadow.reasons, maxTotalKop: shadow.maxTotalKop };
+  }
+
   async function loadCard(
     orderId: string,
     extra: { headline?: string | null; note?: string | null } = {},
@@ -324,6 +342,9 @@ export function createCardService(
       })),
       returnActions: supplierReturnActions(returns),
       adminUrl: adminUrl(env, order.id),
+      autoOrder: isOneOf(AUTO_ORDER_LINE_STATUSES, order.status)
+        ? await loadAutoOrder(order.id)
+        : null,
       headline: extra.headline ?? null,
       note: extra.note ?? null,
     };

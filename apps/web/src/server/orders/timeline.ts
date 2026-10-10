@@ -108,6 +108,10 @@ export const HIDDEN_TIMELINE_EVENTS: ReadonlySet<OrderEvent | JournalEvent> = ne
   'supplier_return_shipped',
   'supplier_return_refunded',
   'stock_item_written_off',
+  // Step 8 (docs/rossko-automation.md): the shadow auto-order and the Rossko statuses are the
+  // shop's own records; what the client must know comes with the transitions (ordered, arrived).
+  'auto_order_shadow',
+  'rossko_status',
 ]);
 
 type PhraseInput = Pick<TimelineEvent, 'type' | 'toStatus'> &
@@ -353,6 +357,8 @@ function journalPhrase(event: PhraseInput): string | null {
     case 'supplier_return_shipped':
     case 'supplier_return_refunded':
     case 'stock_item_written_off':
+    case 'auto_order_shadow':
+    case 'rossko_status':
       return null;
     default:
       // Not a JournalEvent: an unknown type.

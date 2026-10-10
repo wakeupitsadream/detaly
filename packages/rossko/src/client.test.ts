@@ -383,6 +383,41 @@ describe('createRosskoClient.checkoutDetails and orders', () => {
     // the fixture returns the same two orders for every batch
     expect(result.orders).toHaveLength(6);
   });
+
+  it('GetOrders is critical by default; the step 8 polling asks with the search priority', async () => {
+    const acquire = vi.fn(() => Promise.resolve({ waitedMs: 0, dailyCount: 1 }));
+    const { instance, events } = client({
+      limiter: { ...createUnlimitedLimiter(), acquire },
+      searchMaxWaitMs: 111,
+      criticalMaxWaitMs: 222,
+    });
+    await instance.orders(['70000001']);
+    await instance.orders(['70000001', '70000002'], { priority: 'search' });
+    expect(acquire.mock.calls).toEqual([
+      [{ priority: 'critical', maxWaitMs: 222 }],
+      [{ priority: 'search', maxWaitMs: 111 }],
+    ]);
+    expect(events.map((e) => [e.method, e.priority])).toEqual([
+      ['GetOrders', 'critical'],
+      ['GetOrders', 'search'],
+    ]);
+  });
+
+  it('the search priority of GetOrders stops at the quota breaker before any call', async () => {
+    const limiter: RosskoLimiter = {
+      ...createUnlimitedLimiter(),
+      acquire: ({ priority }) =>
+        priority === 'search'
+          ? Promise.reject(new QuotaBreakerError(undefined, { reason: 'breaker', priority }))
+          : Promise.resolve({ waitedMs: 0, dailyCount: 1 }),
+    };
+    const { instance, calls } = client({ limiter });
+    await expect(instance.orders(['70000001'], { priority: 'search' })).rejects.toBeInstanceOf(
+      QuotaBreakerError,
+    );
+    expect(calls).toHaveLength(0);
+    await expect(instance.orders(['70000001'])).resolves.toMatchObject({ success: true });
+  });
 });
 
 describe('createRosskoClient.recentOrders (GetOrders list mode, VERIFY)', () => {

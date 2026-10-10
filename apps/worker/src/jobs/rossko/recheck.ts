@@ -14,6 +14,11 @@
  * Supplier or quota errors are retried by the queue (3 attempts); the last failed attempt writes
  * `recheck_result` with `ok: false` and posts a seller card «Rossko не ответил» instead of
  * failing, so the seller can press the button again.
+ *
+ * Step 8 (docs/rossko-automation.md): in the same transaction the shadow auto-order
+ * (shouldAutoOrder of @detaly/domain) is journaled as `auto_order_shadow` — decision, reasons and
+ * whether this press sent the order to the supplier (masterOrdered). Nothing is ordered by it: the
+ * real auto-order stays off (PLAN decision 7). The seller card shows it as one line.
  */
 import { and, eq, excludedGroups, orderEvents, sql } from '@detaly/db';
 import {
@@ -21,6 +26,8 @@ import {
   MoneyError,
   RecheckError,
   recheckOrder,
+  shouldAutoOrder,
+  type AutoOrderDecision,
   type ExcludedRule,
   type Offer,
   type RecheckItemInput,
@@ -28,8 +35,10 @@ import {
 } from '@detaly/domain';
 import {
   applyTransition,
+  loadAutoOrderLines,
   loadOrderSettings,
   loadOrderSnapshot,
+  loadRosskoSettings,
   recordJournalEvent,
   type ApplyResult,
   type OrderItemRow,
@@ -59,8 +68,15 @@ export type RecheckJobResult =
       priceDriftBp: number;
       allAvailable: boolean;
       recheckEventId: string;
+      /** Step 8: the shadow auto-order of this press. */
+      shadow: Pick<AutoOrderDecision, 'decision' | 'reasons'>;
     }
-  | { outcome: 'not_applied'; reason: string; recheckEventId: string }
+  | {
+      outcome: 'not_applied';
+      reason: string;
+      recheckEventId: string;
+      shadow: Pick<AutoOrderDecision, 'decision' | 'reasons'>;
+    }
   | { outcome: 'supplier_unavailable'; recheckEventId: string | null };
 
 /** GetSearch answered success=false with something other than "nothing found". */
@@ -179,6 +195,7 @@ export async function processRecheck(job: Job, deps: WorkerDeps): Promise<Rechec
   if (items.length === 0) return { outcome: 'skipped', reason: 'no_items' };
 
   const settings = await loadOrderSettings(deps.db, deps.env);
+  const rosskoSettings = await loadRosskoSettings(deps.db);
   const excludedRules = await loadExcludedRules(deps);
   const articles = [...new Set(items.map((item) => item.searchArticleNorm))];
 
@@ -224,6 +241,16 @@ export async function processRecheck(job: Job, deps: WorkerDeps): Promise<Rechec
       payload: resultPayload(requestEventId, staffId, settings.driftToleranceBp, result),
       at,
     });
+    // Step 8: what an automatic order would have done, from the order as it is locked now.
+    const shadow = shouldAutoOrder({
+      lines: await loadAutoOrderLines(tx, locked),
+      recheck: result,
+      totalKop: locked.order.totalKop,
+      maxTotalKop: rosskoSettings.autoOrderMaxTotalKop,
+      noShowCount: locked.noShowCount,
+      driftToleranceBp: settings.driftToleranceBp,
+      marginFloorBp: settings.marginFloorBp,
+    });
     const applied: ApplyResult = await applyTransition(deps.engine, {
       orderId,
       event: 'supplier_order_requested',
@@ -236,15 +263,41 @@ export async function processRecheck(job: Job, deps: WorkerDeps): Promise<Rechec
       payload: { recheckEventId, requestEventId, requestedBy: staffId },
       tx,
     });
-    return { recheckEventId, applied };
+    await recordJournalEvent(tx, {
+      orderId,
+      type: 'auto_order_shadow',
+      actor: SYSTEM_ACTOR,
+      payload: {
+        decision: shadow.decision,
+        reasons: shadow.reasons,
+        // The press sent the order to the supplier: the master ordered it as it is.
+        masterOrdered: applied.ok && applied.to === 'ordering',
+        outcome: applied.ok ? applied.to : null,
+        recheckEventId,
+        requestEventId,
+        requestedBy: staffId,
+        totalKop: locked.order.totalKop,
+        maxTotalKop: rosskoSettings.autoOrderMaxTotalKop,
+        marginBp: shadow.marginBp,
+      },
+      // After the transition in the journal: the shadow is read next to what the press did.
+      at: deps.now(),
+    });
+    return { recheckEventId, applied, shadow };
   });
 
   if (outcome === null) return { outcome: 'skipped', reason: 'status' };
-  const { recheckEventId, applied } = outcome;
+  const { recheckEventId, applied, shadow } = outcome;
   nudge(deps);
+  log.info({ decision: shadow.decision, reasons: shadow.reasons }, 'recheck: shadow auto-order');
   if (!applied.ok) {
     log.warn({ reason: applied.reason, failed: applied.failed }, 'recheck: transition refused');
-    return { outcome: 'not_applied', reason: applied.reason, recheckEventId };
+    return {
+      outcome: 'not_applied',
+      reason: applied.reason,
+      recheckEventId,
+      shadow: { decision: shadow.decision, reasons: shadow.reasons },
+    };
   }
   // The sellers card still shows «Проверить и заказать» of `confirmed`: redraw it for
   // `ordering` (best effort; needs_attention also gets a new card from the notify queue).
@@ -259,6 +312,7 @@ export async function processRecheck(job: Job, deps: WorkerDeps): Promise<Rechec
     priceDriftBp: result.priceDriftBp,
     allAvailable: result.allAvailable,
     recheckEventId,
+    shadow: { decision: shadow.decision, reasons: shadow.reasons },
   };
 }
 

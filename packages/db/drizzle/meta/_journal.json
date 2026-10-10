@@ -78,6 +78,13 @@
       "when": 1791577660434,
       "tag": "0010_month_close",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791604665952,
+      "tag": "0011_rossko_automation",
+      "breakpoints": true
     }
   ]
 }

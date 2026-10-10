@@ -221,6 +221,13 @@ export const ORDER_NOTIFY_TEMPLATES = [
   // staff, phase 1C
   'staff_claim_opened',
   'staff_install_request',
+  // staff, step 8 (docs/rossko-automation.md): the deadline alerts of housekeeping and the
+  // GetOrders polling, outside TRANSITIONS
+  'staff_not_ordered',
+  'staff_supplier_late',
+  'staff_supplier_overdue',
+  'staff_not_picked_up',
+  'staff_supplier_shipped',
 ] as const;
 export type OrderNotifyTemplate = (typeof ORDER_NOTIFY_TEMPLATES)[number];
 

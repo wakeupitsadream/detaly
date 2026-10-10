@@ -76,6 +76,10 @@ describe('demo proxy: hidden paths', () => {
     for (const path of ['/api/admin/month', '/api/admin/month/csv', '/api/admin/returns']) {
       expect(demoBlockedPath(path), path).toBe('api');
     }
+    // step 8: Rossko without the manual cabinet and the shadow auto-order
+    expect(demoBlockedPath('/admin/rossko')).toBe('page');
+    expect(demoBlockedPath('/admin/auto-order')).toBe('page');
+    expect(demoBlockedPath('/api/admin/rossko')).toBe('api');
     expect(demoBlockedPath('/api/webhooks/yookassa')).toBe('api');
     expect(demoBlockedPath('/api/orders/abc/cancel')).toBe('api');
     expect(demoBlockedPath('/o/some-real-looking-token-1234')).toBe('page');
@@ -97,6 +101,7 @@ describe('demo proxy: hidden paths', () => {
       '/api/admin/pricing',
       '/api/admin/month',
       '/api/admin/returns',
+      '/api/admin/rossko',
     ]) {
       const response = await proxy(request('POST', path));
       expect(response.status, path).toBe(404);
@@ -121,6 +126,8 @@ describe('demo proxy: hidden paths', () => {
       '/admin/month/rates',
       '/admin/returns',
       '/admin/stock',
+      '/admin/rossko',
+      '/admin/auto-order',
       '/o/abcdefghijklmnopqrstu',
       '/%6f/x',
     ]) {

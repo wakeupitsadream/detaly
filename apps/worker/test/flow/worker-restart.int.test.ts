@@ -177,10 +177,12 @@ describe.skipIf(!hasTestDatabase)('worker restart: nothing lost, nothing doubled
       ...before.b,
       'payment_ttl_expired:awaiting_handover_payment->ready',
     ]);
-    expect((await journal(h, c.orderId)).slice(-4)).toEqual([
+    expect((await journal(h, c.orderId)).slice(-5)).toEqual([
       'recheck_requested',
       'recheck_result',
       'supplier_order_requested:confirmed->ordering',
+      // step 8: the shadow auto-order of the press (docs/rossko-automation.md)
+      'auto_order_shadow',
       'supplier_checkout_succeeded:ordering->ordered_at_supplier',
     ]);
     expect(h.rossko.count('GetCheckout')).toBe(checkoutsBefore + 1);

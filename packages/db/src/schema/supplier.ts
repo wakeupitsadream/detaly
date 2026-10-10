@@ -1,5 +1,6 @@
 // Rossko orders (one row per GetCheckout attempt, created as `sending` before the call),
 // returns/claims to the supplier and our own stock of parts Rossko did not take back.
+import type { RosskoOrderStatusState } from '@detaly/domain/types';
 import { sql } from 'drizzle-orm';
 import {
   index,
@@ -35,8 +36,25 @@ export const supplierOrders = pgTable(
     /** Rossko ItemsErrorList as received. */
     itemErrors: jsonb(),
     deliveryCostKop: kop(),
-    /** Rossko order status code from GetOrders (phase 2 polling). */
+    /**
+     * Rossko order status code from GetOrders (step 8 polling, docs/rossko-automation.md): the code
+     * of the Rossko order of this attempt whose status changed last.
+     */
     statusCode: integer(),
+    /** The Rossko name of status_code as GetOrders gave it (VERIFY: R11, docs/external.md). */
+    statusName: text(),
+    /** The last GetOrders answer that listed an order of this attempt. */
+    statusCheckedAt: tstz(),
+    /** When status_code last changed. */
+    statusChangedAt: tstz(),
+    /**
+     * Per Rossko order id (one GetCheckout may create several, one per warehouse): the last code
+     * and name and whether the mapped action of that code was applied (`handled`).
+     */
+    rosskoStatuses: jsonb()
+      .$type<Record<string, RosskoOrderStatusState>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     /**
      * UPD (universal transfer document) in S3. Explicit name: snake_case casing would turn
      * `updS3Key` into `upd_s_3_key`.
@@ -67,6 +85,12 @@ export const supplierOrders = pgTable(
       .on(t.orderId)
       .where(sql`${t.status} = 'sending'`),
     namedCheck('supplier_orders', 'attempt_no', sql`${t.attemptNo} >= 1`),
+    // Step 8: one entry per Rossko order id.
+    namedCheck(
+      'supplier_orders',
+      'rossko_statuses',
+      sql`jsonb_typeof(${t.rosskoStatuses}) = 'object'`,
+    ),
     kopCheck('supplier_orders', 'delivery_cost_kop', t.deliveryCostKop),
     kopCheck('supplier_orders', 'invoice_amount_kop', t.invoiceAmountKop),
   ],

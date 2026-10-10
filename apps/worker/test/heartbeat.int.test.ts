@@ -75,6 +75,8 @@ describe.skipIf(!inject('workerDatabaseUrl'))('heartbeat via the Job Scheduler',
         'reminders',
         'retention',
         'reviews-check',
+        'rossko-cutoff',
+        'rossko-deadlines',
         'sms-budget',
         'timers',
       ].sort(),
@@ -95,13 +97,20 @@ describe.skipIf(!inject('workerDatabaseUrl'))('heartbeat via the Job Scheduler',
     // step 7: the month close on the 1st at 09:00 local, the finance reminders daily at 09:10
     expect(byKey['month-close']).toMatchObject({ pattern: '0 9 1 * *', tz: SCHEDULER_TZ });
     expect(byKey['finance-reminders']).toMatchObject({ pattern: '10 9 * * *', tz: SCHEDULER_TZ });
+    // step 8: the deadline alerts every 10 minutes, the cutoff reminder every 5 minutes on the
+    // clock
+    expect(byKey['rossko-deadlines']).toMatchObject({ every: 600_000 });
+    expect(byKey['rossko-cutoff']).toMatchObject({ pattern: '*/5 * * * *', tz: SCHEDULER_TZ });
 
     const reconciliation = await queues.reconciliation.getJobSchedulers();
     const rec = Object.fromEntries(reconciliation.map((s) => [s.key, s]));
     expect(Object.keys(rec).sort()).toEqual(['nightly', 'sweep']);
     expect(rec['sweep']).toMatchObject({ every: 600_000 });
     expect(rec['nightly']).toMatchObject({ pattern: '15 3 * * *', tz: SCHEDULER_TZ });
-    expect(await queues.housekeeping.getJobSchedulersCount()).toBe(11);
+    expect(await queues.housekeeping.getJobSchedulersCount()).toBe(13);
+    // step 8: the GetOrders polling every 20 minutes, a scheduler of the rossko queue
+    const rossko = await queues.rossko.getJobSchedulers();
+    expect(rossko.map((s) => [s.key, s.every])).toEqual([['poll-orders', 1_200_000]]);
   });
 });
 

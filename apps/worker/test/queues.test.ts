@@ -52,6 +52,11 @@ describe('schedulers', () => {
       // step 7: «Закрытие <месяц>» on the 1st at 09:00 local, the finance reminders daily at 09:10
       ['housekeeping', 'month-close', { pattern: '0 9 1 * *', tz: 'Asia/Yekaterinburg' }],
       ['housekeeping', 'finance-reminders', { pattern: '10 9 * * *', tz: 'Asia/Yekaterinburg' }],
+      // step 8: the deadline alerts every 10 minutes, the cutoff reminder every 5 minutes on the
+      // clock, the GetOrders polling every 20 minutes on the rossko queue
+      ['housekeeping', 'rossko-deadlines', { every: 600_000 }],
+      ['housekeeping', 'rossko-cutoff', { pattern: '*/5 * * * *', tz: 'Asia/Yekaterinburg' }],
+      ['rossko', 'poll-orders', { every: 1_200_000 }],
       ['reconciliation', 'sweep', { every: 600_000 }],
       ['reconciliation', 'nightly', { pattern: '15 3 * * *', tz: 'Asia/Yekaterinburg' }],
     ]);
@@ -63,8 +68,8 @@ describe('schedulers', () => {
     await registerSchedulers({ housekeeping: { upsertJobScheduler: housekeeping } as never });
     // heartbeat, timers, reminders, sms-budget, deferred-1a, the phase 1C retention, the
     // step 2 price check, the step 3 reviews check, the step 4 fit checks, the step 7 month
-    // close and finance reminders
-    expect(housekeeping).toHaveBeenCalledTimes(11);
+    // close and finance reminders, the step 8 deadline alerts and cutoff reminder
+    expect(housekeeping).toHaveBeenCalledTimes(13);
 
     const reconciliation = vi.fn(async () => ({}));
     await registerSchedulers({
@@ -75,6 +80,28 @@ describe('schedulers', () => {
       'nightly',
       { pattern: '15 3 * * *', tz: 'Asia/Yekaterinburg' },
       expect.objectContaining({ name: 'nightly', opts: expect.objectContaining({ attempts: 1 }) }),
+    );
+  });
+
+  it('step 8: the GetOrders polling is a scheduler of the rossko queue with one attempt', async () => {
+    const housekeeping = vi.fn(async () => ({}));
+    const rossko = vi.fn(async () => ({}));
+    await registerSchedulers({
+      housekeeping: { upsertJobScheduler: housekeeping } as never,
+      rossko: { upsertJobScheduler: rossko } as never,
+    });
+    // The schedule is the retry: a failed run is never retried by the queue policy (3 attempts).
+    expect(rossko.mock.calls).toEqual([
+      [
+        'poll-orders',
+        { every: 1_200_000 },
+        { name: 'poll-orders', opts: expect.objectContaining({ attempts: 1 }) },
+      ],
+    ]);
+    expect(housekeeping).toHaveBeenCalledWith(
+      'rossko-cutoff',
+      { pattern: '*/5 * * * *', tz: 'Asia/Yekaterinburg' },
+      expect.objectContaining({ name: 'rossko-cutoff' }),
     );
   });
 });

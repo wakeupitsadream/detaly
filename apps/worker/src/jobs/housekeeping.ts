@@ -2,8 +2,8 @@
 // heartbeat (phase 0), timers (every minute), reminders (15 min), sms-budget (hourly),
 // deferred-1a (10 min), retention (daily, phase 1C), price-check (Mondays, step 2),
 // reviews-check (Mondays, step 3), fit-checks (5 min, step 4), month-close (the 1st) and
-// finance-reminders (daily, step 7). One attempt each: the next scheduled run picks up what one
-// missed.
+// finance-reminders (daily, step 7), rossko-deadlines (10 min) and rossko-cutoff (5 min, step 8).
+// One attempt each: the next scheduled run picks up what one missed.
 import { HOUSEKEEPING_JOBS, writeHeartbeat } from '@detaly/config';
 import { UnrecoverableError, type Job } from 'bullmq';
 import type { WorkerDeps } from '../deps';
@@ -19,6 +19,8 @@ import { runPriceCheck, type PriceCheckResult } from './housekeeping/price-check
 import { runReminders, type RemindersResult } from './housekeeping/reminders';
 import { runRetention, type RetentionResult } from './housekeeping/retention';
 import { runReviewsCheck, type ReviewsCheckResult } from './housekeeping/reviews-check';
+import { runRosskoCutoff, type RosskoCutoffResult } from './housekeeping/rossko-cutoff';
+import { runRosskoDeadlines, type RosskoDeadlinesResult } from './housekeeping/rossko-deadlines';
 import { runSmsBudget, type SmsBudgetResult } from './housekeeping/sms-budget';
 import { runTimers, type TimersResult } from './housekeeping/timers';
 
@@ -36,6 +38,8 @@ export { runReminders } from './housekeeping/reminders';
 export { runRetention } from './housekeeping/retention';
 export { reviewReminderKey, runReviewReminders } from './housekeeping/review-reminder';
 export { reviewsCheckText, runReviewsCheck } from './housekeeping/reviews-check';
+export { countNotOrdered, runRosskoCutoff } from './housekeeping/rossko-cutoff';
+export { runRosskoDeadlines } from './housekeeping/rossko-deadlines';
 export { runSmsBudget } from './housekeeping/sms-budget';
 export { runTimers } from './housekeeping/timers';
 
@@ -56,7 +60,9 @@ export type HousekeepingResult =
   | ReviewsCheckResult
   | FitChecksResult
   | MonthCloseResult
-  | FinanceRemindersResult;
+  | FinanceRemindersResult
+  | RosskoDeadlinesResult
+  | RosskoCutoffResult;
 
 const FULL_DEPS_JOBS: readonly string[] = [
   HOUSEKEEPING_JOBS.timers,
@@ -69,6 +75,8 @@ const FULL_DEPS_JOBS: readonly string[] = [
   HOUSEKEEPING_JOBS.fitChecks,
   HOUSEKEEPING_JOBS.monthClose,
   HOUSEKEEPING_JOBS.financeReminders,
+  HOUSEKEEPING_JOBS.rosskoDeadlines,
+  HOUSEKEEPING_JOBS.rosskoCutoff,
 ];
 
 function fullDeps(job: Pick<Job, 'name'>, deps: HousekeepingDeps | WorkerDeps): WorkerDeps {
@@ -124,6 +132,12 @@ export async function processHousekeeping(
       break;
     case HOUSEKEEPING_JOBS.financeReminders:
       result = await runFinanceReminders(full);
+      break;
+    case HOUSEKEEPING_JOBS.rosskoDeadlines:
+      result = await runRosskoDeadlines(full);
+      break;
+    case HOUSEKEEPING_JOBS.rosskoCutoff:
+      result = await runRosskoCutoff(full);
       break;
     default:
       result = await runDeferred1a(full);

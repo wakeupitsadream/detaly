@@ -91,7 +91,7 @@ export function createQueues(conn: ConnectionOptions, options: CreateQueuesOptio
 export const SCHEDULER_TZ = 'Asia/Yekaterinburg';
 
 export interface SchedulerSpec {
-  queue: 'housekeeping' | 'reconciliation';
+  queue: 'housekeeping' | 'reconciliation' | 'rossko';
   /** Scheduler key and job name. */
   name: string;
   repeat: { every: number } | { pattern: string; tz: string };
@@ -105,8 +105,12 @@ export interface SchedulerSpec {
  * VIN photo retention at 04:40 Asia/Yekaterinburg (phase 1C, decision С16), the weekly price
  * check reminder on Mondays at 10:00 Asia/Yekaterinburg (step 2, docs/pricing.md), the
  * weekly reviews reminder on Mondays at 10:05 (step 3, docs/reviews.md), the fit checks
- * every 5 minutes: expiry and the SLA reminder (step 4, docs/fit-check.md), and the month close
- * on the 1st at 09:00 with the finance reminders daily at 09:10 (step 7, docs/month-close.md).
+ * every 5 minutes: expiry and the SLA reminder (step 4, docs/fit-check.md), the month close
+ * on the 1st at 09:00 with the finance reminders daily at 09:10 (step 7, docs/month-close.md),
+ * and step 8 (docs/rossko-automation.md): the deadline alerts every 10 minutes, the cutoff
+ * reminder every 5 minutes on the clock (:00, :05…, so a cutoff on a 5-minute mark is reminded
+ * exactly 25 minutes before), and the GetOrders polling every 20 minutes on the rossko queue
+ * (it does nothing unless ROSSKO_MODE=live and settings rossko.poll_enabled).
  */
 export const SCHEDULERS: readonly SchedulerSpec[] = [
   {
@@ -171,6 +175,24 @@ export const SCHEDULERS: readonly SchedulerSpec[] = [
     keep: 30,
   },
   {
+    queue: 'housekeeping',
+    name: HOUSEKEEPING_JOBS.rosskoDeadlines,
+    repeat: { every: 10 * 60_000 },
+    keep: 20,
+  },
+  {
+    queue: 'housekeeping',
+    name: HOUSEKEEPING_JOBS.rosskoCutoff,
+    repeat: { pattern: '*/5 * * * *', tz: SCHEDULER_TZ },
+    keep: 20,
+  },
+  {
+    queue: 'rossko',
+    name: ROSSKO_JOBS.pollOrders,
+    repeat: { every: 20 * 60_000 },
+    keep: 20,
+  },
+  {
     queue: 'reconciliation',
     name: RECONCILIATION_JOBS.sweep,
     repeat: { every: 10 * 60_000 },
@@ -185,11 +207,11 @@ export const SCHEDULERS: readonly SchedulerSpec[] = [
 ];
 
 /**
- * Declares (idempotently) every Job Scheduler. Without `queues.reconciliation` (phase 0 callers
- * and unit tests) only the housekeeping schedulers are declared.
+ * Declares (idempotently) every Job Scheduler. Without `queues.reconciliation` or `queues.rossko`
+ * (phase 0 callers and unit tests) only the schedulers of the queues passed are declared.
  */
 export async function registerSchedulers(
-  queues: Pick<Queues, 'housekeeping'> & Partial<Pick<Queues, 'reconciliation'>>,
+  queues: Pick<Queues, 'housekeeping'> & Partial<Pick<Queues, 'reconciliation' | 'rossko'>>,
 ): Promise<void> {
   for (const spec of SCHEDULERS) {
     const queue = queues[spec.queue];

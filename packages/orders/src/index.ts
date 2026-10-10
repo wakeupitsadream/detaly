@@ -150,3 +150,5 @@ export {
   type ReconciliationResult,
   type ReconciliationSnapshot,
 } from './finance';
+// step 8 (docs/rossko-automation.md): the settings of the step, the lines of the shadow auto-order
+export { loadAutoOrderLines, loadRosskoSettings, ROSSKO_SETTINGS_KEYS } from './rossko-automation';

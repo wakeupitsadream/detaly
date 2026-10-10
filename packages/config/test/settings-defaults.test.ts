@@ -1,5 +1,13 @@
 import {
+  AUTO_ORDER_MAX_TOTAL_KEY,
   CONTRACT_RATES_KEY,
+  DEFAULT_AUTO_ORDER_MAX_TOTAL_KOP,
+  DEFAULT_ROSSKO_AUTOMATION_SETTINGS,
+  DEFAULT_ROSSKO_ORDER_WITHIN_MINUTES,
+  ROSSKO_CUTOFF_TIMES_KEY,
+  ROSSKO_ORDER_WITHIN_KEY,
+  ROSSKO_POLL_ENABLED_KEY,
+  ROSSKO_STATUS_MAP_KEY,
   DEFAULT_ACQUIRING_BP,
   DEFAULT_CONTRACT_RATES,
   DEFAULT_FINANCE_REMINDER_DAYS,
@@ -61,6 +69,16 @@ describe('settingsDefaultsFromEnv', () => {
       0, 0, 0, 0, 0, 0, 0,
     ]);
     expect(settings['contract.rates'].turnoverBp).toBe(0);
+    // Step 8: the GetOrders codes are unknown — nothing mapped, the polling off; «Не заказано у
+    // поставщика» after 120 working minutes; the shadow auto-order limit 15 000 ₽; no cutoffs.
+    expect(settings[ROSSKO_STATUS_MAP_KEY]).toEqual(DEFAULT_ROSSKO_AUTOMATION_SETTINGS.statusMap);
+    expect(settings['rossko.order_status_map']).toEqual({});
+    expect(settings[ROSSKO_POLL_ENABLED_KEY]).toBe(false);
+    expect(settings[ROSSKO_ORDER_WITHIN_KEY]).toBe(DEFAULT_ROSSKO_ORDER_WITHIN_MINUTES);
+    expect(settings['rossko.order_within_minutes']).toBe(120);
+    expect(settings[AUTO_ORDER_MAX_TOTAL_KEY]).toBe(DEFAULT_AUTO_ORDER_MAX_TOTAL_KOP);
+    expect(settings['rossko.auto_order_max_total_kop']).toBe(1_500_000);
+    expect(settings[ROSSKO_CUTOFF_TIMES_KEY]).toEqual([]);
   });
 
   it('converts percents with decimals exactly', () => {

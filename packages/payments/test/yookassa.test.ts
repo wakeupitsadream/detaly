@@ -30,6 +30,7 @@ const provider = createYooKassaProvider({
 const line = (over: Partial<ReceiptLine> = {}): ReceiptLine => ({
   description: 'MANN W 914/2 Фильтр масляный',
   quantity: 2,
+  measure: 'piece',
   unitPriceKop: 64_000,
   vatCode: 1,
   paymentSubject: 'commodity',
@@ -88,6 +89,7 @@ describe('msw handlers answer raw requests', () => {
           {
             description: 'Деталь',
             quantity: 1,
+            measure: 'piece',
             amount: { value: '100.00', currency: 'RUB' },
             vat_code: 1,
             payment_subject: 'commodity',
@@ -146,6 +148,7 @@ describe('YooKassa provider: payments', () => {
           {
             description: 'MANN W 914/2 Фильтр масляный',
             quantity: 2,
+            measure: 'piece',
             amount: { value: '640.00', currency: 'RUB' },
             vat_code: 1,
             payment_subject: 'commodity',
@@ -268,7 +271,7 @@ describe('YooKassa provider: refunds', () => {
     expect(mock.requests.at(-1)?.body).toMatchObject({
       payment_id: payment.id,
       amount: { value: '640.00', currency: 'RUB' },
-      receipt: { items: [{ payment_mode: 'full_prepayment', quantity: 1 }] },
+      receipt: { items: [{ payment_mode: 'full_prepayment', quantity: 1, measure: 'piece' }] },
     });
     await expect(
       provider.createRefund({
@@ -313,7 +316,7 @@ describe('YooKassa provider: offset receipt (ReceiptProvider)', () => {
       payment_id: payment.id,
       send: true,
       tax_system_code: 2,
-      items: [{ payment_mode: 'full_payment', payment_subject: 'commodity' }],
+      items: [{ payment_mode: 'full_payment', payment_subject: 'commodity', measure: 'piece' }],
       settlements: [{ type: 'prepayment', amount: { value: '1280.00', currency: 'RUB' } }],
     });
 

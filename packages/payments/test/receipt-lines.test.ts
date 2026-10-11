@@ -12,6 +12,7 @@ import {
 const commodity = (unitPriceKop: number, quantity = 1): ReceiptLine => ({
   description: 'BOSCH 0986 Колодки тормозные',
   quantity,
+  measure: 'piece',
   unitPriceKop,
   vatCode: 1,
   paymentSubject: 'commodity',

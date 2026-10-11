@@ -242,6 +242,7 @@ describe('planOrphanRefund', () => {
         {
           description: 'MANN W 914/2 Фильтр масляный',
           quantity: 2,
+          measure: 'piece',
           unitPriceKop: 64_000,
           vatCode: 1,
           paymentSubject: 'commodity',
@@ -263,6 +264,7 @@ describe('planOrphanRefund', () => {
         {
           description: 'MANN W 914/2 Фильтр масляный',
           quantity: 2,
+          measure: 'piece',
           unitPriceKop: 64_000,
           vatCode: 1,
           paymentSubject: 'commodity',

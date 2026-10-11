@@ -339,6 +339,16 @@ export type PaymentMode = (typeof PAYMENT_MODES)[number];
 export const PAYMENT_SUBJECTS = ['commodity', 'service'] as const;
 export type PaymentSubject = (typeof PAYMENT_SUBJECTS)[number];
 
+/**
+ * Measure of the quantity of a receipt line: FFD 1.2 tag 2108 «мера количества предмета
+ * расчёта», YooKassa `receipt.items[].measure`. Parts are sold by the piece and delivery is a
+ * single service, so every line of every receipt is `piece` (tag 2108 = 0, «шт. или ед.»).
+ * FFD 1.2 requires the tag in every line (since 09.11.2023 the tax service does not accept
+ * receipts without it); for FFD 1.05 it is harmless. Audit 2026-10-07, finding legal-3.
+ */
+export const RECEIPT_ITEM_MEASURE = 'piece' as const;
+export type ReceiptItemMeasure = typeof RECEIPT_ITEM_MEASURE;
+
 /** payments.confirmation_type: redirect link on /o/<token>, or QR on the seller's screen. */
 export const CONFIRMATION_TYPES = ['redirect', 'qr'] as const;
 export type ConfirmationType = (typeof CONFIRMATION_TYPES)[number];

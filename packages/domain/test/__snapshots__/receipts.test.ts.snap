@@ -10,6 +10,7 @@ exports[`receipt payloads > full (pay_on_handover at the point): full_payment 1`
     "lines": [
       {
         "description": "MANN-FILTER W 914/2 Фильтр масляный",
+        "measure": "piece",
         "paymentMode": "full_payment",
         "paymentSubject": "commodity",
         "quantity": 2,
@@ -31,6 +32,7 @@ exports[`receipt payloads > offset after a cancelled item: only the rest, prepay
     "lines": [
       {
         "description": "MANN-FILTER W 914/2 Фильтр масляный",
+        "measure": "piece",
         "paymentMode": "full_payment",
         "paymentSubject": "commodity",
         "quantity": 2,
@@ -54,6 +56,7 @@ exports[`receipt payloads > prepayment: two items, full_prepayment, no delivery 
     "lines": [
       {
         "description": "MANN-FILTER W 914/2 Фильтр масляный",
+        "measure": "piece",
         "paymentMode": "full_prepayment",
         "paymentSubject": "commodity",
         "quantity": 2,
@@ -62,6 +65,7 @@ exports[`receipt payloads > prepayment: two items, full_prepayment, no delivery 
       },
       {
         "description": "BOSCH 0 986 494 524 Колодки тормозные передние",
+        "measure": "piece",
         "paymentMode": "full_prepayment",
         "paymentSubject": "commodity",
         "quantity": 1,
@@ -84,6 +88,7 @@ exports[`receipt payloads > refund_full of the whole order with delivery 1`] = `
     "lines": [
       {
         "description": "MANN-FILTER W 914/2 Фильтр масляный",
+        "measure": "piece",
         "paymentMode": "full_payment",
         "paymentSubject": "commodity",
         "quantity": 2,
@@ -92,6 +97,7 @@ exports[`receipt payloads > refund_full of the whole order with delivery 1`] = `
       },
       {
         "description": "BOSCH 0 986 494 524 Колодки тормозные передние",
+        "measure": "piece",
         "paymentMode": "full_payment",
         "paymentSubject": "commodity",
         "quantity": 1,
@@ -100,6 +106,7 @@ exports[`receipt payloads > refund_full of the whole order with delivery 1`] = `
       },
       {
         "description": "Доставка",
+        "measure": "piece",
         "paymentMode": "full_payment",
         "paymentSubject": "service",
         "quantity": 1,
@@ -122,6 +129,7 @@ exports[`receipt payloads > refund_prepayment of one line 1`] = `
     "lines": [
       {
         "description": "BOSCH 0 986 494 524 Колодки тормозные передние",
+        "measure": "piece",
         "paymentMode": "full_prepayment",
         "paymentSubject": "commodity",
         "quantity": 1,

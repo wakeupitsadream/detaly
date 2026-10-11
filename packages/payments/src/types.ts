@@ -7,8 +7,8 @@ import type { Kop, ReceiptCustomer, ReceiptData, ReceiptLine } from '@detaly/dom
 
 // Receipt shapes moved to @detaly/domain in phase 1B (receipts are built there); this package
 // re-exports them so its public API does not change.
-export { PAYMENT_MODES, PAYMENT_SUBJECTS } from '@detaly/domain/statuses';
-export type { PaymentMode, PaymentSubject } from '@detaly/domain/statuses';
+export { PAYMENT_MODES, PAYMENT_SUBJECTS, RECEIPT_ITEM_MEASURE } from '@detaly/domain/statuses';
+export type { PaymentMode, PaymentSubject, ReceiptItemMeasure } from '@detaly/domain/statuses';
 export type { ReceiptCustomer, ReceiptData, ReceiptLine } from '@detaly/domain/types';
 
 // ---------------------------------------------------------------------------------------------

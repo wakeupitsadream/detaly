@@ -9,10 +9,18 @@
  * - the sum of lines (unit price x quantity) equals the amount;
  * - a line description is 1..128 characters.
  *
+ * Every line built here, the delivery line included, has measure RECEIPT_ITEM_MEASURE ('piece',
+ * FFD 1.2 tag 2108). A refund line gets it too when it mirrors a receipt stored without one.
+ *
  * Items in the states failed, replaced, refund_pending and refunded are not part of the order
  * any more and never go into a payment or offset receipt.
  */
-import { DROPPED_ORDER_ITEM_STATES, type PaymentMode, type ReceiptKind } from './statuses';
+import {
+  DROPPED_ORDER_ITEM_STATES,
+  type PaymentMode,
+  RECEIPT_ITEM_MEASURE,
+  type ReceiptKind,
+} from './statuses';
 import type { Kop, ReceiptData, ReceiptLine } from './types';
 import type { ReceiptItemInput, RefundLine } from './refunds';
 
@@ -128,6 +136,7 @@ function commodityLine(item: ReceiptItemInput, mode: PaymentMode, vatCode: numbe
   return {
     description: lineDescription(item.brand, item.article, item.name),
     quantity: item.qty,
+    measure: RECEIPT_ITEM_MEASURE,
     unitPriceKop: item.priceClientKop,
     vatCode,
     paymentSubject: 'commodity',
@@ -141,6 +150,7 @@ function deliveryLine(courierFeeKop: Kop, mode: PaymentMode, vatCode: number): R
     {
       description: DELIVERY_LINE_DESCRIPTION,
       quantity: 1,
+      measure: RECEIPT_ITEM_MEASURE,
       unitPriceKop: courierFeeKop,
       vatCode,
       paymentSubject: 'service',
@@ -230,6 +240,7 @@ export function buildRefundReceipt(input: RefundReceiptInput): {
   const lines = input.lines.map((line): ReceiptLine => ({
     description: line.description,
     quantity: line.qty,
+    measure: RECEIPT_ITEM_MEASURE,
     unitPriceKop: line.unitPriceKop,
     vatCode: input.vatCode,
     paymentSubject: line.subject,

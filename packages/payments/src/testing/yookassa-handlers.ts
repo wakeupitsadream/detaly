@@ -10,6 +10,8 @@
  * - receipts must sum to the amount; refunds may not exceed the paid amount, and a refund of a
  *   payment that carried a receipt must carry one too, with the same payment_mode
  *   (VERIFY Ю10);
+ * - every receipt item needs `measure` (FFD 1.2 tag 2108): an FFD 1.2 kassa refuses an item
+ *   without it, so here POST /payments, /refunds and /receipts answer 400 invalid_request;
  * - payments start as `pending` (the redirect confirmation_url is where 3-D Secure happens);
  *   tests move them with `mock.setPaymentStatus`. With capture=true YooKassa does not stop in
  *   waiting_for_capture, so 3-D Secure is emulated as pending → succeeded;
@@ -180,6 +182,10 @@ function itemsTotal(items: unknown): number | string {
     }
     if (typeof item.description !== 'string' || item.description.length > 128) {
       return 'receipt item description is invalid';
+    }
+    // A name of the API reference ('piece', 'gram', …), not the FFD code (0, 10, …).
+    if (typeof item.measure !== 'string' || item.measure === '') {
+      return 'receipt item measure is required (FFD 1.2 tag 2108)';
     }
     total += Math.round(amount * quantity);
   }

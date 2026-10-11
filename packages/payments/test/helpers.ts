@@ -7,6 +7,7 @@ export const SECRET_KEY = 'test_secret';
 export const line = (over: Partial<ReceiptLine> = {}): ReceiptLine => ({
   description: 'MANN W 914/2 Фильтр масляный',
   quantity: 2,
+  measure: 'piece',
   unitPriceKop: 64_000,
   vatCode: 1,
   paymentSubject: 'commodity',

@@ -19,6 +19,7 @@ import type {
   PaymentScheme,
   PaymentSubject,
   PriceGroup,
+  ReceiptItemMeasure,
   StaffRole,
 } from './statuses';
 import type { WeekSchedule } from './work-hours';
@@ -444,6 +445,8 @@ export interface ReceiptLine {
   description: string;
   /** Whole units; parts are never sold by weight. */
   quantity: number;
+  /** Measure of `quantity` (FFD 1.2 tag 2108): always RECEIPT_ITEM_MEASURE, the piece. */
+  measure: ReceiptItemMeasure;
   /** Price per unit. */
   unitPriceKop: Kop;
   /** YooKassa vat_code (YOOKASSA_VAT_CODE, "без НДС" - to verify). */

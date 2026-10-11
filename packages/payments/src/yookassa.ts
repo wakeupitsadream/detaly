@@ -80,6 +80,8 @@ function receiptLinesPayload(lines: readonly ReceiptLine[]): Json[] {
     // VERIFY Ю11: item description at most 128 characters.
     description: line.description,
     quantity: line.quantity,
+    // FFD 1.2 tag 2108, the measure of `quantity`: 'piece' on every line (RECEIPT_ITEM_MEASURE).
+    measure: line.measure,
     // `amount` of an item is the price of one unit.
     amount: money(line.unitPriceKop),
     // VERIFY Ю4: vat_code of "без НДС" (YOOKASSA_VAT_CODE, 1 expected).

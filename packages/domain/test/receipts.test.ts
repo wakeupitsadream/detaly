@@ -13,7 +13,9 @@ import {
   paymentModeFor,
   planItemRefund,
   planOrderRefund,
+  planOrphanRefund,
   RECEIPT_DESCRIPTION_MAX,
+  RECEIPT_ITEM_MEASURE,
   receiptCustomerPhone,
   ReceiptLinesError,
   type ReceiptItemInput,
@@ -64,6 +66,7 @@ describe('lineDescription and invariants (moved from @detaly/payments)', () => {
     const service = (unitPriceKop: number): ReceiptLine => ({
       description: 'Доставка',
       quantity: 1,
+      measure: 'piece',
       unitPriceKop,
       vatCode: 1,
       paymentSubject: 'service',
@@ -81,6 +84,7 @@ describe('lineDescription and invariants (moved from @detaly/payments)', () => {
     const line: ReceiptLine = {
       description: 'Установка',
       quantity: 1,
+      measure: 'piece',
       unitPriceKop: 100,
       vatCode: 1,
       // @ts-expect-error 'job' (a service like installation) is not a PaymentSubject
@@ -144,7 +148,12 @@ describe('receipt payloads', () => {
     });
     expect(receipt.amountKop).toBe(158_000);
     expect(receipt.data.lines.filter((l) => l.paymentSubject === 'service')).toEqual([
-      expect.objectContaining({ description: 'Доставка', quantity: 1, unitPriceKop: 30_000 }),
+      expect.objectContaining({
+        description: 'Доставка',
+        quantity: 1,
+        measure: 'piece',
+        unitPriceKop: 30_000,
+      }),
     ]);
     expect(linesTotalKop(receipt.data.lines)).toBe(receipt.amountKop);
   });
@@ -246,5 +255,68 @@ describe('receipt payloads', () => {
     expect(() => buildRefundReceipt({ ...CODES, kind: 'refund_full', lines })).toThrow(
       /at most one service/,
     );
+  });
+});
+
+describe('measure of every line (FFD 1.2 tag 2108, audit legal-3)', () => {
+  it.each([
+    ['without the delivery line', 0],
+    ['with the delivery line', 30_000],
+  ])('every receipt kind, %s: each line is in pieces', (_label, courierFeeKop) => {
+    const arrived = (item: ReceiptItemInput): ReceiptItemInput => ({ ...item, state: 'arrived' });
+    const items = [arrived(filter), arrived(pads)];
+    const paymentKop = 443_000 + courierFeeKop;
+    const order = planOrderRefund({ items, courierFeeKop, paymentKop, refunds: [] });
+    const itemRefund = planItemRefund({ item: arrived(pads), refunds: [], paymentKop });
+    const receipts = {
+      prepayment: buildPaymentReceipt({ ...CODES, kind: 'prepayment', items, courierFeeKop }),
+      full: buildPaymentReceipt({ ...CODES, kind: 'full', items, courierFeeKop }),
+      offset: buildOffsetReceipt({ ...CODES, items, courierFeeKop }),
+      refund_prepayment: buildRefundReceipt({
+        ...CODES,
+        kind: 'refund_prepayment',
+        lines: order.lines,
+      }),
+      refund_full: buildRefundReceipt({ ...CODES, kind: 'refund_full', lines: order.lines }),
+      partial_refund_by_line: buildRefundReceipt({
+        ...CODES,
+        kind: 'refund_prepayment',
+        lines: itemRefund.lines,
+      }),
+    };
+    expect(RECEIPT_ITEM_MEASURE).toBe('piece');
+    for (const [kind, { data }] of Object.entries(receipts)) {
+      const delivery = courierFeeKop > 0 && kind !== 'partial_refund_by_line' ? 1 : 0;
+      expect(
+        data.lines.filter((l) => l.paymentSubject === 'service'),
+        kind,
+      ).toHaveLength(delivery);
+      expect(
+        data.lines.map((l) => l.measure),
+        kind,
+      ).toEqual(data.lines.map(() => 'piece'));
+    }
+  });
+
+  it('a refund that mirrors a receipt stored without measure still sends the piece', () => {
+    // payments.request.receipt.lines of a payment created before the measure was sent.
+    const stored = {
+      description: 'MANN-FILTER W 914/2 Фильтр масляный',
+      quantity: 2,
+      unitPriceKop: 64_000,
+      vatCode: 1,
+      paymentSubject: 'commodity',
+      paymentMode: 'full_prepayment',
+    } as unknown as ReceiptLine;
+    const plan = planOrphanRefund({
+      paymentKop: 128_000,
+      paymentKind: 'prepayment',
+      originalLines: [stored],
+      items: [],
+    });
+    const receipt = buildRefundReceipt({ ...CODES, kind: plan.receiptKind, lines: plan.lines });
+    expect(receipt.data.lines).toEqual([
+      expect.objectContaining({ quantity: 2, unitPriceKop: 64_000, measure: 'piece' }),
+    ]);
   });
 });

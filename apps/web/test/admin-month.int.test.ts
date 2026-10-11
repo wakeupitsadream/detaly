@@ -234,6 +234,7 @@ async function remotePayment(orderId: string, orderNumber: string, amountKop: nu
         {
           description: 'MANN W 914/2 Фильтр масляный',
           quantity: 1,
+          measure: 'piece',
           unitPriceKop: amountKop,
           vatCode: 1,
           paymentSubject: 'commodity',
